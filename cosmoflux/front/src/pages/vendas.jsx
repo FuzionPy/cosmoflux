@@ -143,7 +143,7 @@ export default function Vendas() {
       ]);
       if (ped.status  === 'fulfilled') setPedidos(ped.value);
       if (cli.status  === 'fulfilled') setClientes(cli.value);
-      if (prod.status === 'fulfilled') setProdutos(prod.value.filter(p => p.ativo && p.estoque_atual > 0));
+      if (prod.status === 'fulfilled') setProdutos(prod.value.filter(p => p.status !== 'inativo'));
     } finally { setLoading(false); }
   }, []);
 
