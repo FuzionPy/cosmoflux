@@ -13,7 +13,7 @@ import Lucros      from './pages/lucros'
 import Clientes    from './pages/clientes'
 import Fornecedores from './pages/fornecedores'
 import Usuarios    from './pages/usuarios'
-import Vendas      from './pages/Vendas'
+import Vendas      from './pages/vendas'
 
 const PublicRoute  = ({ children }) => getToken() ? <Navigate to="/menu" replace /> : children;
 const PrivateRoute = ({ children }) => getToken() ? children : <Navigate to="/" replace />;
