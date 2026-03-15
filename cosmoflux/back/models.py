@@ -1,9 +1,19 @@
 from sqlalchemy import create_engine, Column, String, Integer, Boolean, ForeignKey, Float, DateTime, Text, Date
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.orm import Session, sessionmaker
-from datetime import datetime
+from datetime import datetime, timedelta
+import os
 
-db = create_engine("sqlite:///banco.db", connect_args={"check_same_thread": False})
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///banco.db")
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# SQLite precisa de check_same_thread, PostgreSQL não aceita esse argumento
+if DATABASE_URL.startswith("sqlite"):
+    db = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+else:
+    db = create_engine(DATABASE_URL)
+
 Base = declarative_base()
 
 
