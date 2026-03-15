@@ -301,6 +301,14 @@ def criar_categoria(dados: CategoriaSchema, ctx: dict = Depends(get_ctx), db: Se
     db.add(c); db.commit(); db.refresh(c)
     return {"id": c.id, "nome": c.nome}
 
+@order_router.delete("/categorias/{categoria_id}")
+def deletar_categoria(categoria_id: int, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    c = tf(db.query(Categoria), Categoria, ctx).filter(Categoria.id == categoria_id).first()
+    if not c: raise HTTPException(404, "Categoria nao encontrada")
+    db.query(Produto).filter(Produto.categoria_id == categoria_id).update({"categoria_id": None})
+    db.delete(c); db.commit()
+    return {"mensagem": "Categoria removida"}
+
 @order_router.get("/fornecedores")
 def listar_fornecedores(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
     return [{"id": f.id, "nome": f.nome, "telefone": f.telefone, "email": f.email}
