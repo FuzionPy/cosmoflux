@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, date, timedelta
-from models import Cliente, Venda, Parcela, get_db
+from models import Cliente, Venda, Parcela, Produto, Movimentacao, Pedido, ItemPedido, get_db
 from auth_routes import get_ctx
 
 client_router = APIRouter(prefix="/api", tags=["clientes"])
@@ -37,8 +37,102 @@ class VendaSchema(BaseModel):
     data_vencimento: Optional[str] = None
     observacao: Optional[str] = None
 
+class ItemVendaSchema(BaseModel):
+    produto_id: int
+    quantidade: int
+    preco_unitario: float
+    desconto_item: float = 0.0
+
+class VendaUnificadaSchema(BaseModel):
+    cliente_id: Optional[int] = None   # None = balcao
+    itens: list[ItemVendaSchema]
+    modo_pagamento: str
+    parcelado: bool = False
+    num_parcelas: int = 1
+    data_vencimento: Optional[str] = None
+    desconto_geral: float = 0.0
+    observacao: Optional[str] = None
+
 class PagarParcelaSchema(BaseModel):
     data_pago: Optional[str] = None
+
+
+# ── VENDA UNIFICADA ───────────────────────────────────────────────
+@client_router.post("/vendas/unificada")
+def criar_venda_unificada(dados: VendaUnificadaSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    from models import Produto, Movimentacao, ItemPedido, Pedido
+    if not dados.itens:
+        raise HTTPException(400, "Venda deve ter ao menos 1 item")
+
+    # verifica cliente se informado
+    cliente = None
+    if dados.cliente_id:
+        cliente = tf(db.query(Cliente), Cliente, ctx).filter(Cliente.id == dados.cliente_id).first()
+        if not cliente: raise HTTPException(404, "Cliente nao encontrado")
+
+    # fiado exige cliente
+    if dados.modo_pagamento == "fiado" and not dados.cliente_id:
+        raise HTTPException(400, "Venda fiado exige cliente cadastrado")
+
+    # calcula total
+    subtotal = sum(it.quantidade * it.preco_unitario - it.desconto_item for it in dados.itens)
+    total = round(subtotal - dados.desconto_geral, 2)
+
+    # cria pedido vinculado
+    pedido = Pedido(
+        cliente_id=dados.cliente_id, usuario_id=ctx["usuario_id"],
+        status="concluido", total=total,
+        desconto=dados.desconto_geral, observacao=dados.observacao, tenant_id=tid(ctx),
+    )
+    db.add(pedido); db.flush()
+
+    # itens + baixa estoque + movimentacao saida
+    for it in dados.itens:
+        p = tf(db.query(Produto), Produto, ctx).filter(Produto.id == it.produto_id).first()
+        if not p: raise HTTPException(404, f"Produto {it.produto_id} nao encontrado")
+        if p.estoque_atual < it.quantidade:
+            raise HTTPException(400, f"Estoque insuficiente para '{p.nome}'. Disponivel: {p.estoque_atual}")
+        db.add(ItemPedido(pedido_id=pedido.id, produto_id=it.produto_id,
+                          quantidade=it.quantidade, preco_unitario=it.preco_unitario,
+                          desconto_item=it.desconto_item))
+        p.estoque_atual -= it.quantidade
+        db.add(Movimentacao(produto_id=p.id, tipo="saida", quantidade=it.quantidade,
+                            motivo="venda", observacao=f"Venda #{pedido.id}",
+                            usuario_id=ctx["usuario_id"], tenant_id=tid(ctx)))
+
+    # cria venda financeira se tiver cliente
+    venda_id = None
+    if dados.cliente_id:
+        venc = datetime.strptime(dados.data_vencimento, "%Y-%m-%d").date() if dados.data_vencimento else None
+        status_pag = "pendente" if dados.modo_pagamento in ["fiado", "boleto"] else "pago"
+        venda = Venda(
+            cliente_id=dados.cliente_id, usuario_id=ctx["usuario_id"],
+            descricao=f"Pedido #{pedido.id}", valor_total=total,
+            modo_pagamento=dados.modo_pagamento, parcelado=dados.parcelado,
+            num_parcelas=dados.num_parcelas, data_vencimento=venc,
+            status_pagamento=status_pag, observacao=dados.observacao, tenant_id=tid(ctx),
+        )
+        db.add(venda); db.flush()
+        venda_id = venda.id
+
+        # parcelas
+        if dados.parcelado and dados.num_parcelas > 1 and venc:
+            valor_parc = round(total / dados.num_parcelas, 2)
+            for i in range(dados.num_parcelas):
+                mes = venc.month + i
+                ano = venc.year + (mes - 1) // 12
+                mes = ((mes - 1) % 12) + 1
+                try:    venc_parc = venc.replace(year=ano, month=mes)
+                except ValueError:
+                    import calendar
+                    ultimo_dia = calendar.monthrange(ano, mes)[1]
+                    venc_parc = venc.replace(year=ano, month=mes, day=ultimo_dia)
+                db.add(Parcela(venda_id=venda.id, numero=i+1, valor=valor_parc, vencimento=venc_parc))
+        elif venc:
+            db.add(Parcela(venda_id=venda.id, numero=1, valor=total, vencimento=venc))
+
+    db.commit()
+    return {"mensagem": "Venda registrada", "pedido_id": pedido.id, "venda_id": venda_id, "total": total}
 
 # ── CLIENTES ──────────────────────────────────────────────────────
 @client_router.get("/clientes")

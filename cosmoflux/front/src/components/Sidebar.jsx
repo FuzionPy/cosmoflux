@@ -97,22 +97,23 @@ const styles = `
   .sb-logout:hover { color: #ff4757; }
 
   @media (max-width: 768px) {
-  .sidebar { position: fixed; left: 0; top: 0; bottom: 0; transform: translateX(-100%); z-index:500; }
-  .sidebar.open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,0.5); }
-}
+    .sidebar { position: fixed; left: 0; top: 0; bottom: 0; transform: translateX(-100%); }
+    .sidebar.open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,0.5); }
+  }
 `;
 
 const NAV_ITEMS = [
   { label: 'Dashboard',    path: '/menu',         icon: '⬡', section: 'VISÃO GERAL' },
-  { label: 'Produtos',     path: '/produtos',     icon: '◈', section: null },
+  { label: 'Vendas',       path: '/vendas',       icon: '◆', section: 'VENDAS' },
+  { label: 'Clientes',     path: '/clientes',     icon: '◯', section: null },
+  { label: 'Produtos',     path: '/produtos',     icon: '◈', section: 'ESTOQUE' },
   { label: 'Estoque',      path: '/estoque',      icon: '◫', section: null },
-  { label: 'Entradas',     path: '/entradas',     icon: '↑', section: 'MOVIMENTAÇÕES' },
+  { label: 'Entradas',     path: '/entradas',     icon: '↑', section: null },
   { label: 'Saídas',       path: '/saidas',       icon: '↓', section: null },
   { label: 'Pedidos',      path: '/pedidos',      icon: '◻', section: null },
   { label: 'Relatórios',   path: '/relatorios',   icon: '▦', section: 'ANÁLISE' },
   { label: 'Lucros',       path: '/lucros',       icon: '◈', section: null },
-  { label: 'Clientes',     path: '/clientes',     icon: '◯', section: 'CADASTROS' },
-  { label: 'Fornecedores', path: '/fornecedores', icon: '◎', section: null },
+  { label: 'Fornecedores', path: '/fornecedores', icon: '◎', section: 'CADASTROS' },
 ];
 
 const ADMIN_ITEMS = [
