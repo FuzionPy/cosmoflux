@@ -1,19 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { login } from '../services/authService';
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
   .cf-root {
-    min-height: 100vh;
-    background: #04050a;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'Outfit', sans-serif;
-    overflow: hidden;
-    position: relative;
+    min-height: 100vh; background: #04050a;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Outfit', sans-serif; overflow: hidden; position: relative;
   }
   .cf-stars { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
   .cf-star {
@@ -28,14 +23,12 @@ const styles = `
   .cf-nebula-1 {
     width: 600px; height: 600px;
     background: radial-gradient(circle, rgba(94,44,180,0.18) 0%, transparent 70%);
-    top: -150px; left: -150px;
-    animation: drift1 20s ease-in-out infinite alternate;
+    top: -150px; left: -150px; animation: drift1 20s ease-in-out infinite alternate;
   }
   .cf-nebula-2 {
     width: 500px; height: 500px;
     background: radial-gradient(circle, rgba(0,200,255,0.12) 0%, transparent 70%);
-    bottom: -100px; right: -100px;
-    animation: drift2 25s ease-in-out infinite alternate;
+    bottom: -100px; right: -100px; animation: drift2 25s ease-in-out infinite alternate;
   }
   @keyframes drift1 { from { transform: translate(0,0) scale(1); } to { transform: translate(60px,40px) scale(1.1); } }
   @keyframes drift2 { from { transform: translate(0,0) scale(1); } to { transform: translate(-50px,-30px) scale(1.15); } }
@@ -45,26 +38,20 @@ const styles = `
     animation: spin var(--speed, 40s) linear infinite;
   }
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
   .cf-layout {
     position: relative; z-index: 1;
     display: grid; grid-template-columns: 1fr 1fr;
     width: 100%; max-width: 960px; min-height: 580px;
-    border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 24px; overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.07); border-radius: 24px; overflow: hidden;
     backdrop-filter: blur(8px);
     box-shadow: 0 0 80px rgba(94,44,180,0.15), 0 0 160px rgba(0,0,0,0.6);
-    margin: 24px;
-    animation: fadeUp 0.8s cubic-bezier(.22,1,.36,1) both;
+    margin: 24px; animation: fadeUp 0.8s cubic-bezier(.22,1,.36,1) both;
   }
   @keyframes fadeUp { from { opacity: 0; transform: translateY(32px); } to { opacity: 1; transform: none; } }
-
   .cf-panel-left {
     background: linear-gradient(135deg, rgba(20,12,45,0.95) 0%, rgba(8,20,50,0.95) 100%);
-    padding: 56px 48px;
-    display: flex; flex-direction: column; justify-content: space-between;
-    border-right: 1px solid rgba(255,255,255,0.06);
-    position: relative; overflow: hidden;
+    padding: 56px 48px; display: flex; flex-direction: column; justify-content: space-between;
+    border-right: 1px solid rgba(255,255,255,0.06); position: relative; overflow: hidden;
   }
   .cf-brand { position: relative; z-index: 2; }
   .cf-logo-mark { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
@@ -81,13 +68,11 @@ const styles = `
   }
   .cf-logo-ring {
     position: absolute; inset: -6px; border-radius: 50%;
-    border: 1px solid rgba(140,90,255,0.3);
-    animation: spin 8s linear infinite;
+    border: 1px solid rgba(140,90,255,0.3); animation: spin 8s linear infinite;
   }
   .cf-logo-text {
     font-family: 'Space Mono', monospace; font-size: 14px;
-    font-weight: 700; letter-spacing: 0.2em;
-    color: rgba(255,255,255,0.9); text-transform: uppercase;
+    font-weight: 700; letter-spacing: 0.2em; color: rgba(255,255,255,0.9); text-transform: uppercase;
   }
   .cf-tagline { font-size: 28px; font-weight: 300; line-height: 1.35; color: rgba(255,255,255,0.85); margin-bottom: 16px; }
   .cf-tagline strong {
@@ -109,7 +94,6 @@ const styles = `
     background: radial-gradient(circle, rgba(94,44,180,0.25) 0%, transparent 70%);
     pointer-events: none;
   }
-
   .cf-panel-right {
     background: rgba(6,8,18,0.97); padding: 56px 48px;
     display: flex; flex-direction: column; justify-content: center;
@@ -120,11 +104,9 @@ const styles = `
     font-weight: 700; color: #fff; letter-spacing: 0.05em; margin-bottom: 6px;
   }
   .cf-form-sub { font-size: 13px; color: rgba(255,255,255,0.35); }
-
   .cf-error {
     background: rgba(220,38,38,0.12); border: 1px solid rgba(220,38,38,0.3);
-    border-radius: 8px; padding: 10px 14px; font-size: 13px;
-    color: #fc8181; margin-bottom: 20px;
+    border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #fc8181; margin-bottom: 20px;
   }
   .cf-field { margin-bottom: 18px; }
   .cf-label {
@@ -132,53 +114,33 @@ const styles = `
     letter-spacing: 0.12em; text-transform: uppercase;
     color: rgba(255,255,255,0.4); margin-bottom: 8px;
   }
-  .cf-input-wrap { position: relative; }
   .cf-input {
     width: 100%; padding: 12px 16px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
     border-radius: 10px; color: #fff; font-size: 14px;
-    font-family: 'Outfit', sans-serif; outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    font-family: 'Outfit', sans-serif; outline: none; transition: border-color 0.2s, box-shadow 0.2s;
   }
   .cf-input::placeholder { color: rgba(255,255,255,0.2); }
-  .cf-input:focus {
-    border-color: rgba(160,112,255,0.5);
-    box-shadow: 0 0 0 3px rgba(160,112,255,0.1);
-  }
-
-  .cf-options {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 24px;
-  }
+  .cf-input:focus { border-color: rgba(160,112,255,0.5); box-shadow: 0 0 0 3px rgba(160,112,255,0.1); }
+  .cf-options { display: flex; align-items: center; margin-bottom: 24px; }
   .cf-remember { display: flex; align-items: center; gap: 8px; font-size: 13px; color: rgba(255,255,255,0.45); cursor: pointer; }
   .cf-checkbox { accent-color: #a070ff; width: 15px; height: 15px; cursor: pointer; }
-  .cf-forgot { font-size: 13px; color: rgba(160,112,255,0.8); text-decoration: none; transition: color 0.2s; }
-  .cf-forgot:hover { color: #c0a0ff; }
-
   .cf-submit {
     width: 100%; padding: 14px;
     background: linear-gradient(135deg, #7c3aed, #5e2cb4);
-    border: none; border-radius: 10px;
-    color: #fff; font-size: 14px; font-weight: 600;
+    border: none; border-radius: 10px; color: #fff; font-size: 14px; font-weight: 600;
     font-family: 'Space Mono', monospace; letter-spacing: 0.1em;
     cursor: pointer; transition: all 0.2s;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    margin-bottom: 20px;
+    display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 20px;
   }
   .cf-submit:hover:not(:disabled) { background: linear-gradient(135deg, #8b5cf6, #6d28d9); transform: translateY(-1px); box-shadow: 0 8px 24px rgba(124,58,237,0.35); }
   .cf-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-
   .cf-spinner {
     width: 18px; height: 18px; border-radius: 50%;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: #fff;
-    animation: spin 0.7s linear infinite;
-    display: inline-block;
+    border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
+    animation: spin 0.7s linear infinite; display: inline-block;
   }
-
   .cf-footer { font-size: 11px; color: rgba(255,255,255,0.2); text-align: center; margin-top: 8px; }
-
   @media (max-width: 720px) {
     .cf-layout { grid-template-columns: 1fr; }
     .cf-panel-left { display: none; }
@@ -187,14 +149,9 @@ const styles = `
 `;
 
 const STARS = Array.from({ length: 80 }, (_, i) => ({
-  id: i,
-  top:  `${Math.random() * 100}%`,
-  left: `${Math.random() * 100}%`,
-  size: Math.random() * 2.5 + 0.5,
-  dur:  `${Math.random() * 4 + 2}s`,
-  delay:`${Math.random() * 4}s`,
-  minOp:(Math.random() * 0.1 + 0.05).toFixed(2),
-  maxOp:(Math.random() * 0.6 + 0.3).toFixed(2),
+  id: i, top: `${Math.random()*100}%`, left: `${Math.random()*100}%`,
+  size: Math.random()*2.5+0.5, dur: `${Math.random()*4+2}s`, delay: `${Math.random()*4}s`,
+  minOp: (Math.random()*0.1+0.05).toFixed(2), maxOp: (Math.random()*0.6+0.3).toFixed(2),
 }));
 
 const ORBITS = [
@@ -216,21 +173,7 @@ export default function Login() {
     if (!email || !password) { setError('Preencha e-mail e senha.'); return; }
     setIsLoading(true); setError('');
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, senha: password, rememberMe }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Credenciais inválidas');
-
-      const storage = rememberMe ? localStorage : sessionStorage;
-      storage.setItem('token',     data.token);
-      storage.setItem('nome',      data.nome);
-      storage.setItem('email',     data.email);
-      storage.setItem('admin',     String(data.admin));
-      storage.setItem('tenant_id', String(data.tenant_id ?? ''));
-
+      await login(email, password, rememberMe);
       navigate('/menu');
     } catch (err) {
       setError(err.message);
@@ -259,9 +202,7 @@ export default function Login() {
             top: o.top, left: o.left, bottom: o.bottom, right: o.right,
           }} />
         ))}
-
         <div className="cf-layout">
-          {/* LEFT */}
           <div className="cf-panel-left">
             <div className="cf-brand">
               <div className="cf-logo-mark">
@@ -278,32 +219,24 @@ export default function Login() {
             </div>
             <div className="cf-panel-glow" aria-hidden="true" />
           </div>
-
-          {/* RIGHT */}
           <div className="cf-panel-right">
             <div className="cf-form-heading">
               <h2 className="cf-form-title">ENTRAR</h2>
               <p className="cf-form-sub">Bem-vindo de volta ao CosmoFlux</p>
             </div>
-
             {error && <div className="cf-error">⚠ {error}</div>}
-
             <form onSubmit={handleSubmit} noValidate>
               <div className="cf-field">
                 <label htmlFor="email" className="cf-label">Email</label>
-                <div className="cf-input-wrap">
-                  <input id="email" type="email" className="cf-input"
-                    placeholder="seu@email.com" value={email}
-                    onChange={e => setEmail(e.target.value)} required />
-                </div>
+                <input id="email" type="email" className="cf-input"
+                  placeholder="seu@email.com" value={email}
+                  onChange={e => setEmail(e.target.value)} required />
               </div>
               <div className="cf-field">
                 <label htmlFor="password" className="cf-label">Senha</label>
-                <div className="cf-input-wrap">
-                  <input id="password" type="password" className="cf-input"
-                    placeholder="••••••••" value={password}
-                    onChange={e => setPassword(e.target.value)} required />
-                </div>
+                <input id="password" type="password" className="cf-input"
+                  placeholder="••••••••" value={password}
+                  onChange={e => setPassword(e.target.value)} required />
               </div>
               <div className="cf-options">
                 <label className="cf-remember">
@@ -316,7 +249,6 @@ export default function Login() {
                 {isLoading ? <span className="cf-spinner" /> : 'ENTRAR'}
               </button>
             </form>
-
             <p className="cf-footer">CosmoFlux © {new Date().getFullYear()} · Sistema de Gestão</p>
           </div>
         </div>
