@@ -1,9 +1,8 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { getToken } from './services/authService'
 import Login from './pages/login'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
-
-// Páginas — crie cada uma em src/pages/ conforme precisar
 import Produtos     from './pages/produtos'
 import Estoque      from './pages/estoque'
 import Entradas     from './pages/entradas'
@@ -13,41 +12,44 @@ import Relatorios   from './pages/relatorios'
 import Lucros       from './pages/lucros'
 import Clientes     from './pages/clientes'
 import Fornecedores from './pages/fornecedores'
-import Usuarios from './pages/usuarios'
+import Usuarios     from './pages/usuarios'
 
-// Placeholder para páginas ainda não criadas
-const EmBreve = ({ nome }) => (
-  <div style={{
-    padding: 40, color: 'rgba(232,234,237,0.3)',
-    fontFamily: "'JetBrains Mono', monospace", fontSize: 13,
-    display: 'flex', alignItems: 'center', gap: 12
-  }}>
-    <span style={{ fontSize: 20 }}>◫</span>
-    Página <strong style={{ color: 'rgba(232,234,237,0.6)' }}>{nome}</strong> em construção.
-  </div>
-);
+// Redireciona para /menu se já logado, senão mostra o Login
+const PublicRoute = ({ children }) => {
+  return getToken() ? <Navigate to="/menu" replace /> : children;
+};
+
+// Redireciona para / se não logado
+const PrivateRoute = ({ children }) => {
+  return getToken() ? children : <Navigate to="/" replace />;
+};
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Pública */}
-        <Route path="/" element={<Login />} />
+        <Route path="/" element={
+          <PublicRoute><Login /></PublicRoute>
+        } />
 
-        {/* Protegidas — todas compartilham o Layout (Sidebar + Topbar) */}
-        <Route element={<Layout />}>
+        <Route element={
+          <PrivateRoute><Layout /></PrivateRoute>
+        }>
           <Route path="/menu"         element={<Dashboard />} />
-          <Route path="/produtos" element={<Produtos />} />
-          <Route path="/estoque" element={<Estoque />} />
-          <Route path="/entradas" element={<Entradas />} />
-          <Route path="/saidas"   element={<Saidas />} />
-          <Route path="/pedidos"  element={<Pedidos />} />
+          <Route path="/produtos"     element={<Produtos />} />
+          <Route path="/estoque"      element={<Estoque />} />
+          <Route path="/entradas"     element={<Entradas />} />
+          <Route path="/saidas"       element={<Saidas />} />
+          <Route path="/pedidos"      element={<Pedidos />} />
           <Route path="/relatorios"   element={<Relatorios />} />
-          <Route path="/lucros" element={<Lucros />} />
-          <Route path="/clientes" element={<Clientes/>} />
+          <Route path="/lucros"       element={<Lucros />} />
+          <Route path="/clientes"     element={<Clientes />} />
           <Route path="/fornecedores" element={<Fornecedores />} />
-          <Route path="/usuarios" element={<Usuarios />} />
+          <Route path="/usuarios"     element={<Usuarios />} />
         </Route>
+
+        {/* Qualquer rota desconhecida vai para / */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )
