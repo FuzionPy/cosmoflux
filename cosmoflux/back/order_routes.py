@@ -6,8 +6,6 @@ from datetime import datetime
 from models import Produto, Movimentacao, Cliente, Pedido, ItemPedido, get_db, Categoria, Fornecedor, Venda
 from sqlalchemy import func, desc
 from auth_routes import get_ctx
-from sqlalchemy import func, desc, extract
-from datetime import datetime, date
 
 order_router = APIRouter(prefix="/api", tags=["operacoes"])
 
@@ -85,7 +83,7 @@ def dashboard_kpis(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
         for p in q_mes
     )
     pedidos_hoje = tf(db.query(Pedido), Pedido, ctx).filter(
-        func.date(Pedido.criado_em) == hoje,
+        Pedido.criado_em >= datetime.combine(hoje, datetime.min.time()), Pedido.criado_em < datetime.combine(hoje + timedelta(days=1), datetime.min.time()),
         Pedido.status != "cancelado"
     ).count()
 
@@ -102,20 +100,18 @@ def dashboard_kpis(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
         "estoque_critico":estoque_critico,
     }
 
-# ── DASHBOARD VENDAS POR MÊS ──────────────────────────────────────
 @order_router.get("/dashboard/vendas-por-mes")
 def vendas_por_mes(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
     ano = datetime.utcnow().year
     resultado = []
     for mes in range(1, 13):
         total = tf(db.query(func.count(Pedido.id)), Pedido, ctx).filter(
-            extract('year',  Pedido.criado_em) == ano,
-            extract('month', Pedido.criado_em) == mes,
+            func.extract('year', Pedido.criado_em) == ano,
+            func.extract('month', Pedido.criado_em) == mes,
             Pedido.status != "cancelado"
         ).scalar() or 0
         resultado.append({"mes": mes, "total": total})
     return resultado
-
 
 # ══════════════════════════════════════════════════════════════════
 # PRODUTOS
@@ -370,16 +366,14 @@ def lucros_resumo(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
 
     inicio_mes = hoje.replace(day=1)
     ped_hoje = tf(db.query(Pedido), Pedido, ctx).filter(
-        func.cast(Pedido.criado_em, date) == hoje,
+        Pedido.criado_em >= datetime.combine(hoje, datetime.min.time()),
+        Pedido.criado_em < datetime.combine(hoje + timedelta(days=1), datetime.min.time()),
         Pedido.status != "cancelado").all()
     ped_mes  = tf(db.query(Pedido), Pedido, ctx).filter(
-        Pedido.criado_em >= datetime.combine(inicio_mes, datetime.min.time()),
-        Pedido.status != "cancelado").all()
+        Pedido.criado_em >= datetime.combine(inicio_mes, datetime.min.time()), Pedido.status != "cancelado").all()
     ped_ano  = tf(db.query(Pedido), Pedido, ctx).filter(
-        extract('year', Pedido.criado_em) == ano,
-        Pedido.status != "cancelado").all()
-    ped_todos = tf(db.query(Pedido), Pedido, ctx).filter(
-        Pedido.status != "cancelado").all()
+        func.extract('year', Pedido.criado_em) == ano, Pedido.status != "cancelado").all()
+    ped_todos= tf(db.query(Pedido), Pedido, ctx).filter(Pedido.status != "cancelado").all()
 
     def fmt(peds):
         r,c,l,d = calcular(peds)
@@ -388,15 +382,14 @@ def lucros_resumo(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
 
     return {"hoje":fmt(ped_hoje),"mes":fmt(ped_mes),"ano":fmt(ped_ano),"total":fmt(ped_todos)}
 
-# ── LUCROS MENSAL ─────────────────────────────────────────────────
 @order_router.get("/lucros/mensal")
 def lucros_mensal(ano: int = None, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
     ano = ano or datetime.utcnow().year
     resultado = []
     for mes in range(1, 13):
         pedidos = tf(db.query(Pedido), Pedido, ctx).filter(
-            extract('year',  Pedido.criado_em) == ano,
-            extract('month', Pedido.criado_em) == mes,
+            func.extract('year', Pedido.criado_em) == ano,
+            func.extract('month', Pedido.criado_em) == mes,
             Pedido.status != "cancelado"
         ).all()
         receita = sum(p.total for p in pedidos)
@@ -406,6 +399,44 @@ def lucros_mensal(ano: int = None, ctx: dict = Depends(get_ctx), db: Session = D
                           "lucro":round(lucro,2),"pedidos":len(pedidos),
                           "margem":round(lucro/receita*100,1) if receita else 0})
     return resultado
+
+@order_router.get("/lucros/por-produto")
+def lucros_por_produto(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    itens = db.query(ItemPedido).join(ItemPedido.pedido_rel).filter(
+        Pedido.status != "cancelado"
+    )
+    if not ctx["admin"] and ctx["tenant_id"] is not None:
+        itens = itens.filter(Pedido.tenant_id == ctx["tenant_id"])
+    itens = itens.all()
+
+    from collections import defaultdict
+    agrupado = defaultdict(lambda: {"qtd":0,"receita":0.0,"custo":0.0})
+    for it in itens:
+        agrupado[it.produto_id]["qtd"]     += it.quantidade
+        agrupado[it.produto_id]["receita"] += it.quantidade * it.preco_unitario
+        agrupado[it.produto_id]["custo"]   += custo_item(it, db)
+
+    resultado = []
+    for pid, vals in agrupado.items():
+        p = db.query(Produto).filter(Produto.id == pid).first()
+        if not p or vals["qtd"] == 0: continue
+        custo_med = custo_medio_produto(pid, db)
+        lucro = vals["receita"] - vals["custo"]
+        resultado.append({
+            "id": p.id, "nome": p.nome,
+            "categoria":    p.categoria_rel.nome if p.categoria_rel else None,
+            "qtd_vendida":  vals["qtd"],
+            "receita":      round(vals["receita"], 2),
+            "custo":        round(vals["custo"],   2),
+            "lucro":        round(lucro,            2),
+            "margem":       round(lucro/vals["receita"]*100,1) if vals["receita"] else 0,
+            "custo_medio":  round(custo_med, 2),
+            "custo_padrao": round(p.preco_custo, 2),
+            "lucro_unit":   round(p.preco_venda - custo_med, 2),
+        })
+    resultado.sort(key=lambda x: x["lucro"], reverse=True)
+    return resultado
+
 # ══════════════════════════════════════════════════════════════════
 # FORNECEDORES (CRUD completo)
 # ══════════════════════════════════════════════════════════════════
