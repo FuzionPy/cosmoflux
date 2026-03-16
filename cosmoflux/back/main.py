@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine
 import os
-from product_routes import product_router    # ← adiciona
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///banco.db")
 
