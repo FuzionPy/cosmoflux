@@ -408,8 +408,8 @@ export default function Vendas() {
                   </div>
                 </div>
 
-                {/* Parcelamento — só para crédito */}
-                {form.modo_pagamento === 'Cartão de crédito' && (
+                {/* Parcelamento — crédito e fiado */}
+                {(form.modo_pagamento === 'Cartão de crédito' || form.modo_pagamento === 'Fiado') && (
                   <div style={{display:'flex',alignItems:'center',gap:10}}>
                     <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:'rgba(232,234,237,.6)',cursor:'pointer'}}>
                       <input type="checkbox" checked={form.parcelado} onChange={e=>setForm(f=>({...f,parcelado:e.target.checked}))}
