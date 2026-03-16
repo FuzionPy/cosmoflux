@@ -7,6 +7,9 @@ from datetime import datetime
 from models import (Produto, Categoria, Fornecedor, Movimentacao,
                     Cliente, Pedido, ItemPedido, get_db)
 
+from sqlalchemy import extract, func, cast, Date
+from datetime import datetime, date
+
 product_router = APIRouter(prefix="/api", tags=["sistema"])
 
 # ══════════════════════════════════════════════════════════════════
@@ -68,62 +71,169 @@ class PedidoSchema(BaseModel):
 
 @product_router.get("/dashboard/kpis")
 def get_kpis(db: Session = Depends(get_db)):
-    total_produtos = db.query(Produto).filter(Produto.ativo == True).count()
-
-    # Receita do mês (pedidos entregues/confirmados)
     mes_atual = datetime.utcnow().month
     ano_atual = datetime.utcnow().year
+
+    total_produtos = db.query(Produto).filter(Produto.ativo == True).count()
+
     receita = db.query(func.sum(Pedido.total)).filter(
-        func.strftime('%m', Pedido.criado_em) == f"{mes_atual:02d}",
-        func.strftime('%Y', Pedido.criado_em) == str(ano_atual),
-        Pedido.status.in_(["confirmado", "entregue"])
+        extract('month', Pedido.criado_em) == mes_atual,
+        extract('year',  Pedido.criado_em) == ano_atual,
+        Pedido.status.in_(["confirmado", "entregue", "concluido"])
     ).scalar() or 0
 
-    # Total de pedidos hoje
-    hoje = datetime.utcnow().date().isoformat()
     pedidos_hoje = db.query(Pedido).filter(
-        func.date(Pedido.criado_em) == hoje
+        func.cast(Pedido.criado_em, Date) == date.today()
     ).count()
 
-    # Produtos com estoque crítico
     criticos = db.query(Produto).filter(
         Produto.estoque_atual <= Produto.estoque_minimo,
         Produto.ativo == True
     ).count()
 
-    # Lucro estimado do mês
     lucro = db.query(
         func.sum((Produto.preco_venda - Produto.preco_custo) * ItemPedido.quantidade)
     ).join(ItemPedido, ItemPedido.produto_id == Produto.id)\
      .join(Pedido, Pedido.id == ItemPedido.pedido_id)\
      .filter(
-        func.strftime('%m', Pedido.criado_em) == f"{mes_atual:02d}",
-        func.strftime('%Y', Pedido.criado_em) == str(ano_atual),
-        Pedido.status.in_(["confirmado", "entregue"])
+        extract('month', Pedido.criado_em) == mes_atual,
+        extract('year',  Pedido.criado_em) == ano_atual,
+        Pedido.status.in_(["confirmado", "entregue", "concluido"])
     ).scalar() or 0
 
     return {
-        "receita_mes": round(receita, 2),
-        "pedidos_hoje": pedidos_hoje,
+        "receita_mes":    round(float(receita), 2),
+        "pedidos_hoje":   pedidos_hoje,
         "total_produtos": total_produtos,
-        "lucro_mes": round(lucro, 2),
-        "estoque_critico": criticos,
+        "lucro_mes":      round(float(lucro), 2),
+        "estoque_critico":criticos,
     }
 
+
+# ── DASHBOARD VENDAS POR MÊS ──────────────────────────────────────
 @product_router.get("/dashboard/vendas-por-mes")
 def vendas_por_mes(db: Session = Depends(get_db)):
+    ano_atual = datetime.utcnow().year
     resultado = db.query(
-        func.strftime('%m', Pedido.criado_em).label("mes"),
+        extract('month', Pedido.criado_em).label("mes"),
         func.count(Pedido.id).label("total")
     ).filter(
-        func.strftime('%Y', Pedido.criado_em) == str(datetime.utcnow().year)
-    ).group_by("mes").all()
+        extract('year', Pedido.criado_em) == ano_atual
+    ).group_by(extract('month', Pedido.criado_em)).all()
 
-    meses = {f"{i:02d}": 0 for i in range(1, 13)}
+    meses = {i: 0 for i in range(1, 13)}
     for row in resultado:
-        meses[row.mes] = row.total
+        meses[int(row.mes)] = row.total
 
-    return [{"mes": m, "total": v} for m, v in meses.items()]
+    return [{"mes": f"{m:02d}", "total": v} for m, v in meses.items()]
+
+
+# ── LUCROS: RESUMO POR PERÍODO ────────────────────────────────────
+@product_router.get("/lucros/resumo")
+def lucros_resumo(db: Session = Depends(get_db)):
+    hoje     = date.today()
+    mes      = hoje.month
+    ano      = hoje.year
+
+    def calcular(filtro_pedidos):
+        pedidos = filtro_pedidos.all()
+        ids = [p.id for p in pedidos]
+        if not ids:
+            return {"receita": 0, "custo": 0, "lucro": 0,
+                    "margem": 0, "descontos": 0, "pedidos": 0}
+
+        receita   = sum(p.total for p in pedidos)
+        descontos = sum(p.desconto or 0 for p in pedidos)
+
+        custo = db.query(
+            func.sum(Produto.preco_custo * ItemPedido.quantidade)
+        ).join(ItemPedido, ItemPedido.produto_id == Produto.id)\
+         .filter(ItemPedido.pedido_id.in_(ids)).scalar() or 0
+
+        lucro  = receita - float(custo)
+        margem = (lucro / receita * 100) if receita > 0 else 0
+
+        return {
+            "receita":   round(float(receita), 2),
+            "custo":     round(float(custo), 2),
+            "lucro":     round(lucro, 2),
+            "margem":    round(margem, 2),
+            "descontos": round(float(descontos), 2),
+            "pedidos":   len(ids),
+        }
+
+    base = db.query(Pedido).filter(
+        Pedido.status.in_(["confirmado", "entregue", "concluido"])
+    )
+
+    return {
+        "hoje":  calcular(base.filter(func.cast(Pedido.criado_em, Date) == hoje)),
+        "mes":   calcular(base.filter(extract('month', Pedido.criado_em) == mes,
+                                      extract('year',  Pedido.criado_em) == ano)),
+        "ano":   calcular(base.filter(extract('year',  Pedido.criado_em) == ano)),
+        "total": calcular(base),
+    }
+
+
+# ── LUCROS: MENSAL (gráfico) ──────────────────────────────────────
+@product_router.get("/lucros/mensal")
+def lucros_mensal(db: Session = Depends(get_db)):
+    ano = datetime.utcnow().year
+
+    rows = db.query(
+        extract('month', Pedido.criado_em).label("mes"),
+        func.sum(Pedido.total).label("receita"),
+        func.sum(Produto.preco_custo * ItemPedido.quantidade).label("custo")
+    ).join(ItemPedido, ItemPedido.pedido_id == Pedido.id)\
+     .join(Produto,    Produto.id == ItemPedido.produto_id)\
+     .filter(
+        extract('year', Pedido.criado_em) == ano,
+        Pedido.status.in_(["confirmado", "entregue", "concluido"])
+    ).group_by(extract('month', Pedido.criado_em)).all()
+
+    meses = {i: {"receita": 0.0, "custo": 0.0, "lucro": 0.0} for i in range(1, 13)}
+    for row in rows:
+        rec = float(row.receita or 0)
+        cst = float(row.custo   or 0)
+        meses[int(row.mes)] = {"receita": rec, "custo": cst, "lucro": rec - cst}
+
+    return [{"mes": i, **v} for i, v in meses.items()]
+
+
+# ── LUCROS: POR PRODUTO ───────────────────────────────────────────
+@product_router.get("/lucros/por-produto")
+def lucros_por_produto(db: Session = Depends(get_db)):
+    rows = db.query(
+        Produto.id,
+        Produto.nome,
+        func.sum(ItemPedido.quantidade).label("qtd_vendida"),
+        func.sum(ItemPedido.preco_unitario * ItemPedido.quantidade
+                 - ItemPedido.desconto_item).label("receita"),
+        func.sum(Produto.preco_custo * ItemPedido.quantidade).label("custo"),
+    ).join(ItemPedido, ItemPedido.produto_id == Produto.id)\
+     .join(Pedido,     Pedido.id == ItemPedido.pedido_id)\
+     .filter(
+        Produto.ativo == True,
+        Pedido.status.in_(["confirmado", "entregue", "concluido"])
+    ).group_by(Produto.id, Produto.nome).all()
+
+    resultado = []
+    for r in rows:
+        rec    = float(r.receita or 0)
+        cst    = float(r.custo   or 0)
+        lucro  = rec - cst
+        margem = (lucro / rec * 100) if rec > 0 else 0
+        resultado.append({
+            "id":          r.id,
+            "nome":        r.nome,
+            "qtd_vendida": int(r.qtd_vendida or 0),
+            "receita":     round(rec,   2),
+            "custo":       round(cst,   2),
+            "lucro":       round(lucro, 2),
+            "margem":      round(margem,2),
+        })
+
+    return sorted(resultado, key=lambda x: x["lucro"], reverse=True)
 
 # ══════════════════════════════════════════════════════════════════
 # PRODUTOS
