@@ -84,6 +84,19 @@ const S = `
 
 .add-item-row{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;}
 .btn-add-item{background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.2);border-radius:8px;padding:9px 14px;font-size:12px;font-weight:600;color:#00d4aa;cursor:pointer;white-space:nowrap;transition:all .15s;font-family:'Syne',sans-serif;}
+.prod-search-wrap{position:relative;flex:1;}
+.prod-search-input{background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px 12px;font-size:13px;color:#e8eaed;font-family:'Syne',sans-serif;outline:none;width:100%;transition:border-color .2s;}
+.prod-search-input:focus{border-color:rgba(0,212,170,.4);}
+.prod-search-input::placeholder{color:rgba(232,234,237,.2);}
+.prod-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#13161a;border:1px solid rgba(255,255,255,.1);border-radius:8px;z-index:50;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);}
+.prod-dropdown::-webkit-scrollbar{width:4px;}
+.prod-dropdown::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:2px;}
+.prod-opt{padding:10px 14px;cursor:pointer;transition:background .1s;border-bottom:1px solid rgba(255,255,255,.04);}
+.prod-opt:last-child{border-bottom:none;}
+.prod-opt:hover{background:rgba(0,212,170,.08);}
+.prod-opt-nome{font-size:13px;font-weight:600;color:#e8eaed;}
+.prod-opt-sub{font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.35);margin-top:2px;}
+.prod-opt-empty{padding:14px;text-align:center;font-size:12px;color:rgba(232,234,237,.25);font-family:'JetBrains Mono',monospace;}
 .btn-add-item:hover{background:rgba(0,212,170,.15);}
 .btn-add-item:disabled{opacity:.4;cursor:not-allowed;}
 
@@ -127,6 +140,8 @@ export default function Vendas() {
   const [form,     setForm]     = useState(FORM_EMPTY);
   const [itens,    setItens]    = useState([]);
   const [prodAdd,  setProdAdd]  = useState('');
+  const [prodSearch, setProdSearch] = useState('');
+  const [showProdDrop, setShowProdDrop] = useState(false);
   const [saving,   setSaving]   = useState(false);
   const [formErr,  setFormErr]  = useState('');
   const [toast,    setToast]    = useState(null);
@@ -143,7 +158,7 @@ export default function Vendas() {
       ]);
       if (ped.status  === 'fulfilled') setPedidos(ped.value);
       if (cli.status  === 'fulfilled') setClientes(cli.value);
-      if (prod.status === 'fulfilled') setProdutos(prod.value.filter(p => p.status !== 'inativo'));
+      if (prod.status === 'fulfilled') setProdutos(prod.value.filter(p => p.ativo && p.estoque_atual > 0));
     } finally { setLoading(false); }
   }, []);
 
@@ -313,13 +328,35 @@ export default function Vendas() {
               <div className="sec">
                 <div className="sec-title">Produtos</div>
                 <div className="add-item-row">
-                  <select className="fsel2" value={prodAdd} onChange={e=>setProdAdd(e.target.value)}>
-                    <option value="">Selecione um produto...</option>
-                    {produtos.filter(p => !itens.find(i=>i.produto_id===p.id)).map(p=>(
-                      <option key={p.id} value={p.id}>{p.nome} — {fmtBRL(p.preco_venda)} (estoque: {p.estoque_atual})</option>
-                    ))}
-                  </select>
-                  <button className="btn-add-item" onClick={addItem} disabled={!prodAdd}>+ Adicionar</button>
+                  <div className="prod-search-wrap">
+                    <input className="prod-search-input" placeholder="Buscar produto pelo nome..."
+                      value={prodSearch}
+                      onChange={e=>{ setProdSearch(e.target.value); setShowProdDrop(true); setProdAdd(''); }}
+                      onFocus={()=>setShowProdDrop(true)}
+                      onBlur={()=>setTimeout(()=>setShowProdDrop(false), 150)}
+                    />
+                    {showProdDrop && (
+                      <div className="prod-dropdown">
+                        {produtos
+                          .filter(p => !itens.find(i=>i.produto_id===p.id) && (!prodSearch || p.nome.toLowerCase().includes(prodSearch.toLowerCase())))
+                          .slice(0, 20)
+                          .map(p => (
+                            <div key={p.id} className="prod-opt" onMouseDown={()=>{
+                              setProdAdd(String(p.id));
+                              setProdSearch(p.nome);
+                              setShowProdDrop(false);
+                            }}>
+                              <div className="prod-opt-nome">{p.nome}</div>
+                              <div className="prod-opt-sub">{fmtBRL(p.preco_venda)} · estoque: {p.estoque_atual} {p.unidade}</div>
+                            </div>
+                          ))}
+                        {produtos.filter(p => !itens.find(i=>i.produto_id===p.id) && (!prodSearch || p.nome.toLowerCase().includes(prodSearch.toLowerCase()))).length === 0 && (
+                          <div className="prod-opt-empty">Nenhum produto encontrado</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <button className="btn-add-item" onClick={()=>{ addItem(); setProdSearch(''); setShowProdDrop(false); }} disabled={!prodAdd}>+ Adicionar</button>
                 </div>
 
                 {itens.length > 0 && (
