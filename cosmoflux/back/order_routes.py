@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from models import Produto, Movimentacao, Cliente, Pedido, ItemPedido, get_db, Categoria, Fornecedor, Venda
 from sqlalchemy import func, desc
 from auth_routes import get_ctx
