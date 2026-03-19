@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -11,12 +12,12 @@ from models import Usuario, Tenant, get_db
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 ph = PasswordHasher()
 
-SECRET  = "cosmoflux-secret-2024-change-in-prod"
+SECRET  = os.environ.get("SECRET_KEY", "cosmoflux-secret-2024-change-in-prod")
 ALGO    = "HS256"
 
 # ── Helpers ────────────────────────────────────────────────────────
 def criar_token(usuario: Usuario, lembrar: bool = False) -> str:
-    exp = datetime.utcnow() + (timedelta(days=30) if lembrar else timedelta(minutes=60))
+    exp = datetime.utcnow() + (timedelta(days=30) if lembrar else timedelta(hours=8))
     payload = {
         "sub":       str(usuario.id),
         "nome":      usuario.nome,
