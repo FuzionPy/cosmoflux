@@ -6,11 +6,17 @@ const h = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${
 const api = {
   get:  url     => fetch(BASE+url,{headers:h()}).then(r=>r.json()),
   post: (url,b) => fetch(BASE+url,{method:'POST',headers:h(),body:JSON.stringify(b)}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+  patch:(url,b) => fetch(BASE+url,{method:'PATCH',headers:h(),body:JSON.stringify(b)}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+  del:  url     => fetch(BASE+url,{method:'DELETE',headers:h()}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
 };
 
 const fmtBRL = v => `R$ ${Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
-
 const PAGAMENTOS = ['Dinheiro','Cartão de crédito','Cartão de débito','PIX','Boleto','Fiado'];
+
+const PAG_BADGE = {
+  'Dinheiro':'b-green','PIX':'b-green','Cartão de débito':'b-blue',
+  'Cartão de crédito':'b-blue','Boleto':'b-yellow','Fiado':'b-red',
+};
 
 const S = `
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
@@ -25,6 +31,13 @@ const S = `
 .st-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
 .st-val{font-size:18px;font-weight:800;font-family:'JetBrains Mono',monospace;}
 .st-lbl{font-size:11px;color:rgba(232,234,237,.35);margin-top:1px;}
+
+/* TABS */
+.tabs{display:flex;gap:4px;background:#0e1013;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:4px;}
+.tab{flex:1;padding:8px 16px;border-radius:7px;border:none;font-family:'Syne',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;color:rgba(232,234,237,.4);background:none;}
+.tab.active{background:#13161a;color:#e8eaed;box-shadow:0 1px 4px rgba(0,0,0,.3);}
+.tab:hover:not(.active){color:rgba(232,234,237,.7);}
+
 .tbl-wrap{background:#0e1013;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;}
 .tbl{width:100%;border-collapse:collapse;}
 .tbl th{text-align:left;padding:11px 16px;font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:rgba(232,234,237,.28);font-family:'JetBrains Mono',monospace;border-bottom:1px solid rgba(255,255,255,.06);}
@@ -39,6 +52,7 @@ const S = `
 .b-red{background:rgba(255,71,87,.12);color:#ff4757;}
 .b-blue{background:rgba(0,153,255,.12);color:#0099ff;}
 .b-gray{background:rgba(255,255,255,.07);color:rgba(232,234,237,.5);}
+.b-orange{background:rgba(255,107,53,.12);color:#ff6b35;}
 .empty{padding:60px 20px;text-align:center;color:rgba(232,234,237,.25);}
 .empty-icon{font-size:36px;margin-bottom:12px;opacity:.4;}
 .skel{background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:6px;}
@@ -47,6 +61,27 @@ const S = `
 .srch:focus-within{border-color:rgba(0,212,170,.4);}
 .srch input{background:none;border:none;outline:none;font-size:13px;color:#e8eaed;font-family:'Syne',sans-serif;width:100%;}
 .srch input::placeholder{color:rgba(232,234,237,.25);}
+
+/* DETAIL PANEL */
+.dpanel{position:fixed;right:0;top:0;bottom:0;width:380px;background:#0e1013;border-left:1px solid rgba(255,255,255,.08);z-index:150;overflow-y:auto;display:flex;flex-direction:column;animation:slideIn .3s cubic-bezier(.22,1,.36,1) both;}
+@keyframes slideIn{from{transform:translateX(100%)}to{transform:none}}
+.dpanel::-webkit-scrollbar{width:4px;}
+.dpanel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:2px;}
+.dphdr{padding:20px 24px 16px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:flex-start;justify-content:space-between;flex-shrink:0;}
+.dptitle{font-size:16px;font-weight:800;color:#e8eaed;}
+.dpsub{font-size:11px;color:rgba(232,234,237,.35);font-family:'JetBrains Mono',monospace;margin-top:3px;}
+.dpbody{padding:20px 24px;flex:1;display:flex;flex-direction:column;gap:16px;}
+.dp-sec-title{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(232,234,237,.28);font-family:'JetBrains Mono',monospace;margin-bottom:8px;}
+.dp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.dp-item-lbl{font-size:10px;color:rgba(232,234,237,.28);font-family:'JetBrains Mono',monospace;margin-bottom:3px;}
+.dp-item-val{font-size:14px;font-weight:700;color:#e8eaed;}
+.dp-item-val.green{color:#00d4aa;}
+.itens-det{display:flex;flex-direction:column;gap:6px;}
+.item-det-row{background:#13161a;border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.item-det-nome{font-size:13px;font-weight:600;color:#e8eaed;}
+.item-det-sub{font-size:10px;color:rgba(232,234,237,.35);font-family:'JetBrains Mono',monospace;margin-top:2px;}
+.item-det-val{font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#00d4aa;white-space:nowrap;}
+.dpfoot{padding:14px 24px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:8px;flex-shrink:0;}
 
 /* MODAL */
 .mbg{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;animation:pgIn .2s ease both;}
@@ -62,16 +97,12 @@ const S = `
 .sec{display:flex;flex-direction:column;gap:10px;}
 .sec-title{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(232,234,237,.28);font-family:'JetBrains Mono',monospace;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.05);}
 .fr2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-.fr3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
 .ff{display:flex;flex-direction:column;gap:5px;}
 .fl{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(232,234,237,.35);font-family:'JetBrains Mono',monospace;}
 .fi,.fsel2{background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px 12px;font-size:13px;color:#e8eaed;font-family:'Syne',sans-serif;outline:none;transition:border-color .2s;width:100%;}
 .fi::placeholder{color:rgba(232,234,237,.2);}
 .fi:focus,.fsel2:focus{border-color:rgba(0,212,170,.4);box-shadow:0 0 0 3px rgba(0,212,170,.08);}
 .fsel2 option{background:#0e1013;}
-.fi:disabled{opacity:.4;cursor:not-allowed;}
-
-/* Itens */
 .itens-list{display:flex;flex-direction:column;gap:8px;}
 .item-row{background:#13161a;border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 12px;display:grid;grid-template-columns:1fr auto auto auto auto;gap:8px;align-items:center;}
 .item-nome{font-size:13px;font-weight:600;color:#e8eaed;}
@@ -81,70 +112,62 @@ const S = `
 .item-total{font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#00d4aa;min-width:80px;text-align:right;}
 .item-del{background:none;border:none;color:rgba(255,71,87,.5);cursor:pointer;font-size:16px;padding:2px 4px;transition:color .15s;}
 .item-del:hover{color:#ff4757;}
-
-.add-item-row{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;}
+.add-item-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;}
 .btn-add-item{background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.2);border-radius:8px;padding:9px 14px;font-size:12px;font-weight:600;color:#00d4aa;cursor:pointer;white-space:nowrap;transition:all .15s;font-family:'Syne',sans-serif;}
-.prod-search-wrap{position:relative;flex:1;}
+.btn-add-item:hover{background:rgba(0,212,170,.15);}
+.btn-add-item:disabled{opacity:.4;cursor:not-allowed;}
+.prod-search-wrap{position:relative;}
 .prod-search-input{background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px 12px;font-size:13px;color:#e8eaed;font-family:'Syne',sans-serif;outline:none;width:100%;transition:border-color .2s;}
 .prod-search-input:focus{border-color:rgba(0,212,170,.4);}
 .prod-search-input::placeholder{color:rgba(232,234,237,.2);}
 .prod-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#13161a;border:1px solid rgba(255,255,255,.1);border-radius:8px;z-index:50;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);}
-.prod-dropdown::-webkit-scrollbar{width:4px;}
-.prod-dropdown::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:2px;}
 .prod-opt{padding:10px 14px;cursor:pointer;transition:background .1s;border-bottom:1px solid rgba(255,255,255,.04);}
 .prod-opt:last-child{border-bottom:none;}
 .prod-opt:hover{background:rgba(0,212,170,.08);}
 .prod-opt-nome{font-size:13px;font-weight:600;color:#e8eaed;}
 .prod-opt-sub{font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.35);margin-top:2px;}
 .prod-opt-empty{padding:14px;text-align:center;font-size:12px;color:rgba(232,234,237,.25);font-family:'JetBrains Mono',monospace;}
-.btn-add-item:hover{background:rgba(0,212,170,.15);}
-.btn-add-item:disabled{opacity:.4;cursor:not-allowed;}
-
-/* Total box */
 .total-box{background:rgba(0,212,170,.05);border:1px solid rgba(0,212,170,.12);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;}
 .total-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;}
 .total-row.main{font-size:17px;font-weight:800;border-top:1px solid rgba(0,212,170,.15);padding-top:8px;margin-top:2px;}
 .total-label{color:rgba(232,234,237,.5);}
 .total-val{font-family:'JetBrains Mono',monospace;color:#e8eaed;}
 .total-val.green{color:#00d4aa;}
-
 .ferr{background:rgba(255,71,87,.1);border:1px solid rgba(255,71,87,.3);border-radius:8px;padding:10px 14px;font-size:12px;color:#ff4757;font-family:'JetBrains Mono',monospace;}
 .finfo{background:rgba(255,211,42,.07);border:1px solid rgba(255,211,42,.2);border-radius:8px;padding:8px 12px;font-size:11px;color:#ffd32a;font-family:'JetBrains Mono',monospace;}
-
 .btn{display:flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;border:none;font-family:'Syne',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;}
 .btn-primary{background:#00d4aa;color:#000;}.btn-primary:hover{background:#00efc0;transform:translateY(-1px);}
 .btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none;}
 .btn-ghost{background:rgba(255,255,255,.05);color:rgba(232,234,237,.6);border:1px solid rgba(255,255,255,.08);}
 .btn-ghost:hover{background:rgba(255,255,255,.09);color:#e8eaed;}
+.btn-danger{background:rgba(255,71,87,.08);color:#ff4757;border:1px solid rgba(255,71,87,.2);}
+.btn-danger:hover{background:rgba(255,71,87,.18);}
 .toast{position:fixed;bottom:24px;right:24px;background:#0e1013;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:13px 18px;display:flex;align-items:center;gap:10px;font-size:13px;color:#e8eaed;z-index:300;animation:pgIn .3s ease both;box-shadow:0 8px 28px rgba(0,0,0,.4);min-width:220px;}
-@media(max-width:768px){.pg{padding:14px;gap:14px;}.fr2,.fr3{grid-template-columns:1fr;}.item-row{grid-template-columns:1fr auto auto;}.item-total{display:none;}}
+@media(max-width:768px){.pg{padding:14px;gap:14px;}.fr2{grid-template-columns:1fr;}.item-row{grid-template-columns:1fr auto auto;}.item-total{display:none;}.dpanel{width:100%;}}
 `;
 
 const FORM_EMPTY = {
-  cliente_id: '', modo_pagamento: 'PIX', parcelado: false,
-  num_parcelas: 2, data_vencimento: '', desconto_geral: '', observacao: '',
-};
-
-const pag_badge = {
-  'Dinheiro': 'b-green', 'PIX': 'b-green', 'Cartão de débito': 'b-blue',
-  'Cartão de crédito': 'b-blue', 'Boleto': 'b-yellow', 'Fiado': 'b-red',
+  cliente_id:'', modo_pagamento:'PIX', parcelado:false,
+  num_parcelas:2, data_vencimento:'', desconto_geral:'', observacao:'',
 };
 
 export default function Vendas() {
-  const [pedidos,  setPedidos]  = useState([]);
-  const [clientes, setClientes] = useState([]);
-  const [produtos, setProdutos] = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [search,   setSearch]   = useState('');
-  const [showModal,setShowModal]= useState(false);
-  const [form,     setForm]     = useState(FORM_EMPTY);
-  const [itens,    setItens]    = useState([]);
-  const [prodAdd,  setProdAdd]  = useState('');
+  const [aba,        setAba]        = useState('nova'); // 'nova' | 'historico'
+  const [pedidos,    setPedidos]    = useState([]);
+  const [clientes,   setClientes]   = useState([]);
+  const [produtos,   setProdutos]   = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [search,     setSearch]     = useState('');
+  const [selected,   setSelected]   = useState(null);
+  const [showModal,  setShowModal]  = useState(false);
+  const [form,       setForm]       = useState(FORM_EMPTY);
+  const [itens,      setItens]      = useState([]);
+  const [prodAdd,    setProdAdd]    = useState('');
   const [prodSearch, setProdSearch] = useState('');
-  const [showProdDrop, setShowProdDrop] = useState(false);
-  const [saving,   setSaving]   = useState(false);
-  const [formErr,  setFormErr]  = useState('');
-  const [toast,    setToast]    = useState(null);
+  const [showDrop,   setShowDrop]   = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [formErr,    setFormErr]    = useState('');
+  const [toast,      setToast]      = useState(null);
 
   const showToast = (msg, icon='✓') => { setToast({msg,icon}); setTimeout(()=>setToast(null),3500); };
 
@@ -152,13 +175,13 @@ export default function Vendas() {
     setLoading(true);
     try {
       const [ped, cli, prod] = await Promise.allSettled([
-        api.get('/pedidos?status=concluido&limite=100'),
+        api.get('/pedidos?limite=200'),
         api.get('/clientes'),
         api.get('/produtos'),
       ]);
       if (ped.status  === 'fulfilled') setPedidos(ped.value);
       if (cli.status  === 'fulfilled') setClientes(cli.value);
-      setProdutos(prod.value.filter(p => p.status !== 'inativo'));
+      if (prod.status === 'fulfilled') setProdutos(prod.value);
     } finally { setLoading(false); }
   }, []);
 
@@ -169,64 +192,76 @@ export default function Vendas() {
     const prod = produtos.find(p => p.id === parseInt(prodAdd));
     if (!prod) return;
     if (itens.find(i => i.produto_id === prod.id)) {
-      setItens(prev => prev.map(i => i.produto_id === prod.id ? {...i, quantidade: i.quantidade+1} : i));
+      setItens(prev => prev.map(i => i.produto_id===prod.id ? {...i,quantidade:i.quantidade+1} : i));
     } else {
-      setItens(prev => [...prev, { produto_id: prod.id, nome: prod.nome, unidade: prod.unidade,
-        estoque: prod.estoque_atual, preco_unitario: prod.preco_venda, quantidade: 1, desconto_item: 0 }]);
+      setItens(prev => [...prev, { produto_id:prod.id, nome:prod.nome, unidade:prod.unidade,
+        estoque:prod.estoque_atual, preco_unitario:prod.preco_venda, quantidade:1, desconto_item:0 }]);
     }
-    setProdAdd('');
+    setProdAdd(''); setProdSearch('');
   };
-
   const updItem = (id, field, val) => setItens(prev => prev.map(i => i.produto_id===id ? {...i,[field]:val} : i));
-  const delItem = (id) => setItens(prev => prev.filter(i => i.produto_id !== id));
+  const delItem = id => setItens(prev => prev.filter(i => i.produto_id!==id));
 
-  // ── Totais ─────────────────────────────────────────────────────
-  const subtotal      = itens.reduce((a,i) => a + i.quantidade * i.preco_unitario - (parseFloat(i.desconto_item)||0), 0);
+  const subtotal      = itens.reduce((a,i) => a + i.quantidade*i.preco_unitario - (parseFloat(i.desconto_item)||0), 0);
   const descontoGeral = parseFloat(form.desconto_geral) || 0;
   const total         = Math.max(0, subtotal - descontoGeral);
-
-  // ── Validação ──────────────────────────────────────────────────
-  const fiado        = form.modo_pagamento === 'Fiado';
+  const fiado         = form.modo_pagamento === 'Fiado';
   const precisaParcela = form.parcelado || form.modo_pagamento === 'Boleto' || fiado;
 
   // ── Salvar ─────────────────────────────────────────────────────
   const salvar = async () => {
-    if (itens.length === 0)            { setFormErr('Adicione ao menos 1 produto.'); return; }
-    if (fiado && !form.cliente_id)     { setFormErr('Venda fiado exige cliente cadastrado.'); return; }
+    if (itens.length===0)                        { setFormErr('Adicione ao menos 1 produto.'); return; }
+    if (fiado && !form.cliente_id)               { setFormErr('Venda fiado exige cliente.'); return; }
     if (precisaParcela && !form.data_vencimento) { setFormErr('Informe a data de vencimento.'); return; }
     for (const it of itens) {
-      if (it.quantidade < 1)           { setFormErr(`Quantidade inválida para ${it.nome}.`); return; }
-      if (it.quantidade > it.estoque)  { setFormErr(`Estoque insuficiente para ${it.nome} (disponível: ${it.estoque}).`); return; }
+      if (it.quantidade < 1)          { setFormErr(`Quantidade inválida: ${it.nome}`); return; }
+      if (it.quantidade > it.estoque) { setFormErr(`Estoque insuficiente: ${it.nome} (disponível: ${it.estoque})`); return; }
     }
     setSaving(true); setFormErr('');
     try {
       const res = await api.post('/vendas/unificada', {
         cliente_id:      form.cliente_id ? parseInt(form.cliente_id) : null,
-        itens:           itens.map(i => ({ produto_id: i.produto_id, quantidade: i.quantidade,
-                           preco_unitario: parseFloat(i.preco_unitario), desconto_item: parseFloat(i.desconto_item)||0 })),
+        itens:           itens.map(i=>({ produto_id:i.produto_id, quantidade:i.quantidade,
+                           preco_unitario:parseFloat(i.preco_unitario), desconto_item:parseFloat(i.desconto_item)||0 })),
         modo_pagamento:  form.modo_pagamento,
         parcelado:       form.parcelado,
-        num_parcelas:    parseInt(form.num_parcelas) || 1,
-        data_vencimento: form.data_vencimento || null,
+        num_parcelas:    parseInt(form.num_parcelas)||1,
+        data_vencimento: form.data_vencimento||null,
         desconto_geral:  descontoGeral,
-        observacao:      form.observacao || null,
+        observacao:      form.observacao||null,
       });
-      showToast(`Venda #${res.pedido_id} registrada! Total: ${fmtBRL(res.total)}`, '✓');
-      setShowModal(false);
-      setForm(FORM_EMPTY);
-      setItens([]);
-      load();
+      showToast(`Venda #${res.pedido_id} registrada! Total: ${fmtBRL(res.total)}`);
+      setShowModal(false); setForm(FORM_EMPTY); setItens([]);
+      setAba('historico'); load();
     } catch(e) { setFormErr(e.message); }
     finally { setSaving(false); }
   };
 
-  const openModal = () => { setForm(FORM_EMPTY); setItens([]); setProdAdd(''); setFormErr(''); setShowModal(true); };
+  const openModal = () => { setForm(FORM_EMPTY); setItens([]); setProdAdd(''); setProdSearch(''); setFormErr(''); setShowModal(true); };
+
+  const cancelarPedido = async id => {
+    try {
+      await api.del(`/pedidos/${id}`);
+      showToast('Venda cancelada.', '✕');
+      setSelected(null); load();
+    } catch(e) { showToast(e.message, '✕'); }
+  };
 
   const filtered = pedidos.filter(p =>
-    !search || (p.cliente||'').toLowerCase().includes(search.toLowerCase())
+    !search || (p.cliente||'').toLowerCase().includes(search.toLowerCase()) ||
+    String(p.id).includes(search)
   );
 
-  const totalVendas = pedidos.reduce((a,p) => a+p.total, 0);
+  const totalVendas   = pedidos.filter(p=>p.status!=='cancelado').reduce((a,p)=>a+p.total,0);
+  const vendasHoje    = pedidos.filter(p=>p.status!=='cancelado'&&p.data_raw?.startsWith(new Date().toISOString().slice(0,10)));
+  const totalHoje     = vendasHoje.reduce((a,p)=>a+p.total,0);
+
+  const statusBadge = s => {
+    if (s==='concluido') return <span className="badge b-green">CONCLUÍDO</span>;
+    if (s==='cancelado') return <span className="badge b-red">CANCELADO</span>;
+    if (s==='pendente')  return <span className="badge b-yellow">PENDENTE</span>;
+    return <span className="badge b-gray">{s}</span>;
+  };
 
   return (
     <>
@@ -235,7 +270,7 @@ export default function Vendas() {
         <div className="pg-hdr">
           <div>
             <div className="pg-title">Vendas</div>
-            <div className="pg-sub">{pedidos.length} venda(s) concluída(s)</div>
+            <div className="pg-sub">{pedidos.filter(p=>p.status!=='cancelado').length} venda(s) registrada(s)</div>
           </div>
           <button className="btn btn-primary" onClick={openModal}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -245,10 +280,11 @@ export default function Vendas() {
 
         <div className="stats">
           {[
-            { label:'Vendas',       val: pedidos.length,      color:'#00d4aa' },
-            { label:'Faturamento',  val: fmtBRL(totalVendas), color:'#a855f7', small:true },
-            { label:'Ticket médio', val: fmtBRL(pedidos.length ? totalVendas/pedidos.length : 0), color:'#0099ff', small:true },
-          ].map(s => (
+            { label:'Total vendas', val: pedidos.filter(p=>p.status!=='cancelado').length, color:'#00d4aa' },
+            { label:'Faturamento total', val: fmtBRL(totalVendas), color:'#a855f7', small:true },
+            { label:'Vendas hoje', val: vendasHoje.length, color:'#0099ff' },
+            { label:'Faturamento hoje', val: fmtBRL(totalHoje), color:'#ff6b35', small:true },
+          ].map(s=>(
             <div key={s.label} className="stat">
               <div className="st-dot" style={{background:s.color}}/>
               <div>
@@ -259,12 +295,18 @@ export default function Vendas() {
           ))}
         </div>
 
+        <div className="tabs">
+          <button className={`tab${aba==='historico'?' active':''}`} onClick={()=>setAba('historico')}>Histórico</button>
+          <button className={`tab${aba==='nova'?' active':''}`} onClick={openModal}>+ Nova Venda</button>
+        </div>
+
+        {/* HISTÓRICO */}
         <div style={{display:'flex',gap:10}}>
           <div className="srch">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{color:'rgba(232,234,237,.28)',flexShrink:0}}>
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
-            <input placeholder="Buscar por cliente..." value={search} onChange={e=>setSearch(e.target.value)}/>
+            <input placeholder="Buscar por cliente ou nº da venda..." value={search} onChange={e=>setSearch(e.target.value)}/>
             {search && <button onClick={()=>setSearch('')} style={{background:'none',border:'none',color:'rgba(232,234,237,.3)',cursor:'pointer',fontSize:16}}>×</button>}
           </div>
         </div>
@@ -274,7 +316,7 @@ export default function Vendas() {
             <div style={{padding:20,display:'flex',flexDirection:'column',gap:10}}>
               {[1,2,3,4].map(i=><div key={i} className="skel" style={{height:44}}/>)}
             </div>
-          ) : filtered.length === 0 ? (
+          ) : filtered.length===0 ? (
             <div className="empty">
               <div className="empty-icon">◈</div>
               <div>Nenhuma venda registrada</div>
@@ -282,16 +324,16 @@ export default function Vendas() {
           ) : (
             <table className="tbl">
               <thead>
-                <tr><th>#</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Total</th><th>Data</th></tr>
+                <tr><th>#</th><th>Cliente</th><th>Itens</th><th>Status</th><th>Total</th><th>Data</th></tr>
               </thead>
               <tbody>
-                {filtered.map(p => (
-                  <tr key={p.id}>
+                {filtered.map(p=>(
+                  <tr key={p.id} style={{cursor:'pointer'}} onClick={()=>setSelected(selected?.id===p.id?null:p)}>
                     <td className="mono" style={{fontSize:11,color:'rgba(232,234,237,.3)'}}>#{p.id}</td>
-                    <td>{p.cliente || <span style={{color:'rgba(232,234,237,.3)'}}>Balcão</span>}</td>
+                    <td>{p.cliente||<span style={{color:'rgba(232,234,237,.3)'}}>Balcão</span>}</td>
                     <td className="mono" style={{fontSize:11}}>{p.num_itens} item(s)</td>
-                    <td>—</td>
-                    <td className="mono" style={{color:'#00d4aa',fontWeight:700}}>{fmtBRL(p.total)}</td>
+                    <td>{statusBadge(p.status)}</td>
+                    <td className="mono" style={{color: p.status==='cancelado'?'rgba(232,234,237,.3)':'#00d4aa',fontWeight:700,textDecoration:p.status==='cancelado'?'line-through':'none'}}>{fmtBRL(p.total)}</td>
                     <td className="mono" style={{fontSize:11}}>{p.data}</td>
                   </tr>
                 ))}
@@ -301,7 +343,64 @@ export default function Vendas() {
         </div>
       </div>
 
-      {/* Modal Nova Venda */}
+      {/* DETAIL PANEL */}
+      {selected && (
+        <>
+          <div style={{position:'fixed',inset:0,zIndex:140}} onClick={()=>setSelected(null)}/>
+          <div className="dpanel">
+            <div className="dphdr">
+              <div>
+                <div className="dptitle">Venda #{selected.id}</div>
+                <div className="dpsub">{selected.data} · {selected.cliente||'Balcão'}</div>
+              </div>
+              <button className="mclose" onClick={()=>setSelected(null)}>×</button>
+            </div>
+            <div className="dpbody">
+              <div>
+                <div className="dp-sec-title">Resumo</div>
+                <div className="dp-grid">
+                  <div><div className="dp-item-lbl">Status</div><div className="dp-item-val">{statusBadge(selected.status)}</div></div>
+                  <div><div className="dp-item-lbl">Total</div><div className="dp-item-val green">{fmtBRL(selected.total)}</div></div>
+                  <div><div className="dp-item-lbl">Itens</div><div className="dp-item-val">{selected.num_itens}</div></div>
+                  <div><div className="dp-item-lbl">Desconto</div><div className="dp-item-val">{fmtBRL(selected.desconto)}</div></div>
+                </div>
+              </div>
+              {selected.itens?.length > 0 && (
+                <div>
+                  <div className="dp-sec-title">Produtos</div>
+                  <div className="itens-det">
+                    {selected.itens.map(it=>(
+                      <div key={it.produto_id} className="item-det-row">
+                        <div>
+                          <div className="item-det-nome">{it.produto}</div>
+                          <div className="item-det-sub">{it.quantidade}x {fmtBRL(it.preco_unitario)}</div>
+                        </div>
+                        <div className="item-det-val">{fmtBRL(it.subtotal)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {selected.observacao && (
+                <div>
+                  <div className="dp-sec-title">Observação</div>
+                  <div style={{fontSize:13,color:'rgba(232,234,237,.5)',background:'rgba(255,255,255,.03)',borderRadius:8,padding:12}}>{selected.observacao}</div>
+                </div>
+              )}
+            </div>
+            <div className="dpfoot">
+              {selected.status !== 'cancelado' && (
+                <button className="btn btn-danger" style={{flex:1,justifyContent:'center'}} onClick={()=>cancelarPedido(selected.id)}>
+                  Cancelar Venda
+                </button>
+              )}
+              <button className="btn btn-ghost" onClick={()=>setSelected(null)}>Fechar</button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* MODAL NOVA VENDA */}
       {showModal && (
         <div className="mbg" onClick={e=>e.target===e.currentTarget&&setShowModal(false)}>
           <div className="modal">
@@ -312,7 +411,6 @@ export default function Vendas() {
             <div className="mbody">
               {formErr && <div className="ferr">⚠ {formErr}</div>}
 
-              {/* Cliente */}
               <div className="sec">
                 <div className="sec-title">Cliente</div>
                 <div className="ff">
@@ -324,74 +422,58 @@ export default function Vendas() {
                 </div>
               </div>
 
-              {/* Produtos */}
               <div className="sec">
                 <div className="sec-title">Produtos</div>
                 <div className="add-item-row">
                   <div className="prod-search-wrap">
-                    <input className="prod-search-input" placeholder="Buscar produto pelo nome..."
+                    <input className="prod-search-input" placeholder="Buscar produto..."
                       value={prodSearch}
-                      onChange={e=>{ setProdSearch(e.target.value); setShowProdDrop(true); setProdAdd(''); }}
-                      onFocus={()=>setShowProdDrop(true)}
-                      onBlur={()=>setTimeout(()=>setShowProdDrop(false), 150)}
+                      onChange={e=>{ setProdSearch(e.target.value); setShowDrop(true); setProdAdd(''); }}
+                      onFocus={()=>setShowDrop(true)}
+                      onBlur={()=>setTimeout(()=>setShowDrop(false),150)}
                     />
-                    {showProdDrop && (
+                    {showDrop && (
                       <div className="prod-dropdown">
                         {produtos
-                          .filter(p => !itens.find(i=>i.produto_id===p.id) && (!prodSearch || p.nome.toLowerCase().includes(prodSearch.toLowerCase())))
-                          .slice(0, 20)
-                          .map(p => (
-                            <div key={p.id} className="prod-opt" onMouseDown={()=>{
-                              setProdAdd(String(p.id));
-                              setProdSearch(p.nome);
-                              setShowProdDrop(false);
-                            }}>
+                          .filter(p=>!itens.find(i=>i.produto_id===p.id)&&(!prodSearch||p.nome.toLowerCase().includes(prodSearch.toLowerCase())))
+                          .slice(0,20).map(p=>(
+                            <div key={p.id} className="prod-opt" onMouseDown={()=>{ setProdAdd(String(p.id)); setProdSearch(p.nome); setShowDrop(false); }}>
                               <div className="prod-opt-nome">{p.nome}</div>
                               <div className="prod-opt-sub">{fmtBRL(p.preco_venda)} · estoque: {p.estoque_atual} {p.unidade}</div>
                             </div>
                           ))}
-                        {produtos.filter(p => !itens.find(i=>i.produto_id===p.id) && (!prodSearch || p.nome.toLowerCase().includes(prodSearch.toLowerCase()))).length === 0 && (
+                        {produtos.filter(p=>!itens.find(i=>i.produto_id===p.id)&&(!prodSearch||p.nome.toLowerCase().includes(prodSearch.toLowerCase()))).length===0 && (
                           <div className="prod-opt-empty">Nenhum produto encontrado</div>
                         )}
                       </div>
                     )}
                   </div>
-                  <button className="btn-add-item" onClick={()=>{ addItem(); setProdSearch(''); setShowProdDrop(false); }} disabled={!prodAdd}>+ Adicionar</button>
+                  <button className="btn-add-item" onClick={addItem} disabled={!prodAdd}>+ Adicionar</button>
                 </div>
 
-                {itens.length > 0 && (
+                {itens.length>0 ? (
                   <div className="itens-list">
-                    {itens.map(it => (
+                    {itens.map(it=>(
                       <div key={it.produto_id} className="item-row">
-                        <div>
-                          <div className="item-nome">{it.nome}</div>
-                          <div className="item-sub">estoque: {it.estoque} {it.unidade}</div>
-                        </div>
+                        <div><div className="item-nome">{it.nome}</div><div className="item-sub">estoque: {it.estoque} {it.unidade}</div></div>
                         <div style={{display:'flex',flexDirection:'column',gap:2,alignItems:'flex-end'}}>
                           <span className="fl" style={{fontSize:9}}>Qtd</span>
-                          <input className="item-input" type="number" min="1" max={it.estoque}
-                            value={it.quantidade} onChange={e=>updItem(it.produto_id,'quantidade',parseInt(e.target.value)||1)}/>
+                          <input className="item-input" type="number" min="1" max={it.estoque} value={it.quantidade} onChange={e=>updItem(it.produto_id,'quantidade',parseInt(e.target.value)||1)}/>
                         </div>
                         <div style={{display:'flex',flexDirection:'column',gap:2,alignItems:'flex-end'}}>
                           <span className="fl" style={{fontSize:9}}>Preço</span>
-                          <input className="item-input" type="number" min="0" step="0.01"
-                            value={it.preco_unitario} onChange={e=>updItem(it.produto_id,'preco_unitario',e.target.value)}/>
+                          <input className="item-input" type="number" min="0" step="0.01" value={it.preco_unitario} onChange={e=>updItem(it.produto_id,'preco_unitario',e.target.value)}/>
                         </div>
-                        <div className="item-total">{fmtBRL(it.quantidade * it.preco_unitario - (parseFloat(it.desconto_item)||0))}</div>
+                        <div className="item-total">{fmtBRL(it.quantidade*it.preco_unitario-(parseFloat(it.desconto_item)||0))}</div>
                         <button className="item-del" onClick={()=>delItem(it.produto_id)}>×</button>
                       </div>
                     ))}
                   </div>
-                )}
-
-                {itens.length === 0 && (
-                  <div style={{padding:'16px',textAlign:'center',color:'rgba(232,234,237,.2)',fontSize:12,fontFamily:'JetBrains Mono,monospace'}}>
-                    Nenhum produto adicionado
-                  </div>
+                ) : (
+                  <div style={{padding:'16px',textAlign:'center',color:'rgba(232,234,237,.2)',fontSize:12,fontFamily:'JetBrains Mono,monospace'}}>Nenhum produto adicionado</div>
                 )}
               </div>
 
-              {/* Pagamento */}
               <div className="sec">
                 <div className="sec-title">Pagamento</div>
                 <div className="fr2">
@@ -403,72 +485,48 @@ export default function Vendas() {
                   </div>
                   <div className="ff">
                     <label className="fl">Desconto geral (R$)</label>
-                    <input className="fi" type="number" min="0" step="0.01" placeholder="0,00"
-                      value={form.desconto_geral} onChange={e=>setForm(f=>({...f,desconto_geral:e.target.value}))}/>
+                    <input className="fi" type="number" min="0" step="0.01" placeholder="0,00" value={form.desconto_geral} onChange={e=>setForm(f=>({...f,desconto_geral:e.target.value}))}/>
                   </div>
                 </div>
 
-                {/* Parcelamento — crédito e fiado */}
-                {(form.modo_pagamento === 'Cartão de crédito' || form.modo_pagamento === 'Fiado') && (
+                {(form.modo_pagamento==='Cartão de crédito'||form.modo_pagamento==='Fiado') && (
                   <div style={{display:'flex',alignItems:'center',gap:10}}>
                     <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:'rgba(232,234,237,.6)',cursor:'pointer'}}>
-                      <input type="checkbox" checked={form.parcelado} onChange={e=>setForm(f=>({...f,parcelado:e.target.checked}))}
-                        style={{accentColor:'#00d4aa',width:14,height:14}}/>
+                      <input type="checkbox" checked={form.parcelado} onChange={e=>setForm(f=>({...f,parcelado:e.target.checked}))} style={{accentColor:'#00d4aa',width:14,height:14}}/>
                       Parcelado
                     </label>
                     {form.parcelado && (
                       <div className="ff" style={{flex:1}}>
-                        <input className="fi" type="number" min="2" max="24" placeholder="Nº parcelas"
-                          value={form.num_parcelas} onChange={e=>setForm(f=>({...f,num_parcelas:e.target.value}))}/>
+                        <input className="fi" type="number" min="2" max="24" placeholder="Nº parcelas" value={form.num_parcelas} onChange={e=>setForm(f=>({...f,num_parcelas:e.target.value}))}/>
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* Vencimento — fiado/boleto/parcelado */}
                 {precisaParcela && (
                   <div className="ff">
-                    <label className="fl">
-                      {fiado ? 'Vencimento do fiado' : form.parcelado ? 'Vencimento da 1ª parcela' : 'Data de vencimento'}
-                    </label>
-                    <input className="fi" type="date" value={form.data_vencimento}
-                      onChange={e=>setForm(f=>({...f,data_vencimento:e.target.value}))}/>
+                    <label className="fl">{fiado?'Vencimento do fiado':form.parcelado?'Vencimento da 1ª parcela':'Data de vencimento'}</label>
+                    <input className="fi" type="date" value={form.data_vencimento} onChange={e=>setForm(f=>({...f,data_vencimento:e.target.value}))}/>
                   </div>
                 )}
 
                 {fiado && !form.cliente_id && (
-                  <div className="finfo">⚠ Venda fiado exige cliente cadastrado — selecione um cliente acima</div>
+                  <div className="finfo">⚠ Venda fiado exige cliente cadastrado</div>
                 )}
               </div>
 
-              {/* Observação */}
               <div className="ff">
                 <label className="fl">Observação</label>
-                <input className="fi" type="text" placeholder="Opcional..."
-                  value={form.observacao} onChange={e=>setForm(f=>({...f,observacao:e.target.value}))}/>
+                <input className="fi" type="text" placeholder="Opcional..." value={form.observacao} onChange={e=>setForm(f=>({...f,observacao:e.target.value}))}/>
               </div>
 
-              {/* Total */}
-              {itens.length > 0 && (
+              {itens.length>0 && (
                 <div className="total-box">
-                  <div className="total-row">
-                    <span className="total-label">Subtotal</span>
-                    <span className="total-val">{fmtBRL(subtotal)}</span>
-                  </div>
-                  {descontoGeral > 0 && (
-                    <div className="total-row">
-                      <span className="total-label">Desconto</span>
-                      <span className="total-val" style={{color:'#ff6b35'}}>- {fmtBRL(descontoGeral)}</span>
-                    </div>
-                  )}
-                  <div className="total-row main">
-                    <span className="total-label">Total</span>
-                    <span className="total-val green">{fmtBRL(total)}</span>
-                  </div>
-                  {form.parcelado && form.num_parcelas > 1 && (
-                    <div style={{fontSize:11,color:'rgba(232,234,237,.35)',fontFamily:'JetBrains Mono,monospace',textAlign:'right'}}>
-                      {form.num_parcelas}x de {fmtBRL(total / parseInt(form.num_parcelas||1))}
-                    </div>
+                  <div className="total-row"><span className="total-label">Subtotal</span><span className="total-val">{fmtBRL(subtotal)}</span></div>
+                  {descontoGeral>0 && <div className="total-row"><span className="total-label">Desconto</span><span className="total-val" style={{color:'#ff6b35'}}>- {fmtBRL(descontoGeral)}</span></div>}
+                  <div className="total-row main"><span className="total-label">Total</span><span className="total-val green">{fmtBRL(total)}</span></div>
+                  {form.parcelado && form.num_parcelas>1 && (
+                    <div style={{fontSize:11,color:'rgba(232,234,237,.35)',fontFamily:'JetBrains Mono,monospace',textAlign:'right'}}>{form.num_parcelas}x de {fmtBRL(total/parseInt(form.num_parcelas||1))}</div>
                   )}
                 </div>
               )}
@@ -476,7 +534,7 @@ export default function Vendas() {
             <div className="mfoot">
               <button className="btn btn-ghost" onClick={()=>setShowModal(false)}>Cancelar</button>
               <button className="btn btn-primary" onClick={salvar} disabled={saving||itens.length===0}>
-                {saving ? 'Registrando...' : `Confirmar Venda${total>0?' — '+fmtBRL(total):''}`}
+                {saving?'Registrando...':`Confirmar Venda${total>0?' — '+fmtBRL(total):''}`}
               </button>
             </div>
           </div>
