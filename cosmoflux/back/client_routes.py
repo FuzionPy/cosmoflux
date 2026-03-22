@@ -104,7 +104,7 @@ def criar_venda_unificada(dados: VendaUnificadaSchema, ctx: dict = Depends(get_c
     venda_id = None
     if dados.cliente_id:
         venc = datetime.strptime(dados.data_vencimento, "%Y-%m-%d").date() if dados.data_vencimento else None
-        status_pag = "pendente" if dados.modo_pagamento in ["fiado", "boleto"] else "pago"
+        status_pag = "pendente" if (dados.modo_pagamento in ["fiado", "boleto"] or dados.parcelado) else "pago"
         venda = Venda(
             cliente_id=dados.cliente_id, usuario_id=ctx["usuario_id"],
             descricao=f"Pedido #{pedido.id}", valor_total=total,
