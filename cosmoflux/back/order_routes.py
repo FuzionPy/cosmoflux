@@ -221,22 +221,35 @@ def listar_pedidos(
     q = tf(db.query(Pedido), Pedido, ctx)
     if status: q = q.filter(Pedido.status == status)
     pedidos = q.order_by(desc(Pedido.criado_em)).limit(limite).all()
-    return [{
-        "id": p.id,
-        "cliente":   p.cliente_rel.nome if p.cliente_rel else "Sem cliente",
-        "cliente_id":p.cliente_id, "status": p.status,
-        "total": p.total, "desconto": p.desconto, "observacao": p.observacao,
-        "data":     p.criado_em.strftime("%d/%m/%Y %H:%M") if p.criado_em else None,
-        "data_raw": p.criado_em.isoformat() if p.criado_em else None,
-        "num_itens": len(p.itens),
-        "itens": [{"produto_id": it.produto_id,
-                   "produto":    it.produto_rel.nome if it.produto_rel else None,
-                   "quantidade": it.quantidade,
-                   "preco_unitario": it.preco_unitario,
-                   "desconto_item":  it.desconto_item,
-                   "subtotal": it.quantidade * it.preco_unitario - it.desconto_item,
-                  } for it in p.itens],
-    } for p in pedidos]
+    # busca venda vinculada ao pedido para pegar status_pagamento
+    from models import Venda
+    def get_status_pag(pedido):
+        v = db.query(Venda).filter(Venda.descricao == f"Pedido #{pedido.id}").first()
+        if v: return v.status_pagamento, v.modo_pagamento
+        return None, None
+
+    resultado = []
+    for p in pedidos:
+        spag, mpag = get_status_pag(p)
+        resultado.append({
+            "id": p.id,
+            "cliente":   p.cliente_rel.nome if p.cliente_rel else "Balcão",
+            "cliente_id":p.cliente_id, "status": p.status,
+            "status_pagamento": spag,
+            "modo_pagamento":   mpag,
+            "total": p.total, "desconto": p.desconto, "observacao": p.observacao,
+            "data":     p.criado_em.strftime("%d/%m/%Y %H:%M") if p.criado_em else None,
+            "data_raw": p.criado_em.isoformat() if p.criado_em else None,
+            "num_itens": len(p.itens),
+            "itens": [{"produto_id": it.produto_id,
+                       "produto":    it.produto_rel.nome if it.produto_rel else None,
+                       "quantidade": it.quantidade,
+                       "preco_unitario": it.preco_unitario,
+                       "desconto_item":  it.desconto_item,
+                       "subtotal": it.quantidade * it.preco_unitario - it.desconto_item,
+                      } for it in p.itens],
+        })
+    return resultado
 
 @order_router.post("/pedidos")
 def criar_pedido(dados: PedidoSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):

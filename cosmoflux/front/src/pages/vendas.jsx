@@ -256,11 +256,15 @@ export default function Vendas() {
   const vendasHoje    = pedidos.filter(p=>p.status!=='cancelado'&&p.data_raw?.startsWith(new Date().toISOString().slice(0,10)));
   const totalHoje     = vendasHoje.reduce((a,p)=>a+p.total,0);
 
-  const statusBadge = s => {
-    if (s==='concluido') return <span className="badge b-green">CONCLUÍDO</span>;
-    if (s==='cancelado') return <span className="badge b-red">CANCELADO</span>;
-    if (s==='pendente')  return <span className="badge b-yellow">PENDENTE</span>;
-    return <span className="badge b-gray">{s}</span>;
+  const statusBadge = (p) => {
+    if (p.status === 'cancelado') return <span className="badge b-red">CANCELADO</span>;
+    // se tem status_pagamento, usa ele
+    if (p.status_pagamento === 'pago')     return <span className="badge b-green">PAGO</span>;
+    if (p.status_pagamento === 'pendente') return <span className="badge b-yellow">PENDENTE</span>;
+    if (p.status_pagamento === 'atrasado') return <span className="badge b-red">ATRASADO</span>;
+    // balcão sem financeiro — só mostra concluído
+    if (p.status === 'concluido') return <span className="badge b-green">CONCLUÍDO</span>;
+    return <span className="badge b-gray">{p.status}</span>;
   };
 
   return (
@@ -332,7 +336,7 @@ export default function Vendas() {
                     <td className="mono" style={{fontSize:11,color:'rgba(232,234,237,.3)'}}>#{p.id}</td>
                     <td>{p.cliente||<span style={{color:'rgba(232,234,237,.3)'}}>Balcão</span>}</td>
                     <td className="mono" style={{fontSize:11}}>{p.num_itens} item(s)</td>
-                    <td>{statusBadge(p.status)}</td>
+                    <td>{statusBadge(p)}</td>
                     <td className="mono" style={{color: p.status==='cancelado'?'rgba(232,234,237,.3)':'#00d4aa',fontWeight:700,textDecoration:p.status==='cancelado'?'line-through':'none'}}>{fmtBRL(p.total)}</td>
                     <td className="mono" style={{fontSize:11}}>{p.data}</td>
                   </tr>
@@ -359,7 +363,7 @@ export default function Vendas() {
               <div>
                 <div className="dp-sec-title">Resumo</div>
                 <div className="dp-grid">
-                  <div><div className="dp-item-lbl">Status</div><div className="dp-item-val">{statusBadge(selected.status)}</div></div>
+                  <div><div className="dp-item-lbl">Status</div><div className="dp-item-val">{statusBadge(selected)}</div></div>
                   <div><div className="dp-item-lbl">Total</div><div className="dp-item-val green">{fmtBRL(selected.total)}</div></div>
                   <div><div className="dp-item-lbl">Itens</div><div className="dp-item-val">{selected.num_itens}</div></div>
                   <div><div className="dp-item-lbl">Desconto</div><div className="dp-item-val">{fmtBRL(selected.desconto)}</div></div>
