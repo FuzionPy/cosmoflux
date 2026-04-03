@@ -127,6 +127,22 @@ const S = `
 .prod-opt-nome{font-size:13px;font-weight:600;color:#e8eaed;}
 .prod-opt-sub{font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.35);margin-top:2px;}
 .prod-opt-empty{padding:14px;text-align:center;font-size:12px;color:rgba(232,234,237,.25);font-family:'JetBrains Mono',monospace;}
+.cli-search-wrap{position:relative;}
+.cli-search-input{background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px 12px;font-size:13px;color:#e8eaed;font-family:'Syne',sans-serif;outline:none;width:100%;transition:border-color .2s;}
+.cli-search-input:focus{border-color:rgba(0,212,170,.4);}
+.cli-search-input::placeholder{color:rgba(232,234,237,.2);}
+.cli-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#13161a;border:1px solid rgba(255,255,255,.1);border-radius:8px;z-index:50;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);}
+.cli-opt{padding:10px 14px;cursor:pointer;transition:background .1s;border-bottom:1px solid rgba(255,255,255,.04);}
+.cli-opt:last-child{border-bottom:none;}
+.cli-opt:hover{background:rgba(0,153,255,.08);}
+.cli-opt-nome{font-size:13px;font-weight:600;color:#e8eaed;}
+.cli-opt-sub{font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.35);margin-top:2px;}
+.cli-opt-empty{padding:14px;text-align:center;font-size:12px;color:rgba(232,234,237,.25);font-family:'JetBrains Mono',monospace;}
+.cli-selected{display:flex;align-items:center;justify-content:space-between;background:#13161a;border:1px solid rgba(0,153,255,.2);border-radius:8px;padding:9px 12px;}
+.cli-selected-nome{font-size:13px;font-weight:600;color:#e8eaed;}
+.cli-selected-sub{font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.35);margin-top:2px;}
+.cli-clear{background:none;border:none;color:rgba(232,234,237,.3);cursor:pointer;font-size:16px;padding:2px 4px;transition:color .15s;}
+.cli-clear:hover{color:#ff4757;}
 .total-box{background:rgba(0,212,170,.05);border:1px solid rgba(0,212,170,.12);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;}
 .total-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;}
 .total-row.main{font-size:17px;font-weight:800;border-top:1px solid rgba(0,212,170,.15);padding-top:8px;margin-top:2px;}
@@ -165,6 +181,9 @@ export default function Vendas() {
   const [prodAdd,    setProdAdd]    = useState('');
   const [prodSearch, setProdSearch] = useState('');
   const [showDrop,   setShowDrop]   = useState(false);
+  const [cliSearch,  setCliSearch]  = useState('');
+  const [showCliDrop,setShowCliDrop]= useState(false);
+  const [cliSel,     setCliSel]     = useState(null);
   const [saving,     setSaving]     = useState(false);
   const [formErr,    setFormErr]    = useState('');
   const [toast,      setToast]      = useState(null);
@@ -237,7 +256,7 @@ export default function Vendas() {
     finally { setSaving(false); }
   };
 
-  const openModal = () => { setForm(FORM_EMPTY); setItens([]); setProdAdd(''); setProdSearch(''); setFormErr(''); setShowModal(true); };
+  const openModal = () => { setForm(FORM_EMPTY); setItens([]); setProdAdd(''); setProdSearch(''); setCliSel(null); setCliSearch(''); setFormErr(''); setShowModal(true); };
 
   const cancelarPedido = async id => {
     try {
@@ -419,10 +438,42 @@ export default function Vendas() {
                 <div className="sec-title">Cliente</div>
                 <div className="ff">
                   <label className="fl">Cliente <span style={{color:'rgba(232,234,237,.25)'}}>— opcional (balcão)</span></label>
-                  <select className="fsel2" value={form.cliente_id} onChange={e=>setForm(f=>({...f,cliente_id:e.target.value}))}>
-                    <option value="">Balcão (sem cadastro)</option>
-                    {clientes.map(c=><option key={c.id} value={c.id}>{c.nome}{c.telefone?` — ${c.telefone}`:''}</option>)}
-                  </select>
+                  {cliSel ? (
+                    <div className="cli-selected">
+                      <div>
+                        <div className="cli-selected-nome">{cliSel.nome}</div>
+                        <div className="cli-selected-sub">{cliSel.telefone||'sem telefone'}</div>
+                      </div>
+                      <button className="cli-clear" onClick={()=>{ setCliSel(null); setCliSearch(''); setForm(f=>({...f,cliente_id:''})); }}>×</button>
+                    </div>
+                  ) : (
+                    <div className="cli-search-wrap">
+                      <input className="cli-search-input" placeholder="Buscar cliente pelo nome ou telefone..."
+                        value={cliSearch}
+                        onChange={e=>{ setCliSearch(e.target.value); setShowCliDrop(true); }}
+                        onFocus={()=>setShowCliDrop(true)}
+                        onBlur={()=>setTimeout(()=>setShowCliDrop(false),150)}
+                      />
+                      {showCliDrop && (
+                        <div className="cli-dropdown">
+                          <div className="cli-opt" onMouseDown={()=>{ setCliSel(null); setCliSearch(''); setForm(f=>({...f,cliente_id:''})); setShowCliDrop(false); }}>
+                            <div className="cli-opt-nome" style={{color:'rgba(232,234,237,.4)'}}>Balcão (sem cadastro)</div>
+                          </div>
+                          {clientes
+                            .filter(c=>!cliSearch||c.nome.toLowerCase().includes(cliSearch.toLowerCase())||(c.telefone||'').includes(cliSearch))
+                            .slice(0,10).map(c=>(
+                              <div key={c.id} className="cli-opt" onMouseDown={()=>{ setCliSel(c); setForm(f=>({...f,cliente_id:String(c.id)})); setCliSearch(''); setShowCliDrop(false); }}>
+                                <div className="cli-opt-nome">{c.nome}</div>
+                                <div className="cli-opt-sub">{c.telefone||'sem telefone'}{c.cidade?` · ${c.cidade}`:''}</div>
+                              </div>
+                            ))}
+                          {clientes.filter(c=>!cliSearch||c.nome.toLowerCase().includes(cliSearch.toLowerCase())||(c.telefone||'').includes(cliSearch)).length===0 && (
+                            <div className="cli-opt-empty">Nenhum cliente encontrado</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
