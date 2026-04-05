@@ -8,6 +8,18 @@ from auth_routes import get_ctx
 
 client_router = APIRouter(prefix="/api", tags=["clientes"])
 
+def calc_status_pag_cli(venda, hoje):
+    """Calcula status de pagamento em tempo real."""
+    if not venda: return "pago"
+    parcelas = venda.parcelas
+    if not parcelas:
+        if venda.data_vencimento and venda.data_vencimento < hoje:
+            return "vencido"
+        return venda.status_pagamento or "em_aberto"
+    if all(p.pago for p in parcelas): return "pago"
+    if any(not p.pago and p.vencimento < hoje for p in parcelas): return "vencido"
+    return "em_aberto"
+
 def tf(q, model, ctx):
     if not ctx["admin"] and ctx["tenant_id"] is not None:
         return q.filter(model.tenant_id == ctx["tenant_id"])

@@ -213,30 +213,50 @@ def registrar_movimentacao(dados: MovimentacaoSchema, ctx: dict = Depends(get_ct
 # ══════════════════════════════════════════════════════════════════
 # PEDIDOS
 # ══════════════════════════════════════════════════════════════════
+def calc_status_pagamento(venda, hoje):
+    """Calcula status de pagamento em tempo real."""
+    if not venda:
+        return "pago"  # balcao sem financeiro
+    if venda.status_pagamento == "cancelado":
+        return "cancelado"
+    parcelas = venda.parcelas
+    if not parcelas:
+        # sem parcelas — verifica vencimento
+        if venda.data_vencimento and venda.data_vencimento < hoje:
+            return "vencido"
+        if venda.status_pagamento == "pago":
+            return "pago"
+        return "em_aberto"
+    todas_pagas = all(p.pago for p in parcelas)
+    if todas_pagas:
+        return "pago"
+    alguma_vencida = any(not p.pago and p.vencimento < hoje for p in parcelas)
+    if alguma_vencida:
+        return "vencido"
+    return "em_aberto"
+
 @order_router.get("/pedidos")
 def listar_pedidos(
     status: Optional[str] = Query(None), limite: int = Query(50),
     ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)
 ):
+    from models import Venda
     q = tf(db.query(Pedido), Pedido, ctx)
     if status: q = q.filter(Pedido.status == status)
     pedidos = q.order_by(desc(Pedido.criado_em)).limit(limite).all()
-    # busca venda vinculada ao pedido para pegar status_pagamento
-    from models import Venda
-    def get_status_pag(pedido):
-        v = db.query(Venda).filter(Venda.descricao == f"Pedido #{pedido.id}").first()
-        if v: return v.status_pagamento, v.modo_pagamento
-        return None, None
+    hoje = date.today()
 
     resultado = []
     for p in pedidos:
-        spag, mpag = get_status_pag(p)
+        venda = db.query(Venda).filter(Venda.descricao == f"Pedido #{p.id}").first()
+        spag = calc_status_pagamento(venda, hoje)
         resultado.append({
             "id": p.id,
-            "cliente":   p.cliente_rel.nome if p.cliente_rel else "Balcão",
-            "cliente_id":p.cliente_id, "status": p.status,
+            "cliente":          p.cliente_rel.nome if p.cliente_rel else "Balcão",
+            "cliente_id":       p.cliente_id,
+            "status":           p.status,
             "status_pagamento": spag,
-            "modo_pagamento":   mpag,
+            "modo_pagamento":   venda.modo_pagamento if venda else None,
             "total": p.total, "desconto": p.desconto, "observacao": p.observacao,
             "data":     p.criado_em.strftime("%d/%m/%Y %H:%M") if p.criado_em else None,
             "data_raw": p.criado_em.isoformat() if p.criado_em else None,
@@ -280,6 +300,9 @@ def criar_pedido(dados: PedidoSchema, ctx: dict = Depends(get_ctx), db: Session 
 
 @order_router.patch("/pedidos/{pedido_id}/status")
 def atualizar_status(pedido_id: int, status: str, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    ALLOWED = ["pendente_entrega", "entregue", "cancelado"]
+    if status not in ALLOWED:
+        raise HTTPException(400, f"Status inválido. Use: {', '.join(ALLOWED)}")
     pedido = tf(db.query(Pedido), Pedido, ctx).filter(Pedido.id == pedido_id).first()
     if not pedido: raise HTTPException(404, "Pedido não encontrado")
     pedido.status = status; db.commit()
@@ -290,6 +313,10 @@ def cancelar_pedido(pedido_id: int, ctx: dict = Depends(get_ctx), db: Session = 
     pedido = tf(db.query(Pedido), Pedido, ctx).filter(Pedido.id == pedido_id).first()
     if not pedido: raise HTTPException(404, "Pedido não encontrado")
     if pedido.status == "cancelado": raise HTTPException(400, "Já cancelado")
+    # cancela venda financeira vinculada
+    from models import Venda
+    venda = db.query(Venda).filter(Venda.descricao == f"Pedido #{pedido_id}").first()
+    if venda: venda.status_pagamento = "cancelado"
     for it in pedido.itens:
         p = db.query(Produto).filter(Produto.id == it.produto_id).first()
         if p:

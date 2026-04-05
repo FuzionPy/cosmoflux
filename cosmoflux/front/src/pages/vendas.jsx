@@ -256,6 +256,14 @@ export default function Vendas() {
     finally { setSaving(false); }
   };
 
+  const alterarEntrega = async (id, novoStatus) => {
+    try {
+      await api.patch(`/pedidos/${id}/status?status=${novoStatus}`, {});
+      setSelected(prev => prev ? {...prev, status: novoStatus} : null);
+      load();
+    } catch(e) { showToast(e.message, '✕'); }
+  };
+
   const openModal = () => { setForm(FORM_EMPTY); setItens([]); setProdAdd(''); setProdSearch(''); setCliSel(null); setCliSearch(''); setFormErr(''); setShowModal(true); };
 
   const cancelarPedido = async id => {
@@ -275,14 +283,19 @@ export default function Vendas() {
   const vendasHoje    = pedidos.filter(p=>p.status!=='cancelado'&&p.data_raw?.startsWith(new Date().toISOString().slice(0,10)));
   const totalHoje     = vendasHoje.reduce((a,p)=>a+p.total,0);
 
-  const statusBadge = (p) => {
-    if (p.status === 'cancelado') return <span className="badge b-red">CANCELADO</span>;
-    // se tem status_pagamento, usa ele
-    if (p.status_pagamento === 'pago')     return <span className="badge b-green">PAGO</span>;
-    if (p.status_pagamento === 'pendente') return <span className="badge b-yellow">PENDENTE</span>;
-    if (p.status_pagamento === 'atrasado') return <span className="badge b-red">ATRASADO</span>;
-    // balcão sem financeiro — só mostra concluído
-    if (p.status === 'concluido') return <span className="badge b-green">CONCLUÍDO</span>;
+  const badgePag = (p) => {
+    if (p.status === 'cancelado')              return <span className="badge b-red">CANCELADO</span>;
+    if (p.status_pagamento === 'pago')         return <span className="badge b-green">PAGO</span>;
+    if (p.status_pagamento === 'vencido')      return <span className="badge b-red">VENCIDO</span>;
+    if (p.status_pagamento === 'em_aberto')    return <span className="badge b-yellow">EM ABERTO</span>;
+    if (p.status_pagamento === 'cancelado')    return <span className="badge b-red">CANCELADO</span>;
+    return <span className="badge b-green">PAGO</span>;
+  };
+
+  const badgeEntrega = (p) => {
+    if (p.status === 'cancelado')        return <span className="badge b-red">CANCELADO</span>;
+    if (p.status === 'entregue')         return <span className="badge b-green">ENTREGUE</span>;
+    if (p.status === 'pendente_entrega') return <span className="badge b-orange">PENDENTE</span>;
     return <span className="badge b-gray">{p.status}</span>;
   };
 
@@ -347,7 +360,7 @@ export default function Vendas() {
           ) : (
             <table className="tbl">
               <thead>
-                <tr><th>#</th><th>Cliente</th><th>Itens</th><th>Status</th><th>Total</th><th>Data</th></tr>
+                <tr><th>#</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Entrega</th><th>Total</th><th>Data</th></tr>
               </thead>
               <tbody>
                 {filtered.map(p=>(
@@ -355,7 +368,8 @@ export default function Vendas() {
                     <td className="mono" style={{fontSize:11,color:'rgba(232,234,237,.3)'}}>#{p.id}</td>
                     <td>{p.cliente||<span style={{color:'rgba(232,234,237,.3)'}}>Balcão</span>}</td>
                     <td className="mono" style={{fontSize:11}}>{p.num_itens} item(s)</td>
-                    <td>{statusBadge(p)}</td>
+                    <td>{badgePag(p)}</td>
+                    <td>{badgeEntrega(p)}</td>
                     <td className="mono" style={{color: p.status==='cancelado'?'rgba(232,234,237,.3)':'#00d4aa',fontWeight:700,textDecoration:p.status==='cancelado'?'line-through':'none'}}>{fmtBRL(p.total)}</td>
                     <td className="mono" style={{fontSize:11}}>{p.data}</td>
                   </tr>
@@ -382,12 +396,33 @@ export default function Vendas() {
               <div>
                 <div className="dp-sec-title">Resumo</div>
                 <div className="dp-grid">
-                  <div><div className="dp-item-lbl">Status</div><div className="dp-item-val">{statusBadge(selected)}</div></div>
+                  <div><div className="dp-item-lbl">Pagamento</div><div className="dp-item-val">{badgePag(selected)}</div></div>
+                  <div><div className="dp-item-lbl">Entrega</div><div className="dp-item-val">{badgeEntrega(selected)}</div></div>
                   <div><div className="dp-item-lbl">Total</div><div className="dp-item-val green">{fmtBRL(selected.total)}</div></div>
-                  <div><div className="dp-item-lbl">Itens</div><div className="dp-item-val">{selected.num_itens}</div></div>
                   <div><div className="dp-item-lbl">Desconto</div><div className="dp-item-val">{fmtBRL(selected.desconto)}</div></div>
+                  {selected.modo_pagamento && <div><div className="dp-item-lbl">Forma pag.</div><div className="dp-item-val" style={{fontSize:12}}>{selected.modo_pagamento}</div></div>}
+                  <div><div className="dp-item-lbl">Itens</div><div className="dp-item-val">{selected.num_itens}</div></div>
                 </div>
               </div>
+              {/* Alterar status de entrega */}
+              {selected.status !== 'cancelado' && (
+                <div>
+                  <div className="dp-sec-title">Alterar entrega</div>
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                    {['pendente_entrega','entregue'].map(s=>(
+                      <button key={s} onClick={()=>alterarEntrega(selected.id, s)}
+                        style={{flex:1,padding:'8px 12px',borderRadius:8,border:'1px solid',cursor:'pointer',
+                          fontSize:12,fontWeight:600,fontFamily:'Syne,sans-serif',transition:'all .15s',
+                          background: selected.status===s ? (s==='entregue'?'rgba(0,212,170,.15)':'rgba(255,107,53,.15)') : 'rgba(255,255,255,.04)',
+                          borderColor: selected.status===s ? (s==='entregue'?'rgba(0,212,170,.4)':'rgba(255,107,53,.4)') : 'rgba(255,255,255,.08)',
+                          color: selected.status===s ? (s==='entregue'?'#00d4aa':'#ff6b35') : 'rgba(232,234,237,.5)',
+                        }}>
+                        {s==='entregue'?'✓ Entregue':'⏳ Pendente'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {selected.itens?.length > 0 && (
                 <div>
                   <div className="dp-sec-title">Produtos</div>
