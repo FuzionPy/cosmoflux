@@ -201,7 +201,7 @@ def detalhe_cliente(cliente_id: int, ctx: dict = Depends(get_ctx), db: Session =
             "valor_parcela": v.valor_parcela,
             "data_venda":      v.data_venda.strftime("%d/%m/%Y") if v.data_venda else None,
             "data_vencimento": v.data_vencimento.strftime("%d/%m/%Y") if v.data_vencimento else None,
-            "status_pagamento": v.status_pagamento, "observacao": v.observacao,
+            "status_pagamento": calc_status_pag_cli(v, hoje), "observacao": v.observacao,
             "parcelas": parcelas,
         })
     return {
