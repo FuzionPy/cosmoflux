@@ -847,10 +847,12 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                         <div className="vi-lbl">Status</div>
                         <div className="vi-val">
                           {v.status_pagamento === 'pago'
-                            ? <span className="badge b-green">PAGO</span>
-                            : v.status_pagamento === 'atrasado'
-                            ? <span className="badge b-red">ATRASADO</span>
-                            : <span className="badge b-yellow">PENDENTE</span>}
+                              ? <span className="badge b-green">PAGO</span>
+                              : v.status_pagamento === 'vencido'
+                              ? <span className="badge b-red">VENCIDO</span>
+                              : v.status_pagamento === 'cancelado'
+                              ? <span className="badge b-red">CANCELADO</span>
+                              : <span className="badge b-yellow">EM ABERTO</span>}
                         </div>
                       </div>
                       {v.data_vencimento && (
