@@ -138,6 +138,14 @@ def listar_produtos(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db))
 
 @order_router.post("/produtos")
 def criar_produto(dados: ProdutoSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    q = tf(db.query(Produto), Produto, ctx).filter(Produto.ativo == True)
+    # verifica nome duplicado
+    if q.filter(Produto.nome == dados.nome).first():
+        raise HTTPException(400, f"Já existe um produto com o nome '{dados.nome}'")
+    # verifica SKU duplicado (se informado)
+    if dados.sku:
+        if q.filter(Produto.sku == dados.sku).first():
+            raise HTTPException(400, f"Já existe um produto com o SKU '{dados.sku}'")
     p = Produto(**dados.model_dump(), tenant_id=tid(ctx))
     db.add(p); db.commit(); db.refresh(p)
     return {"mensagem": "Produto criado", "id": p.id}
@@ -146,6 +154,14 @@ def criar_produto(dados: ProdutoSchema, ctx: dict = Depends(get_ctx), db: Sessio
 def atualizar_produto(produto_id: int, dados: ProdutoSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
     p = tf(db.query(Produto), Produto, ctx).filter(Produto.id == produto_id).first()
     if not p: raise HTTPException(404, "Produto não encontrado")
+    q = tf(db.query(Produto), Produto, ctx).filter(Produto.ativo == True, Produto.id != produto_id)
+    # verifica nome duplicado (exceto o próprio)
+    if q.filter(Produto.nome == dados.nome).first():
+        raise HTTPException(400, f"Já existe outro produto com o nome '{dados.nome}'")
+    # verifica SKU duplicado (exceto o próprio)
+    if dados.sku:
+        if q.filter(Produto.sku == dados.sku).first():
+            raise HTTPException(400, f"Já existe outro produto com o SKU '{dados.sku}'")
     for k, v in dados.model_dump().items(): setattr(p, k, v)
     db.commit()
     return {"mensagem": "Produto atualizado"}
