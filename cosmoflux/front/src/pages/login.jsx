@@ -3,13 +3,28 @@ import { useNavigate } from 'react-router-dom';
 import { login } from '../services/authService';
 
 const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
   .cf-root {
-    min-height: 100vh; background: #04050a;
+    min-height: 100vh;
+    width: 100%;
+    background: radial-gradient(ellipse at top, #0a0815 0%, #04050a 60%);
     display: flex; align-items: center; justify-content: center;
-    font-family: 'Outfit', sans-serif; overflow: hidden; position: relative;
+    font-family: 'Outfit', sans-serif;
+    overflow: hidden; position: relative;
+    padding: 20px;
   }
+
+  /* ── Background atmospheric ── */
+  .cf-bg-glow {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(circle 400px at 20% 30%, rgba(124,58,237,0.12) 0%, transparent 60%),
+      radial-gradient(circle 500px at 80% 70%, rgba(14,165,233,0.10) 0%, transparent 60%),
+      radial-gradient(circle 300px at 50% 50%, rgba(168,85,247,0.08) 0%, transparent 60%);
+  }
+
   .cf-stars { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
   .cf-star {
     position: absolute; border-radius: 50%; background: white;
@@ -17,148 +32,265 @@ const styles = `
   }
   @keyframes twinkle {
     0%, 100% { opacity: var(--min-op, 0.1); transform: scale(1); }
-    50%       { opacity: var(--max-op, 0.8); transform: scale(1.3); }
+    50% { opacity: var(--max-op, 0.8); transform: scale(1.3); }
   }
-  .cf-nebula { position: fixed; border-radius: 50%; filter: blur(90px); pointer-events: none; z-index: 0; }
-  .cf-nebula-1 {
-    width: 600px; height: 600px;
-    background: radial-gradient(circle, rgba(94,44,180,0.18) 0%, transparent 70%);
-    top: -150px; left: -150px; animation: drift1 20s ease-in-out infinite alternate;
+
+  /* Grid sutil de fundo */
+  .cf-grid {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 60px 60px;
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
   }
-  .cf-nebula-2 {
-    width: 500px; height: 500px;
-    background: radial-gradient(circle, rgba(0,200,255,0.12) 0%, transparent 70%);
-    bottom: -100px; right: -100px; animation: drift2 25s ease-in-out infinite alternate;
-  }
-  @keyframes drift1 { from { transform: translate(0,0) scale(1); } to { transform: translate(60px,40px) scale(1.1); } }
-  @keyframes drift2 { from { transform: translate(0,0) scale(1); } to { transform: translate(-50px,-30px) scale(1.15); } }
-  .cf-orbit {
-    position: fixed; border-radius: 50%; border: 1px solid rgba(255,255,255,0.04);
-    pointer-events: none; z-index: 0;
-    animation: spin var(--speed, 40s) linear infinite;
-  }
-  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-  .cf-layout {
+
+  /* ── Card principal ── */
+  .cf-card {
     position: relative; z-index: 1;
-    display: grid; grid-template-columns: 1fr 1fr;
-    width: 100%; max-width: 960px; min-height: 580px;
-    border: 1px solid rgba(255,255,255,0.07); border-radius: 24px; overflow: hidden;
-    backdrop-filter: blur(8px);
-    box-shadow: 0 0 80px rgba(94,44,180,0.15), 0 0 160px rgba(0,0,0,0.6);
-    margin: 24px; animation: fadeUp 0.8s cubic-bezier(.22,1,.36,1) both;
+    width: 100%; max-width: 420px;
+    background: linear-gradient(180deg, rgba(14,16,22,0.95) 0%, rgba(10,12,18,0.95) 100%);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 20px;
+    padding: 48px 40px 36px;
+    box-shadow:
+      0 40px 80px rgba(0,0,0,0.5),
+      0 0 0 1px rgba(124,58,237,0.08),
+      inset 0 1px 0 rgba(255,255,255,0.04);
+    animation: cardIn 0.7s cubic-bezier(.22,1,.36,1) both;
+    backdrop-filter: blur(20px);
   }
-  @keyframes fadeUp { from { opacity: 0; transform: translateY(32px); } to { opacity: 1; transform: none; } }
-  .cf-panel-left {
-    background: linear-gradient(135deg, rgba(20,12,45,0.95) 0%, rgba(8,20,50,0.95) 100%);
-    padding: 56px 48px; display: flex; flex-direction: column; justify-content: space-between;
-    border-right: 1px solid rgba(255,255,255,0.06); position: relative; overflow: hidden;
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(24px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
   }
-  .cf-brand { position: relative; z-index: 2; }
-  .cf-logo-mark { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
-  .cf-logo-icon {
-    width: 40px; height: 40px; border-radius: 50%;
-    border: 2px solid rgba(140,90,255,0.6);
+
+  /* Glow decorativo no topo do card */
+  .cf-card::before {
+    content: '';
+    position: absolute; top: -1px; left: 20%; right: 20%; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(160,112,255,0.6), transparent);
+  }
+
+  /* ── Logo ── */
+  .cf-brand {
+    display: flex; flex-direction: column; align-items: center;
+    margin-bottom: 36px;
+    animation: fadeDown 0.8s cubic-bezier(.22,1,.36,1) 0.1s both;
+  }
+  @keyframes fadeDown {
+    from { opacity: 0; transform: translateY(-12px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  .cf-logo {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #a070ff, #5e2cb4 70%);
     display: flex; align-items: center; justify-content: center;
-    background: rgba(94,44,180,0.2); position: relative;
+    position: relative; margin-bottom: 16px;
+    box-shadow:
+      0 0 0 1px rgba(160,112,255,0.3),
+      0 0 40px rgba(160,112,255,0.3),
+      inset 0 2px 4px rgba(255,255,255,0.15);
   }
-  .cf-logo-icon::before {
-    content: ''; width: 16px; height: 16px; border-radius: 50%;
-    background: radial-gradient(circle, #a070ff, #5e2cb4);
-    box-shadow: 0 0 12px rgba(160,112,255,0.6);
+  .cf-logo::before {
+    content: ''; position: absolute; inset: -10px;
+    border: 1px solid rgba(160,112,255,0.2); border-radius: 50%;
+    animation: orbit 6s linear infinite;
   }
-  .cf-logo-ring {
-    position: absolute; inset: -6px; border-radius: 50%;
-    border: 1px solid rgba(140,90,255,0.3); animation: spin 8s linear infinite;
+  .cf-logo::after {
+    content: ''; position: absolute; inset: -20px;
+    border: 1px dashed rgba(160,112,255,0.12); border-radius: 50%;
+    animation: orbit 18s linear infinite reverse;
   }
-  .cf-logo-text {
-    font-family: 'Space Mono', monospace; font-size: 14px;
-    font-weight: 700; letter-spacing: 0.2em; color: rgba(255,255,255,0.9); text-transform: uppercase;
+  @keyframes orbit {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
-  .cf-tagline { font-size: 28px; font-weight: 300; line-height: 1.35; color: rgba(255,255,255,0.85); margin-bottom: 16px; }
-  .cf-tagline strong {
-    font-weight: 600; color: #fff;
-    background: linear-gradient(90deg, #c0a0ff, #7dd3fc);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+
+  .cf-brand-name {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px; font-weight: 700;
+    letter-spacing: 0.3em; color: rgba(255,255,255,0.9);
+    text-transform: uppercase;
   }
-  .cf-desc { font-size: 14px; color: rgba(255,255,255,0.4); line-height: 1.7; max-width: 280px; }
-  .cf-features { display: flex; flex-direction: column; gap: 16px; margin-top: auto; padding-top: 40px; }
-  .cf-feature { display: flex; align-items: center; gap: 12px; font-size: 13px; color: rgba(255,255,255,0.45); }
-  .cf-feature-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: linear-gradient(135deg, #a070ff, #7dd3fc); flex-shrink: 0;
-    box-shadow: 0 0 6px rgba(160,112,255,0.5);
+  .cf-brand-tagline {
+    font-size: 11px; color: rgba(255,255,255,0.35);
+    margin-top: 6px; letter-spacing: 0.05em;
   }
-  .cf-panel-glow {
-    position: absolute; bottom: -80px; right: -80px;
-    width: 320px; height: 320px; border-radius: 50%;
-    background: radial-gradient(circle, rgba(94,44,180,0.25) 0%, transparent 70%);
-    pointer-events: none;
+
+  /* ── Divisor ornamental ── */
+  .cf-divider {
+    display: flex; align-items: center; gap: 10px;
+    margin: 0 auto 32px; max-width: 200px;
+    animation: fadeIn 0.8s ease 0.2s both;
   }
-  .cf-panel-right {
-    background: rgba(6,8,18,0.97); padding: 56px 48px;
-    display: flex; flex-direction: column; justify-content: center;
+  .cf-divider-line {
+    flex: 1; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
   }
-  .cf-form-heading { margin-bottom: 32px; }
-  .cf-form-title {
-    font-family: 'Space Mono', monospace; font-size: 22px;
-    font-weight: 700; color: #fff; letter-spacing: 0.05em; margin-bottom: 6px;
+  .cf-divider-dot {
+    width: 4px; height: 4px; border-radius: 50%;
+    background: rgba(160,112,255,0.5);
   }
-  .cf-form-sub { font-size: 13px; color: rgba(255,255,255,0.35); }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  /* ── Form ── */
+  .cf-form {
+    animation: fadeUp 0.8s cubic-bezier(.22,1,.36,1) 0.25s both;
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: none; }
+  }
+
   .cf-error {
-    background: rgba(220,38,38,0.12); border: 1px solid rgba(220,38,38,0.3);
-    border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #fc8181; margin-bottom: 20px;
+    background: rgba(220,38,38,0.1);
+    border: 1px solid rgba(220,38,38,0.25);
+    border-radius: 10px; padding: 11px 14px;
+    font-size: 12px; color: #fca5a5; margin-bottom: 18px;
+    display: flex; align-items: center; gap: 8px;
+    font-family: 'Space Mono', monospace;
+    animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
   }
+  @keyframes shake {
+    10%, 90% { transform: translateX(-1px); }
+    20%, 80% { transform: translateX(2px); }
+    30%, 50%, 70% { transform: translateX(-3px); }
+    40%, 60% { transform: translateX(3px); }
+  }
+
   .cf-field { margin-bottom: 18px; }
   .cf-label {
-    display: block; font-size: 11px; font-weight: 600;
-    letter-spacing: 0.12em; text-transform: uppercase;
-    color: rgba(255,255,255,0.4); margin-bottom: 8px;
+    display: block; font-size: 10px; font-weight: 600;
+    letter-spacing: 0.15em; text-transform: uppercase;
+    color: rgba(255,255,255,0.35); margin-bottom: 8px;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .cf-input-wrap {
+    position: relative;
+    display: flex; align-items: center;
   }
   .cf-input {
-    width: 100%; padding: 12px 16px;
-    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+    width: 100%; padding: 13px 16px 13px 42px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: 10px; color: #fff; font-size: 14px;
-    font-family: 'Outfit', sans-serif; outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+    font-family: 'Outfit', sans-serif; outline: none;
+    transition: all 0.2s;
   }
   .cf-input::placeholder { color: rgba(255,255,255,0.2); }
-  .cf-input:focus { border-color: rgba(160,112,255,0.5); box-shadow: 0 0 0 3px rgba(160,112,255,0.1); }
-  .cf-options { display: flex; align-items: center; margin-bottom: 24px; }
-  .cf-remember { display: flex; align-items: center; gap: 8px; font-size: 13px; color: rgba(255,255,255,0.45); cursor: pointer; }
-  .cf-checkbox { accent-color: #a070ff; width: 15px; height: 15px; cursor: pointer; }
+  .cf-input:focus {
+    border-color: rgba(160,112,255,0.45);
+    background: rgba(255,255,255,0.05);
+    box-shadow: 0 0 0 3px rgba(160,112,255,0.1);
+  }
+  .cf-input-icon {
+    position: absolute; left: 14px;
+    color: rgba(255,255,255,0.3);
+    display: flex; transition: color 0.2s;
+    pointer-events: none;
+  }
+  .cf-input:focus + .cf-input-icon,
+  .cf-input-wrap:focus-within .cf-input-icon {
+    color: rgba(160,112,255,0.7);
+  }
+
+  .cf-options {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .cf-remember {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: rgba(255,255,255,0.5); cursor: pointer;
+    user-select: none;
+  }
+  .cf-checkbox {
+    accent-color: #a070ff; width: 14px; height: 14px;
+    cursor: pointer;
+  }
+
   .cf-submit {
     width: 100%; padding: 14px;
-    background: linear-gradient(135deg, #7c3aed, #5e2cb4);
-    border: none; border-radius: 10px; color: #fff; font-size: 14px; font-weight: 600;
-    font-family: 'Space Mono', monospace; letter-spacing: 0.1em;
-    cursor: pointer; transition: all 0.2s;
-    display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 20px;
+    background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+    border: none; border-radius: 10px;
+    color: #fff; font-size: 13px; font-weight: 600;
+    font-family: 'Space Mono', monospace; letter-spacing: 0.2em;
+    cursor: pointer; transition: all 0.25s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    text-transform: uppercase;
+    position: relative; overflow: hidden;
+    box-shadow:
+      0 4px 14px rgba(124,58,237,0.35),
+      inset 0 1px 0 rgba(255,255,255,0.2);
   }
-  .cf-submit:hover:not(:disabled) { background: linear-gradient(135deg, #8b5cf6, #6d28d9); transform: translateY(-1px); box-shadow: 0 8px 24px rgba(124,58,237,0.35); }
-  .cf-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+  .cf-submit::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg, transparent, rgba(255,255,255,0.15), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.6s;
+  }
+  .cf-submit:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow:
+      0 8px 24px rgba(124,58,237,0.5),
+      inset 0 1px 0 rgba(255,255,255,0.2);
+  }
+  .cf-submit:hover:not(:disabled)::before { transform: translateX(100%); }
+  .cf-submit:active:not(:disabled) { transform: translateY(0); }
+  .cf-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+
   .cf-spinner {
-    width: 18px; height: 18px; border-radius: 50%;
-    border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
-    animation: spin 0.7s linear infinite; display: inline-block;
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    animation: spin 0.7s linear infinite;
   }
-  .cf-footer { font-size: 11px; color: rgba(255,255,255,0.2); text-align: center; margin-top: 8px; }
-  @media (max-width: 720px) {
-    .cf-layout { grid-template-columns: 1fr; }
-    .cf-panel-left { display: none; }
-    .cf-panel-right { padding: 40px 28px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Footer ── */
+  .cf-foot {
+    margin-top: 28px; padding-top: 20px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    text-align: center;
+    animation: fadeIn 0.8s ease 0.4s both;
+  }
+  .cf-foot-text {
+    font-size: 11px; color: rgba(255,255,255,0.25);
+    font-family: 'Space Mono', monospace;
+    letter-spacing: 0.1em;
+  }
+  .cf-foot-badges {
+    display: flex; align-items: center; justify-content: center;
+    gap: 14px; margin-top: 12px; flex-wrap: wrap;
+  }
+  .cf-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 10px; color: rgba(255,255,255,0.3);
+    font-family: 'Space Mono', monospace;
+  }
+  .cf-badge-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: #00d4aa; box-shadow: 0 0 6px rgba(0,212,170,0.5);
+  }
+
+  @media (max-width: 480px) {
+    .cf-card { padding: 36px 24px 28px; }
+    .cf-brand { margin-bottom: 28px; }
   }
 `;
 
-const STARS = Array.from({ length: 80 }, (_, i) => ({
-  id: i, top: `${Math.random()*100}%`, left: `${Math.random()*100}%`,
-  size: Math.random()*2.5+0.5, dur: `${Math.random()*4+2}s`, delay: `${Math.random()*4}s`,
-  minOp: (Math.random()*0.1+0.05).toFixed(2), maxOp: (Math.random()*0.6+0.3).toFixed(2),
+const STARS = Array.from({ length: 60 }, (_, i) => ({
+  id: i,
+  top: `${Math.random()*100}%`,
+  left: `${Math.random()*100}%`,
+  size: Math.random()*2 + 0.5,
+  dur: `${Math.random()*4 + 2}s`,
+  delay: `${Math.random()*4}s`,
+  minOp: (Math.random()*0.1 + 0.05).toFixed(2),
+  maxOp: (Math.random()*0.5 + 0.25).toFixed(2),
 }));
-
-const ORBITS = [
-  { size: 700, speed: '60s', top: '-200px', left: '-200px' },
-  { size: 500, speed: '45s', bottom: '-180px', right: '-180px' },
-  { size: 300, speed: '30s', top: '20%', right: '-100px' },
-];
 
 export default function Login() {
   const navigate = useNavigate();
@@ -186,70 +318,102 @@ export default function Login() {
     <>
       <style>{styles}</style>
       <div className="cf-root">
+        <div className="cf-grid" />
+        <div className="cf-bg-glow" />
         <div className="cf-stars" aria-hidden="true">
           {STARS.map(s => (
             <div key={s.id} className="cf-star" style={{
               top: s.top, left: s.left, width: s.size, height: s.size,
-              '--dur': s.dur, '--delay': s.delay, '--min-op': s.minOp, '--max-op': s.maxOp,
+              '--dur': s.dur, '--delay': s.delay,
+              '--min-op': s.minOp, '--max-op': s.maxOp,
             }} />
           ))}
         </div>
-        <div className="cf-nebula cf-nebula-1" aria-hidden="true" />
-        <div className="cf-nebula cf-nebula-2" aria-hidden="true" />
-        {ORBITS.map((o, i) => (
-          <div key={i} className="cf-orbit" aria-hidden="true" style={{
-            width: o.size, height: o.size, '--speed': o.speed,
-            top: o.top, left: o.left, bottom: o.bottom, right: o.right,
-          }} />
-        ))}
-        <div className="cf-layout">
-          <div className="cf-panel-left">
-            <div className="cf-brand">
-              <div className="cf-logo-mark">
-                <div className="cf-logo-icon"><div className="cf-logo-ring" /></div>
-                <span className="cf-logo-text">Cosmo Flux</span>
-              </div>
-              <h1 className="cf-tagline">Navegue pelo<br /><strong>universo dos seus dados</strong></h1>
-              <p className="cf-desc">Acesse sua conta e continue de onde parou. Suas informações viajam seguras conosco.</p>
-            </div>
-            <div className="cf-features">
-              {['Autenticação criptografada com Argon2','Sessões com JWT e expiração automática','Multi-tenant: cada usuário vê apenas seus dados'].map((f, i) => (
-                <div key={i} className="cf-feature"><div className="cf-feature-dot" />{f}</div>
-              ))}
-            </div>
-            <div className="cf-panel-glow" aria-hidden="true" />
+
+        <div className="cf-card">
+          {/* Brand */}
+          <div className="cf-brand">
+            <div className="cf-logo" />
+            <div className="cf-brand-name">Cosmo Flux</div>
+            <div className="cf-brand-tagline">Sistema de Gestão</div>
           </div>
-          <div className="cf-panel-right">
-            <div className="cf-form-heading">
-              <h2 className="cf-form-title">ENTRAR</h2>
-              <p className="cf-form-sub">Bem-vindo de volta ao CosmoFlux</p>
-            </div>
-            {error && <div className="cf-error">⚠ {error}</div>}
-            <form onSubmit={handleSubmit} noValidate>
-              <div className="cf-field">
-                <label htmlFor="email" className="cf-label">Email</label>
+
+          <div className="cf-divider">
+            <div className="cf-divider-line" />
+            <div className="cf-divider-dot" />
+            <div className="cf-divider-line" />
+          </div>
+
+          {/* Form */}
+          <form className="cf-form" onSubmit={handleSubmit} noValidate>
+            {error && (
+              <div className="cf-error">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{flexShrink:0}}>
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                {error}
+              </div>
+            )}
+
+            <div className="cf-field">
+              <label htmlFor="email" className="cf-label">Email</label>
+              <div className="cf-input-wrap">
                 <input id="email" type="email" className="cf-input"
                   placeholder="seu@email.com" value={email}
-                  onChange={e => setEmail(e.target.value)} required />
+                  onChange={e => setEmail(e.target.value)} required autoComplete="email" />
+                <span className="cf-input-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                    <polyline points="22,6 12,13 2,6"/>
+                  </svg>
+                </span>
               </div>
-              <div className="cf-field">
-                <label htmlFor="password" className="cf-label">Senha</label>
+            </div>
+
+            <div className="cf-field">
+              <label htmlFor="password" className="cf-label">Senha</label>
+              <div className="cf-input-wrap">
                 <input id="password" type="password" className="cf-input"
                   placeholder="••••••••" value={password}
-                  onChange={e => setPassword(e.target.value)} required />
+                  onChange={e => setPassword(e.target.value)} required autoComplete="current-password" />
+                <span className="cf-input-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                </span>
               </div>
-              <div className="cf-options">
-                <label className="cf-remember">
-                  <input type="checkbox" className="cf-checkbox"
-                    checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} />
-                  Lembrar de mim
-                </label>
-              </div>
-              <button type="submit" className="cf-submit" disabled={isLoading}>
-                {isLoading ? <span className="cf-spinner" /> : 'ENTRAR'}
-              </button>
-            </form>
-            <p className="cf-footer">CosmoFlux © {new Date().getFullYear()} · Sistema de Gestão</p>
+            </div>
+
+            <div className="cf-options">
+              <label className="cf-remember">
+                <input type="checkbox" className="cf-checkbox"
+                  checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} />
+                Lembrar de mim
+              </label>
+            </div>
+
+            <button type="submit" className="cf-submit" disabled={isLoading}>
+              {isLoading ? <span className="cf-spinner" /> : (
+                <>
+                  <span>Entrar</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                    <polyline points="12 5 19 12 12 19"/>
+                  </svg>
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Footer */}
+          <div className="cf-foot">
+            <div className="cf-foot-text">© {new Date().getFullYear()} CosmoFlux</div>
+            <div className="cf-foot-badges">
+              <div className="cf-badge"><div className="cf-badge-dot" />Argon2</div>
+              <div className="cf-badge"><div className="cf-badge-dot" />JWT</div>
+              <div className="cf-badge"><div className="cf-badge-dot" />Multi-tenant</div>
+            </div>
           </div>
         </div>
       </div>
