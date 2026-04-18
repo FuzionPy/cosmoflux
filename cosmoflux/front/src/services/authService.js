@@ -17,6 +17,17 @@ export const login = async (email, password, rememberMe) => {
   storage.setItem('admin',     String(data.admin));
   storage.setItem('tenant_id', String(data.tenant_id ?? ''));
 
+  // busca avatar do perfil
+  try {
+    const perfilRes = await fetch(`${API}/auth/perfil`, {
+      headers: { Authorization: `Bearer ${data.token}` }
+    });
+    if (perfilRes.ok) {
+      const perfil = await perfilRes.json();
+      if (perfil.avatar) storage.setItem('avatar', perfil.avatar);
+    }
+  } catch {}
+
   return data;
 };
 
@@ -26,11 +37,13 @@ export const logout = () => {
   localStorage.removeItem('email');
   localStorage.removeItem('admin');
   localStorage.removeItem('tenant_id');
+  localStorage.removeItem('avatar');
   sessionStorage.removeItem('token');
   sessionStorage.removeItem('nome');
   sessionStorage.removeItem('email');
   sessionStorage.removeItem('admin');
   sessionStorage.removeItem('tenant_id');
+  sessionStorage.removeItem('avatar');
 };
 
 export const getToken = () =>

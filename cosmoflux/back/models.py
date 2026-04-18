@@ -34,12 +34,13 @@ class Usuario(Base):
     nome      = Column(String, nullable=False)
     email     = Column(String, nullable=False, unique=True)
     senha     = Column(String, nullable=False)
+    avatar    = Column(Text, nullable=True)  # base64
     ativo     = Column(Boolean, default=True)
     admin     = Column(Boolean, default=False)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=True)
     tenant_rel = relationship("Tenant", back_populates="usuarios")
-    def __init__(self, nome, email, senha, ativo=True, admin=False, tenant_id=None):
-        self.nome=nome; self.email=email; self.senha=senha
+    def __init__(self, nome, email, senha, ativo=True, admin=False, tenant_id=None, avatar=None):
+        self.nome=nome; self.email=email; self.senha=senha; self.avatar=avatar
         self.ativo=ativo; self.admin=admin; self.tenant_id=tenant_id
 
 

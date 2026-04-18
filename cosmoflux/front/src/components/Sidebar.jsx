@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logout } from '../services/authService';
 
@@ -12,6 +13,8 @@ const getNome = () => {
   } catch {}
   return localStorage.getItem('nome') || sessionStorage.getItem('nome') || 'Usuário';
 };
+
+const getAvatar = () => localStorage.getItem('avatar') || sessionStorage.getItem('avatar') || '';
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
@@ -74,8 +77,10 @@ const styles = `
   .sb-footer { padding: 12px 8px; border-top: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; }
   .sb-user {
     display: flex; align-items: center; gap: 9px;
-    padding: 9px 10px; border-radius: 7px; cursor: default; transition: background 0.15s;
+    padding: 9px 10px; border-radius: 7px; cursor: pointer; transition: background 0.15s;
   }
+  .sb-user:hover { background: rgba(255,255,255,0.04); }
+  .sb-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
   .sb-avatar {
     width: 30px; height: 30px; border-radius: 50%;
     background: linear-gradient(135deg, #a855f7, #0099ff);
@@ -113,6 +118,7 @@ const NAV_ITEMS = [
   { label: 'Relatórios',   path: '/relatorios',   icon: '▦', section: 'ANÁLISE' },
   { label: 'Lucros',       path: '/lucros',       icon: '◈', section: null },
   { label: 'Fornecedores', path: '/fornecedores', icon: '◎', section: 'CADASTROS' },
+  { label: 'Configurações', path: '/configuracoes', icon: '⚙', section: null },
 ];
 
 const ADMIN_ITEMS = [
@@ -123,11 +129,19 @@ export default function Sidebar({ open, badges = {} }) {
   const navigate  = useNavigate();
   const location  = useLocation();
   const admin     = isAdmin();
-  const userName  = getNome();
+  const [userName, setUserName] = useState(getNome());
+  const [avatar,   setAvatar]   = useState(getAvatar());
+
+  // atualiza quando configurações forem salvas
+  useEffect(() => {
+    const handler = () => { setUserName(getNome()); setAvatar(getAvatar()); };
+    window.addEventListener('perfil-atualizado', handler);
+    return () => window.removeEventListener('perfil-atualizado', handler);
+  }, []);
 
   const allItems  = admin ? [...NAV_ITEMS, ...ADMIN_ITEMS] : NAV_ITEMS;
 
-  const handleLogout = () => { logout(); navigate('/'); };
+  const handleLogout = (e) => { e.stopPropagation(); logout(); navigate('/'); };
 
   return (
     <>
@@ -160,9 +174,9 @@ export default function Sidebar({ open, badges = {} }) {
         </nav>
 
         <div className="sb-footer">
-          <div className="sb-user">
+          <div className="sb-user" onClick={() => navigate('/configuracoes')} title="Configurações">
             <div className={`sb-avatar${admin ? ' admin-av' : ''}`}>
-              {userName[0]?.toUpperCase()}
+              {avatar ? <img src={avatar} alt=""/> : userName[0]?.toUpperCase()}
             </div>
             <div className="sb-user-info">
               <div className="sb-user-name">{userName}</div>

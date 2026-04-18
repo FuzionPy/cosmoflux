@@ -178,3 +178,50 @@ def deletar_usuario(uid: int, ctx: dict = Depends(get_ctx), db: Session = Depend
     db.delete(u)
     db.commit()
     return {"mensagem": "Usuário removido"}
+
+# ── PERFIL (usuário logado) ────────────────────────────────────────
+class PerfilUpdateSchema(BM):
+    nome:   Optional[str] = None
+    email:  Optional[str] = None
+    avatar: Optional[str] = None
+
+class SenhaUpdateSchema(BM):
+    senha_atual: str
+    senha_nova:  str
+
+@auth_router.get("/perfil")
+def get_perfil(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    u = db.query(Usuario).filter(Usuario.id == ctx["usuario_id"]).first()
+    if not u: raise HTTPException(404, "Usuário não encontrado")
+    return {
+        "id": u.id, "nome": u.nome, "email": u.email,
+        "admin": u.admin, "tenant_id": u.tenant_id,
+        "avatar": u.avatar,
+    }
+
+@auth_router.put("/perfil")
+def atualizar_perfil(dados: PerfilUpdateSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    u = db.query(Usuario).filter(Usuario.id == ctx["usuario_id"]).first()
+    if not u: raise HTTPException(404, "Usuário não encontrado")
+    if dados.email and dados.email != u.email:
+        if db.query(Usuario).filter(Usuario.email == dados.email, Usuario.id != u.id).first():
+            raise HTTPException(400, "E-mail já está em uso por outro usuário")
+        u.email = dados.email
+    if dados.nome:   u.nome = dados.nome
+    if dados.avatar is not None: u.avatar = dados.avatar  # pode ser "" para remover
+    db.commit()
+    return {"mensagem": "Perfil atualizado", "nome": u.nome, "email": u.email, "avatar": u.avatar}
+
+@auth_router.put("/perfil/senha")
+def trocar_senha(dados: SenhaUpdateSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    u = db.query(Usuario).filter(Usuario.id == ctx["usuario_id"]).first()
+    if not u: raise HTTPException(404, "Usuário não encontrado")
+    try:
+        ph.verify(u.senha, dados.senha_atual)
+    except VerifyMismatchError:
+        raise HTTPException(400, "Senha atual incorreta")
+    if len(dados.senha_nova) < 4:
+        raise HTTPException(400, "Nova senha deve ter ao menos 4 caracteres")
+    u.senha = ph.hash(dados.senha_nova)
+    db.commit()
+    return {"mensagem": "Senha alterada com sucesso"}
