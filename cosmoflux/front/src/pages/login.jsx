@@ -7,13 +7,16 @@ const styles = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   .cf-root {
-    min-height: 100vh;
-    width: 100%;
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
     background: radial-gradient(ellipse at top, #0a0815 0%, #04050a 60%);
     display: flex; align-items: center; justify-content: center;
     font-family: 'Outfit', sans-serif;
-    overflow: hidden; position: relative;
+    overflow: auto;
     padding: 20px;
+    z-index: 1;
   }
 
   /* ── Background atmospheric ── */
