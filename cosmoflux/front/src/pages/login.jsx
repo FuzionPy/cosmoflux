@@ -48,11 +48,11 @@ const styles = `
   /* ── Card principal ── */
   .cf-card {
     position: relative; z-index: 1;
-    width: 100%; max-width: 420px;
+    width: 100%; max-width: 480px;
     background: linear-gradient(180deg, rgba(14,16,22,0.95) 0%, rgba(10,12,18,0.95) 100%);
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 20px;
-    padding: 48px 40px 36px;
+    padding: 52px 52px 44px;
     box-shadow:
       0 40px 80px rgba(0,0,0,0.5),
       0 0 0 1px rgba(124,58,237,0.08),
@@ -275,8 +275,8 @@ const styles = `
     background: #00d4aa; box-shadow: 0 0 6px rgba(0,212,170,0.5);
   }
 
-  @media (max-width: 480px) {
-    .cf-card { padding: 36px 24px 28px; }
+  @media (max-width: 520px) {
+    .cf-card { padding: 40px 28px 32px; border-radius: 16px; }
     .cf-brand { margin-bottom: 28px; }
   }
 `;
