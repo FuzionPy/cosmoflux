@@ -60,11 +60,11 @@ const styles = `
   .layout-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
 
   .layout-overlay {
-  display: none;
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.6);
-  z-index: 1;
-}
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 99;
+  }
   .layout-overlay.open { display: block; }
 `;
 
@@ -80,6 +80,9 @@ const PAGE_TITLES = {
   '/lucros':       'Lucros',
   '/clientes':     'Clientes',
   '/fornecedores': 'Fornecedores',
+  '/vendas':       'Vendas',
+  '/configuracoes':'Configurações',
+  '/usuarios':     'Usuários',
 };
 
 export default function Layout() {
@@ -93,15 +96,14 @@ export default function Layout() {
     <>
       <style>{styles}</style>
 
-   
-
-      <div className="layout">
-        <Sidebar open={sideOpen} />
-
-        <div
+      {/* Overlay mobile */}
+      <div
         className={`layout-overlay${sideOpen ? ' open' : ''}`}
         onClick={() => setSideOpen(false)}
       />
+
+      <div className="layout">
+        <Sidebar open={sideOpen} onClose={() => setSideOpen(false)} />
 
         <div className="layout-main">
           <Topbar

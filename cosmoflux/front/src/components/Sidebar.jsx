@@ -125,7 +125,7 @@ const ADMIN_ITEMS = [
   { label: 'Usuários', path: '/usuarios', icon: '◉', section: 'ADMINISTRAÇÃO' },
 ];
 
-export default function Sidebar({ open, badges = {} }) {
+export default function Sidebar({ open, onClose, badges = {} }) {
   const navigate  = useNavigate();
   const location  = useLocation();
   const admin     = isAdmin();
@@ -159,7 +159,7 @@ export default function Sidebar({ open, badges = {} }) {
               {item.section && <div className="sb-section">{item.section}</div>}
               <div
                 className={`sb-item${location.pathname === item.path ? ' active' : ''}`}
-                onClick={() => navigate(item.path)}
+                onClick={() => { navigate(item.path); onClose?.(); }}
               >
                 <span className="sb-icon">{item.icon}</span>
                 {item.label}
@@ -174,7 +174,7 @@ export default function Sidebar({ open, badges = {} }) {
         </nav>
 
         <div className="sb-footer">
-          <div className="sb-user" onClick={() => navigate('/configuracoes')} title="Configurações">
+          <div className="sb-user" onClick={() => { navigate('/configuracoes'); onClose?.(); }} title="Configurações">
             <div className={`sb-avatar${admin ? ' admin-av' : ''}`}>
               {avatar ? <img src={avatar} alt=""/> : userName[0]?.toUpperCase()}
             </div>
