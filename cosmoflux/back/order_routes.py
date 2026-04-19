@@ -641,3 +641,26 @@ def estoque_snapshot(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)
         "valor_estoque":round(p.estoque_atual * p.preco_custo, 2),
         "status":       "esgotado" if p.estoque_atual==0 else "critico" if p.estoque_atual<=p.estoque_minimo else "ok",
     } for p in produtos]
+@order_router.get("/relatorios/produtos-mais-vendidos")
+def produtos_mais_vendidos(dias: int = Query(30), ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    from datetime import timedelta
+    corte = datetime.utcnow() - timedelta(days=dias)
+    pedidos = tf(db.query(Pedido), Pedido, ctx).filter(
+        Pedido.status != "cancelado",
+        Pedido.criado_em >= corte
+    ).all()
+
+    contagem = {}
+    for p in pedidos:
+        for it in p.itens:
+            pid = it.produto_id
+            if pid not in contagem:
+                nome = it.produto_rel.nome if it.produto_rel else f"Produto #{pid}"
+                contagem[pid] = {"id": pid, "nome": nome, "qtd_vendida": 0, "receita": 0.0}
+            contagem[pid]["qtd_vendida"] += it.quantidade
+            contagem[pid]["receita"]     += round(it.quantidade * it.preco_unitario, 2)
+
+    resultado = sorted(contagem.values(), key=lambda x: x["qtd_vendida"], reverse=True)
+    for r in resultado:
+        r["receita"] = round(r["receita"], 2)
+    return resultado

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 
-const BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000') + '/api';
+const BASE = 'http://127.0.0.1:8000/api';
 const tok = () => localStorage.getItem('token') || sessionStorage.getItem('token');
 const h = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${tok()}` });
 const api = { get: url => fetch(BASE+url,{headers:h()}).then(r=>r.json()) };
@@ -98,6 +98,31 @@ const S = `
 .btn-ghost{background:rgba(255,255,255,.05);color:rgba(232,234,237,.6);border:1px solid rgba(255,255,255,.08);}
 .btn-ghost:hover{background:rgba(255,255,255,.09);color:#e8eaed;}
 
+/* CHART BAR */
+.chart-wrap{padding:20px 18px;display:flex;flex-direction:column;gap:14px;}
+.chart-item{display:flex;flex-direction:column;gap:6px;}
+.chart-header{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.chart-rank{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;font-family:'JetBrains Mono',monospace;flex-shrink:0;}
+.chart-nome{font-size:13px;font-weight:600;color:#e8eaed;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.chart-val{font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;}
+.chart-bar-track{height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;}
+.chart-bar-fill{height:100%;border-radius:3px;transition:width 1s cubic-bezier(.22,1,.36,1);}
+.chart-meta{font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.3);}
+
+/* DONUT chart SVG */
+.donut-wrap{display:flex;align-items:center;justify-content:center;gap:28px;padding:20px 18px;flex-wrap:wrap;}
+.donut-legend{display:flex;flex-direction:column;gap:10px;min-width:140px;}
+.legend-item{display:flex;align-items:center;gap:8px;font-size:12px;}
+.legend-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0;}
+.legend-nome{color:#e8eaed;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.legend-pct{font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.5);font-size:11px;}
+
+/* PERIOD CHIPS */
+.period-chips{display:flex;gap:6px;flex-wrap:wrap;}
+.chip{padding:5px 12px;border-radius:20px;border:1px solid rgba(255,255,255,.08);background:none;font-family:'Syne',sans-serif;font-size:12px;font-weight:600;color:rgba(232,234,237,.4);cursor:pointer;transition:all .15s;}
+.chip.active{background:rgba(0,212,170,.12);border-color:rgba(0,212,170,.3);color:#00d4aa;}
+.chip:hover:not(.active){color:#e8eaed;border-color:rgba(255,255,255,.15);}
+
 @media(max-width:1100px){.kpi-grid{grid-template-columns:repeat(2,1fr);}.g3{grid-template-columns:1fr 1fr;}}
 @media(max-width:768px){.pg{padding:14px;}.kpi-grid{grid-template-columns:1fr 1fr;}.g2{grid-template-columns:1fr;}.g3{grid-template-columns:1fr;}}
 @media(max-width:480px){.kpi-grid{grid-template-columns:1fr;}}
@@ -120,6 +145,9 @@ export default function Relatorios() {
   const [estoque,   setEstoque]   = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [loadingV,  setLoadingV]  = useState(false);
+  const [produtos,   setProdutos]  = useState([]);
+  const [loadingP,   setLoadingP]  = useState(false);
+  const [periodoP,   setPeriodoP]  = useState('30');
 
   // filtros vendas
   const hoje = new Date().toISOString().split('T')[0];
@@ -148,8 +176,18 @@ export default function Relatorios() {
     } finally { setLoadingV(false); }
   }, [inicio, fim]);
 
+  const loadProdutos = useCallback(async () => {
+    setLoadingP(true);
+    try {
+      const data = await api.get(`/relatorios/produtos-mais-vendidos?dias=${periodoP}`);
+      setProdutos(data);
+    } catch { setProdutos([]); }
+    finally { setLoadingP(false); }
+  }, [periodoP]);
+
   useEffect(() => { loadResumo(); }, [loadResumo]);
   useEffect(() => { if (aba === 'vendas') loadVendas(); }, [aba, loadVendas]);
+  useEffect(() => { if (aba === 'produtos') loadProdutos(); }, [aba, loadProdutos]);
 
   // stats vendas
   const totalVendas   = vendas.reduce((a,v)=>a+v.total, 0);
@@ -187,6 +225,7 @@ export default function Relatorios() {
             { key:'geral',   label:'Resumo Geral'  },
             { key:'vendas',  label:'Vendas'         },
             { key:'estoque', label:'Estoque'        },
+            { key:'produtos', label:'Produtos'       },
           ].map(t => (
             <button key={t.key} className={`tab${aba===t.key?' active':''}`}
               onClick={()=>setAba(t.key)}>{t.label}</button>
@@ -426,6 +465,152 @@ export default function Relatorios() {
             </div>
           </>
         )}
+
+        {/* ── ABA PRODUTOS ── */}
+        {aba === 'produtos' && (() => {
+          const COLORS = ['#00d4aa','#0099ff','#a855f7','#ff6b35','#ffd32a','#ff4757','#00b3de','#7c3aed'];
+          const maxQtd = produtos[0]?.qtd_vendida || 1;
+          const maxRec = produtos[0]?.receita || 1;
+          const total  = produtos.reduce((a,p)=>a+p.qtd_vendida,0);
+
+          // Donut SVG
+          const DonutChart = ({ items }) => {
+            const SIZE = 140; const CX = SIZE/2; const R = 54; const STROKE = 18;
+            const circum = 2 * Math.PI * R;
+            let offset = 0;
+            const tot = items.reduce((a,i)=>a+i.qtd_vendida,0)||1;
+            return (
+              <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} style={{overflow:'visible'}}>
+                <circle cx={CX} cy={CX} r={R} fill="none" stroke="rgba(255,255,255,.04)" strokeWidth={STROKE}/>
+                {items.slice(0,8).map((p,i) => {
+                  const pct = p.qtd_vendida/tot;
+                  const dash = pct*circum;
+                  const gap  = circum - dash;
+                  const el = (
+                    <circle key={i} cx={CX} cy={CX} r={R} fill="none"
+                      stroke={COLORS[i%COLORS.length]} strokeWidth={STROKE}
+                      strokeDasharray={`${dash} ${gap}`}
+                      strokeDashoffset={-offset*circum}
+                      strokeLinecap="round"
+                      style={{transition:'stroke-dasharray 1s ease',transformOrigin:'center',transform:'rotate(-90deg)'}}/>
+                  );
+                  offset += pct;
+                  return el;
+                })}
+                <text x={CX} y={CX-6} textAnchor="middle" fill="rgba(232,234,237,.9)" fontSize="18" fontWeight="800" fontFamily="JetBrains Mono,monospace">{tot}</text>
+                <text x={CX} y={CX+12} textAnchor="middle" fill="rgba(232,234,237,.35)" fontSize="9" fontFamily="JetBrains Mono,monospace">TOTAL</text>
+              </svg>
+            );
+          };
+
+          return (
+            <>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10}}>
+                <div className="period-chips">
+                  {[['7','7 dias'],['30','30 dias'],['90','90 dias'],['365','1 ano']].map(([v,l])=>(
+                    <button key={v} className={`chip${periodoP===v?' active':''}`}
+                      onClick={()=>setPeriodoP(v)}>{l}</button>
+                  ))}
+                </div>
+                <button className="btn btn-ghost" onClick={loadProdutos}>↺ Atualizar</button>
+              </div>
+
+              {loadingP ? (
+                <div className="kpi-grid">{[1,2,3,4].map(i=><div key={i} className="skel" style={{height:80}}/>)}</div>
+              ) : (
+                <>
+                  {/* KPIs */}
+                  <div className="kpi-grid">
+                    {[
+                      { lbl:'Produtos vendidos', val:produtos.length,             sub:'com saída no período',         c:'#00d4aa' },
+                      { lbl:'Unidades saídas',   val:total,                        sub:'total de itens vendidos',      c:'#0099ff' },
+                      { lbl:'Receita gerada',    val:fmtBRL(produtos.reduce((a,p)=>a+p.receita,0)), sub:'pelo top produtos', c:'#a855f7', small:true },
+                      { lbl:'Mais vendido',       val:produtos[0]?.nome?.split(' ').slice(0,2).join(' ')||'—', sub:`${produtos[0]?.qtd_vendida||0} unidades`, c:'#ff6b35', small:true },
+                    ].map(k=>(
+                      <div key={k.lbl} className="kpi" style={{'--c':k.c}}>
+                        <div className="kpi-lbl">{k.lbl}</div>
+                        <div className="kpi-val" style={{fontSize:k.small?13:20}}>{k.val}</div>
+                        <div className="kpi-sub">{k.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="g2">
+                    {/* Bar chart — quantidade */}
+                    <div className="card">
+                      <div className="card-hdr">
+                        <div><div className="card-title">Mais Vendidos por Quantidade</div><div className="card-sub">unidades saídas no período</div></div>
+                      </div>
+                      {produtos.length===0 ? <div className="empty">Sem dados no período</div> : (
+                        <div className="chart-wrap">
+                          {produtos.slice(0,10).map((p,i)=>(
+                            <div key={p.id} className="chart-item">
+                              <div className="chart-header">
+                                <div className="chart-rank" style={{background:`${COLORS[i%COLORS.length]}18`,color:COLORS[i%COLORS.length]}}>{i+1}</div>
+                                <div className="chart-nome">{p.nome}</div>
+                                <div className="chart-val" style={{color:COLORS[i%COLORS.length]}}>{p.qtd_vendida} un.</div>
+                              </div>
+                              <div className="chart-bar-track">
+                                <div className="chart-bar-fill" style={{width:`${(p.qtd_vendida/maxQtd)*100}%`,background:`linear-gradient(90deg,${COLORS[i%COLORS.length]}cc,${COLORS[i%COLORS.length]})`}}/>
+                              </div>
+                              <div className="chart-meta">{fmtBRL(p.receita)} · {fmtPct(p.qtd_vendida/total*100)} do total</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Bar chart — receita */}
+                    <div className="card">
+                      <div className="card-hdr">
+                        <div><div className="card-title">Mais Vendidos por Receita</div><div className="card-sub">valor gerado no período</div></div>
+                      </div>
+                      {produtos.length===0 ? <div className="empty">Sem dados no período</div> : (
+                        <div className="chart-wrap">
+                          {[...produtos].sort((a,b)=>b.receita-a.receita).slice(0,10).map((p,i)=>(
+                            <div key={p.id} className="chart-item">
+                              <div className="chart-header">
+                                <div className="chart-rank" style={{background:`${COLORS[i%COLORS.length]}18`,color:COLORS[i%COLORS.length]}}>{i+1}</div>
+                                <div className="chart-nome">{p.nome}</div>
+                                <div className="chart-val" style={{color:COLORS[i%COLORS.length],fontSize:11}}>{fmtBRL(p.receita)}</div>
+                              </div>
+                              <div className="chart-bar-track">
+                                <div className="chart-bar-fill" style={{width:`${(p.receita/maxRec)*100}%`,background:`linear-gradient(90deg,${COLORS[i%COLORS.length]}cc,${COLORS[i%COLORS.length]})`}}/>
+                              </div>
+                              <div className="chart-meta">{p.qtd_vendida} un. · ticket médio {fmtBRL(p.receita/p.qtd_vendida)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Donut + legenda */}
+                  <div className="card">
+                    <div className="card-hdr">
+                      <div><div className="card-title">Distribuição de Vendas</div><div className="card-sub">participação de cada produto no total</div></div>
+                    </div>
+                    {produtos.length===0 ? <div className="empty">Sem dados no período</div> : (
+                      <div className="donut-wrap">
+                        <DonutChart items={produtos}/>
+                        <div className="donut-legend">
+                          {produtos.slice(0,8).map((p,i)=>(
+                            <div key={p.id} className="legend-item">
+                              <div className="legend-dot" style={{background:COLORS[i%COLORS.length]}}/>
+                              <div className="legend-nome">{p.nome}</div>
+                              <div className="legend-pct">{fmtPct(p.qtd_vendida/total*100)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </>
+          );
+        })()}
+
       </div>
     </>
   );
