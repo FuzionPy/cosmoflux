@@ -156,7 +156,8 @@ def listar_clientes(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db))
     for c in clientes:
         parcelas_vencidas = parcelas_proximas = 0
         total_em_aberto = 0.0
-        for v in c.vendas:
+        vendas_ativas = [v for v in c.vendas if v.status_pagamento != "cancelado"]
+        for v in vendas_ativas:
             for p in v.parcelas:
                 if not p.pago:
                     total_em_aberto += p.valor
@@ -169,7 +170,7 @@ def listar_clientes(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db))
             "observacao": c.observacao, "usuario_id": c.usuario_id,
             "vendedor": c.usuario_rel.nome if c.usuario_rel else None,
             "criado_em": c.criado_em.strftime("%d/%m/%Y") if c.criado_em else None,
-            "total_vendas": len(c.vendas),
+            "total_vendas": len(vendas_ativas),
             "total_em_aberto": round(total_em_aberto, 2),
             "parcelas_vencidas": parcelas_vencidas,
             "parcelas_proximas": parcelas_proximas,
@@ -184,6 +185,8 @@ def detalhe_cliente(cliente_id: int, ctx: dict = Depends(get_ctx), db: Session =
     hoje = date.today()
     vendas = []
     for v in c.vendas:
+        if v.status_pagamento == "cancelado":
+            continue
         parcelas = [{
             "id": p.id, "numero": p.numero, "valor": p.valor,
             "vencimento":     p.vencimento.strftime("%d/%m/%Y"),
