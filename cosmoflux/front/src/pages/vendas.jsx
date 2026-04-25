@@ -525,14 +525,14 @@ export default function Vendas() {
                     {showDrop && (
                       <div className="prod-dropdown">
                         {produtos
-                          .filter(p=>!itens.find(i=>i.produto_id===p.id)&&(!prodSearch||p.nome.toLowerCase().includes(prodSearch.toLowerCase())))
+                          .filter(p=>!itens.find(i=>i.produto_id===p.id)&&(!prodSearch||p.nome.toLowerCase().includes(prodSearch.toLowerCase())||(p.sku||'').toLowerCase().includes(prodSearch.toLowerCase())))
                           .slice(0,20).map(p=>(
                             <div key={p.id} className="prod-opt" onMouseDown={()=>{ setProdAdd(String(p.id)); setProdSearch(p.nome); setShowDrop(false); }}>
                               <div className="prod-opt-nome">{p.nome}</div>
-                              <div className="prod-opt-sub">{fmtBRL(p.preco_venda)} · estoque: {p.estoque_atual} {p.unidade}</div>
+                              <div className="prod-opt-sub">{p.sku?`SKU: ${p.sku} · `:''}{fmtBRL(p.preco_venda)} · estoque: {p.estoque_atual} {p.unidade}</div>
                             </div>
                           ))}
-                        {produtos.filter(p=>!itens.find(i=>i.produto_id===p.id)&&(!prodSearch||p.nome.toLowerCase().includes(prodSearch.toLowerCase()))).length===0 && (
+                        {produtos.filter(p=>!itens.find(i=>i.produto_id===p.id)&&(!prodSearch||p.nome.toLowerCase().includes(prodSearch.toLowerCase())||(p.sku||'').toLowerCase().includes(prodSearch.toLowerCase()))).length===0 && (
                           <div className="prod-opt-empty">Nenhum produto encontrado</div>
                         )}
                       </div>

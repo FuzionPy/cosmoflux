@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 
-const BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000') + '/api';
+const BASE = 'http://127.0.0.1:8000/api';
 const tok = () => localStorage.getItem('token') || sessionStorage.getItem('token');
 const h = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${tok()}` });
 const api = {
@@ -86,6 +86,25 @@ const S = `
 .pb-warn   .pb-val{color:#ffd32a;}
 .pb-danger .pb-val{color:#ff4757;}
 
+
+.prod-search-wrap{position:relative;}
+.prod-search-input{background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;font-size:13px;color:#e8eaed;font-family:'Syne',sans-serif;outline:none;width:100%;transition:border-color .2s,box-shadow .2s;}
+.prod-search-input:focus{border-color:rgba(255,107,53,.4);box-shadow:0 0 0 3px rgba(255,107,53,.08);}
+.prod-search-input::placeholder{color:rgba(232,234,237,.2);}
+.prod-selected{display:flex;align-items:center;justify-content:space-between;background:#13161a;border:1px solid rgba(255,107,53,.2);border-radius:8px;padding:10px 14px;}
+.prod-selected-nome{font-size:13px;font-weight:600;color:#e8eaed;}
+.prod-selected-sub{font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.35);margin-top:2px;}
+.prod-clear{background:none;border:none;color:rgba(232,234,237,.3);cursor:pointer;font-size:16px;padding:2px 4px;transition:color .15s;}
+.prod-clear:hover{color:#ff4757;}
+.prod-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#13161a;border:1px solid rgba(255,255,255,.1);border-radius:8px;z-index:50;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);}
+.prod-dropdown::-webkit-scrollbar{width:4px;}
+.prod-dropdown::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:2px;}
+.prod-opt{padding:10px 14px;cursor:pointer;transition:background .1s;border-bottom:1px solid rgba(255,255,255,.04);}
+.prod-opt:last-child{border-bottom:none;}
+.prod-opt:hover{background:rgba(255,107,53,.08);}
+.prod-opt-nome{font-size:13px;font-weight:600;color:#e8eaed;}
+.prod-opt-sub{font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.35);margin-top:2px;}
+.prod-opt-empty{padding:14px;text-align:center;font-size:12px;color:rgba(232,234,237,.25);font-family:'JetBrains Mono',monospace;}
 .ferr{background:rgba(255,71,87,.1);border:1px solid rgba(255,71,87,.3);border-radius:8px;padding:10px 14px;font-size:12px;color:#ff4757;font-family:'JetBrains Mono',monospace;}
 
 .btn{display:flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;border:none;font-family:'Syne',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;}
@@ -108,6 +127,8 @@ export default function Saidas() {
   const [search,   setSearch]   = useState('');
   const [showModal,setShowModal]= useState(false);
   const [form,     setForm]     = useState(FORM_EMPTY);
+  const [prodSearch, setProdSearch] = useState('');
+  const [showDrop,   setShowDrop]   = useState(false);
   const [saving,   setSaving]   = useState(false);
   const [formErr,  setFormErr]  = useState('');
   const [toast,    setToast]    = useState(null);
@@ -176,7 +197,7 @@ export default function Saidas() {
             <div className="pg-title">Saídas de Estoque</div>
             <div className="pg-sub">{movs.length} saída(s) registrada(s)</div>
           </div>
-          <button className="btn btn-saida" onClick={() => { setForm(FORM_EMPTY); setFormErr(''); setShowModal(true); }}>
+          <button className="btn btn-saida" onClick={() => { setForm(FORM_EMPTY); setProdSearch(''); setFormErr(''); setShowModal(true); }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Registrar Saída
           </button>
@@ -258,14 +279,48 @@ export default function Saidas() {
 
               <div className="ff">
                 <label className="fl">Produto *</label>
-                <select className="fsel2" value={form.produto_id} onChange={e=>setForm(f=>({...f,produto_id:e.target.value}))}>
-                  <option value="">Selecione um produto...</option>
-                  {produtos.map(p=>(
-                    <option key={p.id} value={p.id} disabled={p.estoque_atual===0}>
-                      {p.nome} — estoque: {p.estoque_atual} {p.unidade}{p.estoque_atual===0?' (ESGOTADO)':''}
-                    </option>
-                  ))}
-                </select>
+                {prodSelecionado ? (
+                  <div className="prod-selected">
+                    <div>
+                      <div className="prod-selected-nome">{prodSelecionado.nome}</div>
+                      <div className="prod-selected-sub">
+                        {prodSelecionado.sku?`SKU: ${prodSelecionado.sku} · `:''}estoque: {prodSelecionado.estoque_atual} {prodSelecionado.unidade}
+                      </div>
+                    </div>
+                    <button className="prod-clear" onClick={()=>{ setForm(f=>({...f,produto_id:''})); setProdSearch(''); }}>×</button>
+                  </div>
+                ) : (
+                  <div className="prod-search-wrap">
+                    <input className="prod-search-input" placeholder="Buscar por nome ou SKU..."
+                      value={prodSearch}
+                      onChange={e=>{ setProdSearch(e.target.value); setShowDrop(true); }}
+                      onFocus={()=>setShowDrop(true)}
+                      onBlur={()=>setTimeout(()=>setShowDrop(false),150)}
+                    />
+                    {showDrop && (
+                      <div className="prod-dropdown">
+                        {produtos
+                          .filter(p=>!prodSearch||
+                            p.nome.toLowerCase().includes(prodSearch.toLowerCase())||
+                            (p.sku||'').toLowerCase().includes(prodSearch.toLowerCase()))
+                          .slice(0,20).map(p=>(
+                            <div key={p.id} className="prod-opt" style={{opacity:p.estoque_atual===0?.5:1}}
+                              onMouseDown={()=>{ setForm(f=>({...f,produto_id:String(p.id)})); setProdSearch(''); setShowDrop(false); }}>
+                              <div className="prod-opt-nome">{p.nome}{p.estoque_atual===0?' — ESGOTADO':''}</div>
+                              <div className="prod-opt-sub">
+                                {p.sku?`SKU: ${p.sku} · `:''}estoque: {p.estoque_atual} {p.unidade}
+                              </div>
+                            </div>
+                          ))}
+                        {produtos.filter(p=>!prodSearch||
+                          p.nome.toLowerCase().includes(prodSearch.toLowerCase())||
+                          (p.sku||'').toLowerCase().includes(prodSearch.toLowerCase())).length===0 && (
+                          <div className="prod-opt-empty">Nenhum produto encontrado</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {prodSelecionado && (
