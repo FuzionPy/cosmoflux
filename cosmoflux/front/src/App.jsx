@@ -15,7 +15,7 @@ import Fornecedores from './pages/fornecedores'
 import Usuarios    from './pages/usuarios'
 import Vendas      from './pages/Vendas'
 import Configuracoes from './pages/Configuracoes'
-import Parceiras    from './pages/Parceiras'
+import Parceiras    from './pages/parceiras'
 
 const PublicRoute  = ({ children }) => getToken() ? <Navigate to="/menu" replace /> : children;
 const PrivateRoute = ({ children }) => getToken() ? children : <Navigate to="/" replace />;
