@@ -118,6 +118,7 @@ const NAV_ITEMS = [
   { label: 'Relatórios',   path: '/relatorios',   icon: '▦', section: 'ANÁLISE' },
   { label: 'Lucros',       path: '/lucros',       icon: '◈', section: null },
   { label: 'Fornecedores', path: '/fornecedores', icon: '◎', section: 'CADASTROS' },
+  { label: 'Parceiras',     path: '/parceiras',     icon: '◉', section: null },
   { label: 'Configurações', path: '/configuracoes', icon: '⚙', section: null },
 ];
 

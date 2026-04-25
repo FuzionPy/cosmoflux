@@ -13,8 +13,9 @@ import Lucros      from './pages/lucros'
 import Clientes    from './pages/clientes'
 import Fornecedores from './pages/fornecedores'
 import Usuarios    from './pages/usuarios'
-import Vendas      from './pages/vendas'
-import Configuracoes from './pages/configuracoes'
+import Vendas      from './pages/Vendas'
+import Configuracoes from './pages/Configuracoes'
+import Parceiras    from './pages/Parceiras'
 
 const PublicRoute  = ({ children }) => getToken() ? <Navigate to="/menu" replace /> : children;
 const PrivateRoute = ({ children }) => getToken() ? children : <Navigate to="/" replace />;
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/fornecedores" element={<Fornecedores />} />
           <Route path="/usuarios"     element={<Usuarios />} />
           <Route path="/configuracoes" element={<Configuracoes />} />
+          <Route path="/parceiras"     element={<Parceiras />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

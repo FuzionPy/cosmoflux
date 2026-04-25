@@ -231,6 +231,77 @@ class ItemPedido(Base):
         self.preco_unitario=preco_unitario; self.desconto_item=desconto_item
 
 
+
+
+# ══════════════════════════════════════════════════════════════════
+# PARCEIRAS
+# ══════════════════════════════════════════════════════════════════
+class Parceira(Base):
+    __tablename__ = "parceiras"
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    nome       = Column(String, nullable=False)
+    telefone   = Column(String, nullable=True)
+    email      = Column(String, nullable=True)
+    observacao = Column(Text, nullable=True)
+    ativa      = Column(Boolean, default=True)
+    tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=True)
+    criado_em  = Column(DateTime, default=datetime.utcnow)
+    compras    = relationship("CompraParceira",  back_populates="parceira_rel")
+    clientes   = relationship("ClienteParceira", back_populates="parceira_rel")
+
+
+class CompraParceira(Base):
+    """Compra de produtos feita pela parceira (baixa no estoque)."""
+    __tablename__ = "compras_parceira"
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    parceira_id    = Column(Integer, ForeignKey("parceiras.id"), nullable=False)
+    usuario_id     = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    tenant_id      = Column(Integer, ForeignKey("tenants.id"), nullable=True)
+    valor_total    = Column(Float, nullable=False, default=0.0)
+    status_pag     = Column(String, default="em_aberto")  # em_aberto | pago | parcelado
+    observacao     = Column(Text, nullable=True)
+    criado_em      = Column(DateTime, default=datetime.utcnow)
+    parceira_rel   = relationship("Parceira",      back_populates="compras")
+    itens          = relationship("ItemCompraParceira", back_populates="compra_rel")
+    repasses       = relationship("RepasseParceira",    back_populates="compra_rel")
+
+
+class ItemCompraParceira(Base):
+    __tablename__ = "itens_compra_parceira"
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    compra_id      = Column(Integer, ForeignKey("compras_parceira.id"), nullable=False)
+    produto_id     = Column(Integer, ForeignKey("produtos.id"), nullable=False)
+    quantidade     = Column(Integer, nullable=False)
+    preco_unitario = Column(Float, nullable=False)
+    compra_rel  = relationship("CompraParceira", back_populates="itens")
+    produto_rel = relationship("Produto")
+
+
+class RepasseParceira(Base):
+    """Pagamento realizado pela parceira."""
+    __tablename__ = "repasses_parceira"
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    compra_id   = Column(Integer, ForeignKey("compras_parceira.id"), nullable=False)
+    parceira_id = Column(Integer, ForeignKey("parceiras.id"), nullable=False)
+    tenant_id   = Column(Integer, ForeignKey("tenants.id"), nullable=True)
+    valor       = Column(Float, nullable=False)
+    observacao  = Column(Text, nullable=True)
+    data_repasse= Column(DateTime, default=datetime.utcnow)
+    compra_rel  = relationship("CompraParceira", back_populates="repasses")
+
+
+class ClienteParceira(Base):
+    """Cliente vinculado a uma parceira."""
+    __tablename__ = "clientes_parceira"
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    parceira_id = Column(Integer, ForeignKey("parceiras.id"), nullable=False)
+    tenant_id   = Column(Integer, ForeignKey("tenants.id"), nullable=True)
+    nome        = Column(String, nullable=False)
+    telefone    = Column(String, nullable=True)
+    observacao  = Column(Text, nullable=True)
+    criado_em   = Column(DateTime, default=datetime.utcnow)
+    parceira_rel = relationship("Parceira", back_populates="clientes")
+
 Base.metadata.create_all(bind=db)
 SessionLocal = sessionmaker(bind=db)
 
