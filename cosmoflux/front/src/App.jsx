@@ -17,7 +17,7 @@ import Vendas      from './pages/vendas'
 import Configuracoes from './pages/configuracoes'
 import Parceiras    from './pages/parceiras'
 
-const PublicRoute  = ({ children }) => getToken() ? <Navigate to="/menu" replace /> : children;
+const PublicRoute  = ({ children }) => getToken() ? <Navigate to="/dashboard" replace /> : children;
 const PrivateRoute = ({ children }) => getToken() ? children : <Navigate to="/" replace />;
 
 export default function App() {
