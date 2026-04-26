@@ -49,7 +49,7 @@ const S = `
 .bars-wrap{display:flex;align-items:flex-end;gap:4px;height:120px;position:relative;z-index:1;}
 .bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;}
 .bar-track{width:100%;flex:1;display:flex;align-items:flex-end;position:relative;}
-.bar{width:100%;border-radius:4px 4px 0 0;transition:all .6s cubic-bezier(.22,1,.36,1);position:relative;min-height:3px;}
+.bar{width:100%;border-radius:4px 4px 0 0;transition:height .7s cubic-bezier(.22,1,.36,1),background .2s,box-shadow .2s;position:relative;min-height:0;}
 .bar:hover{filter:brightness(1.3);}
 .bar-tooltip{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#1a1d22;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:5px 8px;font-size:11px;font-family:'JetBrains Mono',monospace;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;z-index:10;}
 .bar-col:hover .bar-tooltip{opacity:1;}
@@ -164,9 +164,11 @@ function BarChart({ data }) {
   const melhorMes = data.reduce((a,d)=>d.total>a.total?d:a, data[0]||{});
 
   useEffect(() => {
-    const t = setTimeout(() => setAnimated(true), 80);
+    if (!data || data.length === 0) return;
+    setAnimated(false);
+    const t = setTimeout(() => setAnimated(true), 200);
     return () => clearTimeout(t);
-  }, []);
+  }, [JSON.stringify(data)]);
 
   return (
     <>
