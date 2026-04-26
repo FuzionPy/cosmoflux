@@ -157,10 +157,16 @@ function DonutChart({ items, size=110 }) {
 // ── Bar Chart interativo ──────────────────────────────────────────
 function BarChart({ data }) {
   const [hov, setHov] = useState(null);
+  const [animated, setAnimated] = useState(false);
   const mes = new Date().getMonth();
   const max = Math.max(...data.map(d=>d.total), 1);
   const totalAno = data.reduce((a,d)=>a+d.total,0);
   const melhorMes = data.reduce((a,d)=>d.total>a.total?d:a, data[0]||{});
+
+  useEffect(() => {
+    const t = setTimeout(() => setAnimated(true), 80);
+    return () => clearTimeout(t);
+  }, []);
 
   return (
     <>
@@ -179,7 +185,7 @@ function BarChart({ data }) {
                 onMouseEnter={()=>setHov(i)}
                 onMouseLeave={()=>setHov(null)}>
                 <div className="bar-track">
-                  <div className="bar" style={{height:`${Math.max(pct,2)}%`,background:color,boxShadow:isMes?`0 0 12px rgba(0,212,170,.3)`:isHov?`0 0 8px rgba(0,212,170,.15)`:'none'}}>
+                  <div className="bar" style={{height:animated?`${Math.max(pct,2)}%`:'0%',transitionDelay:`${i*0.05}s`,background:color,boxShadow:isMes?`0 0 12px rgba(0,212,170,.3)`:isHov?`0 0 8px rgba(0,212,170,.15)`:'none'}}>
                     {(isHov||isMes) && (
                       <div className="bar-tooltip">
                         {MESES[i]}: {fmtBRL(d.total)}<br/>
