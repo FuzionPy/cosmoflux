@@ -46,9 +46,9 @@ const S = `
 .chart-area{padding:16px 18px 0;position:relative;}
 .chart-grid-lines{position:absolute;top:0;left:18px;right:18px;bottom:0;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none;}
 .chart-grid-line{width:100%;height:1px;background:rgba(255,255,255,.04);}
-.bars-wrap{display:flex;align-items:flex-end;gap:4px;height:120px;position:relative;z-index:1;}
-.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;}
-.bar-track{width:100%;flex:1;display:flex;align-items:flex-end;position:relative;}
+.bars-wrap{display:flex;align-items:flex-end;gap:4px;height:120px;position:relative;z-index:1;padding-bottom:0;}
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;height:100%;}
+.bar-track{width:100%;height:100%;display:flex;align-items:flex-end;position:relative;}
 .bar{width:100%;border-radius:4px 4px 0 0;transition:background .2s,box-shadow .2s;position:relative;}
 .bar:hover{filter:brightness(1.3);}
 .bar-tooltip{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#1a1d22;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:5px 8px;font-size:11px;font-family:'JetBrains Mono',monospace;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;z-index:10;}
@@ -179,7 +179,7 @@ function BarChart({ data }) {
                 onMouseEnter={()=>setHov(i)}
                 onMouseLeave={()=>setHov(null)}>
                 <div className="bar-track">
-                  <div className="bar" style={{height:`${Math.max(pct,2)}%`,transitionDelay:`${i*0.05}s`,background:color,boxShadow:isMes?`0 0 12px rgba(0,212,170,.3)`:isHov?`0 0 8px rgba(0,212,170,.15)`:'none'}}>
+                  <div className="bar" style={{height:`${Math.max(pct,2)}px`,maxHeight:'112px',transitionDelay:`${i*0.05}s`,background:color,boxShadow:isMes?`0 0 12px rgba(0,212,170,.3)`:isHov?`0 0 8px rgba(0,212,170,.15)`:'none'}}>
                     {(isHov||isMes) && (
                       <div className="bar-tooltip">
                         {MESES[i]}: {fmtBRL(d.total)}<br/>
