@@ -39,7 +39,7 @@ const S = `
 /* GRÁFICO — usa pixels como o Dashboard */
 .chart-wrap{padding:18px 18px 10px;display:flex;flex-direction:column;gap:14px;}
 .chart-bars{display:flex;align-items:flex-end;gap:4px;height:120px;}
-.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0;height:100%;}
+.bar-col{flex:1;display:flex;flex-direction:column-reverse;align-items:center;gap:4px;min-width:0;}
 .bar-stack{width:100%;display:flex;flex-direction:column;justify-content:flex-end;gap:1px;height:100%;}
 .bar-seg{width:100%;border-radius:2px 2px 0 0;cursor:pointer;position:relative;}
 .bar-seg:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100%+4px);left:50%;transform:translateX(-50%);background:#1a1d22;border:1px solid rgba(255,255,255,.1);color:#e8eaed;font-size:10px;font-family:'JetBrains Mono',monospace;padding:4px 8px;border-radius:5px;white-space:nowrap;z-index:10;}
