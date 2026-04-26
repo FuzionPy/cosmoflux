@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { getToken } from './services/authService'
 import Login       from './pages/login'
 import Layout      from './components/Layout'
-import Dashboard   from './pages/menu'
+import Dashboard   from './pages/Dashboard'
 import Produtos    from './pages/produtos'
 import Estoque     from './pages/estoque'
 import Entradas    from './pages/entradas'
@@ -26,7 +26,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<PublicRoute><Login /></PublicRoute>} />
         <Route element={<PrivateRoute><Layout /></PrivateRoute>}>
-          <Route path="/menu"         element={<Dashboard />} />
+          <Route path="/dashboard"         element={<Dashboard />} />
           <Route path="/vendas"       element={<Vendas />} />
           <Route path="/produtos"     element={<Produtos />} />
           <Route path="/estoque"      element={<Estoque />} />
