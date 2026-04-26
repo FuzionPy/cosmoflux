@@ -91,13 +91,17 @@ def dashboard_kpis(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
     estoque_critico = tf(db.query(Produto), Produto, ctx).filter(
         Produto.ativo == True, Produto.estoque_atual <= Produto.estoque_minimo
     ).count()
+    total_clientes  = tf(db.query(Cliente), Cliente, ctx).filter(Cliente.ativo == True).count()
+    margem = round(lucro_mes/receita_mes*100, 1) if receita_mes else 0
 
     return {
-        "receita_mes":    round(receita_mes, 2),
-        "lucro_mes":      round(lucro_mes, 2),
-        "pedidos_hoje":   pedidos_hoje,
-        "total_produtos": total_produtos,
-        "estoque_critico":estoque_critico,
+        "receita_mes":     round(receita_mes, 2),
+        "lucro_mes":       round(lucro_mes, 2),
+        "pedidos_hoje":    pedidos_hoje,
+        "total_produtos":  total_produtos,
+        "estoque_critico": estoque_critico,
+        "total_clientes":  total_clientes,
+        "margem":          margem,
     }
 
 @order_router.get("/dashboard/vendas-por-mes")
@@ -105,12 +109,13 @@ def vendas_por_mes(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
     ano = datetime.utcnow().year
     resultado = []
     for mes in range(1, 13):
-        total = tf(db.query(func.count(Pedido.id)), Pedido, ctx).filter(
+        pedidos_mes = tf(db.query(Pedido), Pedido, ctx).filter(
             func.extract('year', Pedido.criado_em) == ano,
             func.extract('month', Pedido.criado_em) == mes,
             Pedido.status != "cancelado"
-        ).scalar() or 0
-        resultado.append({"mes": mes, "total": total})
+        ).all()
+        fat = round(sum(p.total for p in pedidos_mes), 2)
+        resultado.append({"mes": mes, "total": fat, "count": len(pedidos_mes)})
     return resultado
 
 # ══════════════════════════════════════════════════════════════════
