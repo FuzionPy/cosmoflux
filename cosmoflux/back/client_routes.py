@@ -48,6 +48,8 @@ class VendaSchema(BaseModel):
     num_parcelas: int = 1
     data_vencimento: Optional[str] = None
     observacao: Optional[str] = None
+    valor_entrada: float = 0.0
+    modo_pagamento_entrada: Optional[str] = None
 
 class ItemVendaSchema(BaseModel):
     produto_id: int
@@ -64,6 +66,8 @@ class VendaUnificadaSchema(BaseModel):
     data_vencimento: Optional[str] = None
     desconto_geral: float = 0.0
     observacao: Optional[str] = None
+    valor_entrada: float = 0.0
+    modo_pagamento_entrada: Optional[str] = None
 
 class PagarParcelaSchema(BaseModel):
     data_pago: Optional[str] = None
@@ -116,32 +120,46 @@ def criar_venda_unificada(dados: VendaUnificadaSchema, ctx: dict = Depends(get_c
     venda_id = None
     if dados.cliente_id:
         venc = datetime.strptime(dados.data_vencimento, "%Y-%m-%d").date() if dados.data_vencimento else None
-        status_pag = "pendente" if (dados.modo_pagamento in ["fiado", "boleto"] or dados.parcelado) else "pago"
+        entrada = round(min(dados.valor_entrada or 0.0, total), 2)
+        restante = round(total - entrada, 2)
+        tem_restante = restante > 0.01
+        status_pag = "pendente" if (tem_restante or dados.modo_pagamento in ["fiado", "boleto"] or dados.parcelado) else "pago"
+        obs_entrada = f"Entrada: R$ {entrada:.2f} ({dados.modo_pagamento_entrada or dados.modo_pagamento}). " if entrada > 0 else ""
         venda = Venda(
             cliente_id=dados.cliente_id, usuario_id=ctx["usuario_id"],
             descricao=f"Pedido #{pedido.id}", valor_total=total,
             modo_pagamento=dados.modo_pagamento, parcelado=dados.parcelado,
             num_parcelas=dados.num_parcelas, data_vencimento=venc,
-            status_pagamento=status_pag, observacao=dados.observacao, tenant_id=tid(ctx),
+            status_pagamento=status_pag,
+            observacao=(obs_entrada + (dados.observacao or "")).strip() or None,
+            tenant_id=tid(ctx),
         )
         db.add(venda); db.flush()
         venda_id = venda.id
 
-        # parcelas
-        if dados.parcelado and dados.num_parcelas > 1 and venc:
-            valor_parc = round(total / dados.num_parcelas, 2)
-            for i in range(dados.num_parcelas):
-                mes = venc.month + i
-                ano = venc.year + (mes - 1) // 12
-                mes = ((mes - 1) % 12) + 1
-                try:    venc_parc = venc.replace(year=ano, month=mes)
-                except ValueError:
-                    import calendar
-                    ultimo_dia = calendar.monthrange(ano, mes)[1]
-                    venc_parc = venc.replace(year=ano, month=mes, day=ultimo_dia)
-                db.add(Parcela(venda_id=venda.id, numero=i+1, valor=valor_parc, vencimento=venc_parc))
-        elif venc:
-            db.add(Parcela(venda_id=venda.id, numero=1, valor=total, vencimento=venc))
+        # parcela de entrada (já paga)
+        if entrada > 0:
+            from datetime import date as date_type
+            db.add(Parcela(venda_id=venda.id, numero=0, valor=entrada,
+                           vencimento=date_type.today(), pago=True,
+                           data_pago=date_type.today()))
+
+        # parcelas do restante
+        if tem_restante:
+            if dados.parcelado and dados.num_parcelas > 1 and venc:
+                valor_parc = round(restante / dados.num_parcelas, 2)
+                for i in range(dados.num_parcelas):
+                    mes = venc.month + i
+                    ano = venc.year + (mes - 1) // 12
+                    mes = ((mes - 1) % 12) + 1
+                    try:    venc_parc = venc.replace(year=ano, month=mes)
+                    except ValueError:
+                        import calendar
+                        ultimo_dia = calendar.monthrange(ano, mes)[1]
+                        venc_parc = venc.replace(year=ano, month=mes, day=ultimo_dia)
+                    db.add(Parcela(venda_id=venda.id, numero=i+1, valor=valor_parc, vencimento=venc_parc))
+            elif venc:
+                db.add(Parcela(venda_id=venda.id, numero=1, valor=restante, vencimento=venc))
 
     db.commit()
     return {"mensagem": "Venda registrada", "pedido_id": pedido.id, "venda_id": venda_id, "total": total}

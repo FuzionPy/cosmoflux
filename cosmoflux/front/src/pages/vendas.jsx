@@ -165,6 +165,7 @@ const S = `
 const FORM_EMPTY = {
   cliente_id:'', modo_pagamento:'PIX', parcelado:false,
   num_parcelas:2, data_vencimento:'', desconto_geral:'', observacao:'',
+  valor_entrada:'', modo_pagamento_entrada:'',
 };
 
 export default function Vendas() {
@@ -246,6 +247,8 @@ export default function Vendas() {
         parcelado:       form.parcelado,
         num_parcelas:    parseInt(form.num_parcelas)||1,
         data_vencimento: form.data_vencimento||null,
+        valor_entrada:   parseFloat(form.valor_entrada)||0,
+        modo_pagamento_entrada: form.modo_pagamento_entrada||null,
         desconto_geral:  descontoGeral,
         observacao:      form.observacao||null,
       });
@@ -568,7 +571,7 @@ export default function Vendas() {
                 <div className="sec-title">Pagamento</div>
                 <div className="fr2">
                   <div className="ff">
-                    <label className="fl">Forma de pagamento</label>
+                    <label className="fl">Forma de pagamento (restante)</label>
                     <select className="fsel2" value={form.modo_pagamento} onChange={e=>setForm(f=>({...f,modo_pagamento:e.target.value,parcelado:false}))}>
                       {PAGAMENTOS.map(p=><option key={p}>{p}</option>)}
                     </select>
@@ -577,6 +580,26 @@ export default function Vendas() {
                     <label className="fl">Desconto geral (R$)</label>
                     <input className="fi" type="number" min="0" step="0.01" placeholder="0,00" value={form.desconto_geral} onChange={e=>setForm(f=>({...f,desconto_geral:e.target.value}))}/>
                   </div>
+                </div>
+
+                {/* Valor de entrada */}
+                <div className="fr2">
+                  <div className="ff">
+                    <label className="fl">Valor de entrada (R$)</label>
+                    <input className="fi" type="number" min="0" step="0.01" placeholder="0,00 — opcional"
+                      value={form.valor_entrada}
+                      onChange={e=>setForm(f=>({...f,valor_entrada:e.target.value}))}/>
+                  </div>
+                  {parseFloat(form.valor_entrada)>0 && (
+                    <div className="ff">
+                      <label className="fl">Forma de pagamento da entrada</label>
+                      <select className="fsel2" value={form.modo_pagamento_entrada}
+                        onChange={e=>setForm(f=>({...f,modo_pagamento_entrada:e.target.value}))}>
+                        <option value="">Mesma do restante</option>
+                        {PAGAMENTOS.map(p=><option key={p}>{p}</option>)}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 {(form.modo_pagamento==='Cartão de crédito'||form.modo_pagamento==='Fiado') && (
@@ -615,7 +638,24 @@ export default function Vendas() {
                   <div className="total-row"><span className="total-label">Subtotal</span><span className="total-val">{fmtBRL(subtotal)}</span></div>
                   {descontoGeral>0 && <div className="total-row"><span className="total-label">Desconto</span><span className="total-val" style={{color:'#ff6b35'}}>- {fmtBRL(descontoGeral)}</span></div>}
                   <div className="total-row main"><span className="total-label">Total</span><span className="total-val green">{fmtBRL(total)}</span></div>
-                  {form.parcelado && form.num_parcelas>1 && (
+                  {parseFloat(form.valor_entrada)>0 && (() => {
+                    const entrada = Math.min(parseFloat(form.valor_entrada)||0, total);
+                    const restante = Math.max(total - entrada, 0);
+                    return (<>
+                      <div className="total-row" style={{borderTop:'1px solid rgba(255,255,255,.06)',paddingTop:8,marginTop:4}}>
+                        <span className="total-label" style={{color:'#00d4aa'}}>✓ Entrada</span>
+                        <span className="total-val" style={{color:'#00d4aa'}}>- {fmtBRL(entrada)}</span>
+                      </div>
+                      <div className="total-row main">
+                        <span className="total-label">Restante a pagar</span>
+                        <span className="total-val" style={{color: restante>0?'#ffd32a':'#00d4aa'}}>{fmtBRL(restante)}</span>
+                      </div>
+                      {form.parcelado && form.num_parcelas>1 && restante>0 && (
+                        <div style={{fontSize:11,color:'rgba(232,234,237,.35)',fontFamily:'JetBrains Mono,monospace',textAlign:'right'}}>{form.num_parcelas}x de {fmtBRL(restante/parseInt(form.num_parcelas||1))}</div>
+                      )}
+                    </>);
+                  })()}
+                  {(!parseFloat(form.valor_entrada)||parseFloat(form.valor_entrada)<=0) && form.parcelado && form.num_parcelas>1 && (
                     <div style={{fontSize:11,color:'rgba(232,234,237,.35)',fontFamily:'JetBrains Mono,monospace',textAlign:'right'}}>{form.num_parcelas}x de {fmtBRL(total/parseInt(form.num_parcelas||1))}</div>
                   )}
                 </div>
