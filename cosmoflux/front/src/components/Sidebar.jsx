@@ -28,10 +28,15 @@ const styles = `
     transition: transform 0.3s ease;
     z-index: 100; font-family: 'Syne', sans-serif;
   }
-  .sidebar-logo {
-    padding: 20px 18px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  .cf-logo {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #a070ff, #5e2cb4 70%);
+    display: flex; align-items: center; justify-content: center;
+    position: relative; margin-bottom: 16px;
+    box-shadow:
+      0 0 0 1px rgba(160,112,255,0.3),
+      0 0 40px rgba(160,112,255,0.3),
+      inset 0 2px 4px rgba(255,255,255,0.15);
   }
   .sb-logo-icon {
     width: 30px; height: 30px; border-radius: 7px;

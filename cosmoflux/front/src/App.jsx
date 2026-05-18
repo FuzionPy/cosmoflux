@@ -26,7 +26,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<PublicRoute><Login /></PublicRoute>} />
         <Route element={<PrivateRoute><Layout /></PrivateRoute>}>
-          <Route path="/dashboard"         element={<Dashboard />} />
+          <Route path="/dashboard"    element={<Dashboard />} />
           <Route path="/vendas"       element={<Vendas />} />
           <Route path="/produtos"     element={<Produtos />} />
           <Route path="/estoque"      element={<Estoque />} />
