@@ -17,7 +17,17 @@ const getNome = () => {
 const getAvatar = () => localStorage.getItem('avatar') || sessionStorage.getItem('avatar') || '';
 
 const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Space+Mono:wght@400;700&display=swap');
+
+  /* OVERLAY — fundo escuro clicável no mobile */
+  .sb-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 99;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
 
   .sidebar {
     width: 220px; flex-shrink: 0;
@@ -28,25 +38,37 @@ const styles = `
     transition: transform 0.3s ease;
     z-index: 100; font-family: 'Syne', sans-serif;
   }
-  .cf-logo {
-    width: 56px; height: 56px; border-radius: 50%;
-    background: radial-gradient(circle at 30% 30%, #a070ff, #5e2cb4 70%);
-    display: flex; align-items: center; justify-content: center;
-    position: relative; margin-bottom: 16px;
-    box-shadow:
-      0 0 0 1px rgba(160,112,255,0.3),
-      0 0 40px rgba(160,112,255,0.3),
-      inset 0 2px 4px rgba(255,255,255,0.15);
+  .sidebar-logo {
+    padding: 20px 18px 20px 32px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex; align-items: center; gap: 16px; flex-shrink: 0;
   }
-  .sb-logo-icon {
-    width: 30px; height: 30px; border-radius: 7px;
-    background: linear-gradient(135deg, #000, #b300ff);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 800; color: #fff; flex-shrink: 0;
+  /* Logo — órbitas animadas igual ao login */
+  .sb-logo-sphere {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #a070ff, #5e2cb4 70%);
+    position: relative; flex-shrink: 0;
+    box-shadow: 0 0 0 1px rgba(160,112,255,0.3), 0 0 16px rgba(160,112,255,0.3),
+                inset 0 2px 4px rgba(255,255,255,0.15);
+  }
+  .sb-logo-sphere::before {
+    content: ''; position: absolute; inset: -7px;
+    border: 1px solid rgba(160,112,255,0.25); border-radius: 50%;
+    animation: sb-orbit 6s linear infinite;
+  }
+  .sb-logo-sphere::after {
+    content: ''; position: absolute; inset: -14px;
+    border: 1px dashed rgba(160,112,255,0.12); border-radius: 50%;
+    animation: sb-orbit 18s linear infinite reverse;
+  }
+  @keyframes sb-orbit {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
   }
   .sb-logo-text {
     font-size: 12px; font-weight: 700; letter-spacing: 0.15em;
     text-transform: uppercase; color: #e8eaed; white-space: nowrap;
+    font-family: 'Space Mono', monospace;
   }
 
   .sb-nav { flex: 1; padding: 12px 8px; overflow-y: auto; overflow-x: hidden; }
@@ -107,8 +129,18 @@ const styles = `
   .sb-logout:hover { color: #ff4757; }
 
   @media (max-width: 768px) {
-    .sidebar { position: fixed; left: 0; top: 0; bottom: 0; transform: translateX(-100%); }
-    .sidebar.open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,0.5); }
+    .sb-overlay { display: block; }
+    .sb-overlay.hidden { display: none; }
+
+    .sidebar {
+      position: fixed; left: 0; top: 0; bottom: 0;
+      transform: translateX(-100%);
+      z-index: 100;
+    }
+    .sidebar.open {
+      transform: translateX(0);
+      box-shadow: 4px 0 32px rgba(0,0,0,0.7);
+    }
   }
 `;
 
@@ -138,24 +170,45 @@ export default function Sidebar({ open, onClose, badges = {} }) {
   const [userName, setUserName] = useState(getNome());
   const [avatar,   setAvatar]   = useState(getAvatar());
 
-  // atualiza quando configurações forem salvas
   useEffect(() => {
     const handler = () => { setUserName(getNome()); setAvatar(getAvatar()); };
     window.addEventListener('perfil-atualizado', handler);
     return () => window.removeEventListener('perfil-atualizado', handler);
   }, []);
 
+  // trava scroll do body quando sidebar está aberta no mobile
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
+
   const allItems  = admin ? [...NAV_ITEMS, ...ADMIN_ITEMS] : NAV_ITEMS;
 
   const handleLogout = (e) => { e.stopPropagation(); logout(); navigate('/'); };
 
+  const handleNav = (path) => {
+    navigate(path);
+    onClose?.();
+  };
+
   return (
     <>
       <style>{styles}</style>
+
+      {/* Overlay clicável para fechar no mobile */}
+      <div
+        className={`sb-overlay${open ? '' : ' hidden'}`}
+        onClick={onClose}
+      />
+
       <aside className={`sidebar${open ? ' open' : ''}`}>
 
         <div className="sidebar-logo">
-          <div className="sb-logo-icon">CF</div>
+          <div className="sb-logo-sphere" />
           <span className="sb-logo-text">Cosmo Flux</span>
         </div>
 
@@ -165,7 +218,7 @@ export default function Sidebar({ open, onClose, badges = {} }) {
               {item.section && <div className="sb-section">{item.section}</div>}
               <div
                 className={`sb-item${location.pathname === item.path ? ' active' : ''}`}
-                onClick={() => { navigate(item.path); onClose?.(); }}
+                onClick={() => handleNav(item.path)}
               >
                 <span className="sb-icon">{item.icon}</span>
                 {item.label}
@@ -180,7 +233,7 @@ export default function Sidebar({ open, onClose, badges = {} }) {
         </nav>
 
         <div className="sb-footer">
-          <div className="sb-user" onClick={() => { navigate('/configuracoes'); onClose?.(); }} title="Configurações">
+          <div className="sb-user" onClick={() => handleNav('/configuracoes')} title="Configurações">
             <div className={`sb-avatar${admin ? ' admin-av' : ''}`}>
               {avatar ? <img src={avatar} alt=""/> : userName[0]?.toUpperCase()}
             </div>
