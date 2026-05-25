@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 
-const BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000') + '/api';
+const BASE = 'http://127.0.0.1:8000/api';
 const tok = () => localStorage.getItem('token') || sessionStorage.getItem('token');
 const h = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${tok()}` });
 const api = { get: url => fetch(BASE+url,{headers:h()}).then(r=>r.json()) };
@@ -123,11 +123,36 @@ const S = `
 .chip.active{background:rgba(0,212,170,.12);border-color:rgba(0,212,170,.3);color:#00d4aa;}
 .chip:hover:not(.active){color:#e8eaed;border-color:rgba(255,255,255,.15);}
 
+/* Filtros avançados */
+.filtros-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;padding:14px 18px;background:rgba(255,255,255,.02);border-bottom:1px solid rgba(255,255,255,.06);}
+.filtro-label{font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(232,234,237,.28);font-family:'JetBrains Mono',monospace;margin-bottom:4px;}
+.fsel{background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:7px;padding:7px 10px;font-size:12px;color:#e8eaed;font-family:'Syne',sans-serif;outline:none;width:100%;cursor:pointer;}
+.fsel:focus{border-color:rgba(0,212,170,.4);}
+.finp{background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:7px;padding:7px 10px;font-size:12px;color:#e8eaed;font-family:'JetBrains Mono',monospace;outline:none;width:100%;}
+.finp:focus{border-color:rgba(0,212,170,.4);}
+/* Gráfico donut status */
+.mini-bars{display:flex;flex-direction:column;gap:8px;padding:16px 18px;}
+.mini-bar-row{display:flex;align-items:center;gap:10px;}
+.mini-bar-lbl{font-size:11px;font-weight:600;color:rgba(232,234,237,.6);min-width:90px;}
+.mini-bar-track{flex:1;height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden;}
+.mini-bar-fill{height:100%;border-radius:4px;transition:width .8s cubic-bezier(.22,1,.36,1);}
+.mini-bar-val{font-size:11px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.4);min-width:48px;text-align:right;}
 @media(max-width:1100px){.kpi-grid{grid-template-columns:repeat(2,1fr);}.g3{grid-template-columns:1fr 1fr;}}
-@media(max-width:768px){.pg{padding:14px;}.kpi-grid{grid-template-columns:1fr 1fr;}.g2{grid-template-columns:1fr;}.g3{grid-template-columns:1fr;}}
-@media(max-width:480px){.kpi-grid{grid-template-columns:1fr;}}
+@media(max-width:768px){.pg{padding:14px;}.kpi-grid{grid-template-columns:1fr 1fr;}.g2{grid-template-columns:1fr;}.g3{grid-template-columns:1fr;}.filtros-grid{grid-template-columns:1fr 1fr;}}
+@media(max-width:480px){.kpi-grid{grid-template-columns:1fr;}.filtros-grid{grid-template-columns:1fr;}}
 `;
 
+const STATUS_ENTREGA_MAP = {
+  pendente_entrega: { cls:'b-yellow', label:'PENDENTE'  },
+  entregue:         { cls:'b-green',  label:'ENTREGUE'  },
+  cancelado:        { cls:'b-red',    label:'CANCELADO' },
+};
+const STATUS_PAG_MAP = {
+  pago:      { cls:'b-green',  label:'PAGO'      },
+  em_aberto: { cls:'b-yellow', label:'EM ABERTO' },
+  vencido:   { cls:'b-red',    label:'VENCIDO'   },
+  cancelado: { cls:'b-gray',   label:'CANCELADO' },
+};
 const STATUS_MAP = {
   pendente:   { cls:'b-yellow', label:'PENDENTE'   },
   confirmado: { cls:'b-blue',   label:'CONFIRMADO' },
@@ -152,9 +177,14 @@ export default function Relatorios() {
   // filtros vendas
   const hoje = new Date().toISOString().split('T')[0];
   const inicioMes = hoje.slice(0,7) + '-01';
-  const [inicio, setInicio] = useState(inicioMes);
-  const [fim,    setFim]    = useState(hoje);
-  const [sortVendas, setSortVendas] = useState('data');
+  const [inicio,        setInicio]        = useState(inicioMes);
+  const [fim,           setFim]           = useState(hoje);
+  const [sortVendas,    setSortVendas]    = useState('data');
+  const [filtStEntrega, setFiltStEntrega] = useState('todos');
+  const [filtStPag,     setFiltStPag]     = useState('todos');
+  const [filtModoPag,   setFiltModoPag]   = useState('todos');
+  const [filtValMin,    setFiltValMin]     = useState('');
+  const [filtValMax,    setFiltValMax]     = useState('');
 
   const loadResumo = useCallback(async () => {
     setLoading(true);
@@ -171,10 +201,16 @@ export default function Relatorios() {
   const loadVendas = useCallback(async () => {
     setLoadingV(true);
     try {
-      const data = await api.get(`/relatorios/vendas-periodo?inicio=${inicio}&fim=${fim}`);
-      setVendas(data);
+      const params = new URLSearchParams({ inicio, fim });
+      if (filtStEntrega !== 'todos') params.set('status_entrega', filtStEntrega);
+      if (filtStPag     !== 'todos') params.set('status_pagamento', filtStPag);
+      if (filtModoPag   !== 'todos') params.set('modo_pagamento', filtModoPag);
+      if (filtValMin) params.set('valor_min', filtValMin);
+      if (filtValMax) params.set('valor_max', filtValMax);
+      const data = await api.get(`/relatorios/vendas-periodo?${params}`);
+      setVendas(Array.isArray(data) ? data : []);
     } finally { setLoadingV(false); }
-  }, [inicio, fim]);
+  }, [inicio, fim, filtStEntrega, filtStPag, filtModoPag, filtValMin, filtValMax]);
 
   const loadProdutos = useCallback(async () => {
     setLoadingP(true);
@@ -321,8 +357,27 @@ export default function Relatorios() {
         )}
 
         {/* ── ABA VENDAS ── */}
-        {aba === 'vendas' && (
+        {aba === 'vendas' && (() => {
+          // agrupamentos para gráficos
+          const porStEntrega = ['pendente_entrega','entregue','cancelado'].map(s => ({
+            label: s==='pendente_entrega'?'Pendente':s==='entregue'?'Entregue':'Cancelado',
+            val:   vendas.filter(v=>v.status_entrega===s).length,
+            color: s==='entregue'?'#00d4aa':s==='pendente_entrega'?'#ffd32a':'#ff4757',
+          }));
+          const porStPag = ['pago','em_aberto','vencido','cancelado'].map(s => ({
+            label: s==='pago'?'Pago':s==='em_aberto'?'Em aberto':s==='vencido'?'Vencido':'Cancelado',
+            val:   vendas.filter(v=>v.status_pagamento===s).length,
+            color: s==='pago'?'#00d4aa':s==='em_aberto'?'#ffd32a':s==='vencido'?'#ff6b35':'#ff4757',
+          }));
+          const modosPag = [...new Set(vendas.map(v=>v.modo_pagamento).filter(Boolean))];
+          const porModo = modosPag.map(m=>({ label:m, val:vendas.filter(v=>v.modo_pagamento===m).length, receita:vendas.filter(v=>v.modo_pagamento===m).reduce((a,v)=>a+v.total,0) }));
+          const maxEntrega = Math.max(...porStEntrega.map(x=>x.val),1);
+          const maxPag     = Math.max(...porStPag.map(x=>x.val),1);
+          const maxModo    = Math.max(...porModo.map(x=>x.val),1);
+
+          return (
           <>
+            {/* Filtros de período */}
             <div className="period-filters">
               <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
                 <span style={{fontSize:12,color:'rgba(232,234,237,.4)'}}>De</span>
@@ -338,13 +393,64 @@ export default function Relatorios() {
               </select>
             </div>
 
-            {/* stats do período */}
+            {/* Filtros avançados */}
+            <div className="card">
+              <div className="card-hdr"><div className="card-title">Filtros Avançados</div></div>
+              <div className="filtros-grid">
+                <div>
+                  <div className="filtro-label">Status de entrega</div>
+                  <select className="fsel" value={filtStEntrega} onChange={e=>setFiltStEntrega(e.target.value)}>
+                    <option value="todos">Todos</option>
+                    <option value="pendente_entrega">Pendente</option>
+                    <option value="entregue">Entregue</option>
+                    <option value="cancelado">Cancelado</option>
+                  </select>
+                </div>
+                <div>
+                  <div className="filtro-label">Status de pagamento</div>
+                  <select className="fsel" value={filtStPag} onChange={e=>setFiltStPag(e.target.value)}>
+                    <option value="todos">Todos</option>
+                    <option value="pago">Pago</option>
+                    <option value="em_aberto">Em aberto</option>
+                    <option value="vencido">Vencido</option>
+                    <option value="cancelado">Cancelado</option>
+                  </select>
+                </div>
+                <div>
+                  <div className="filtro-label">Forma de pagamento</div>
+                  <select className="fsel" value={filtModoPag} onChange={e=>setFiltModoPag(e.target.value)}>
+                    <option value="todos">Todas</option>
+                    {['PIX','Dinheiro','Cartão de crédito','Cartão de débito','Fiado','Transferência'].map(m=>(
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <div className="filtro-label">Valor mínimo (R$)</div>
+                  <input className="finp" type="number" min="0" step="0.01" placeholder="0,00"
+                    value={filtValMin} onChange={e=>setFiltValMin(e.target.value)}/>
+                </div>
+                <div>
+                  <div className="filtro-label">Valor máximo (R$)</div>
+                  <input className="finp" type="number" min="0" step="0.01" placeholder="sem limite"
+                    value={filtValMax} onChange={e=>setFiltValMax(e.target.value)}/>
+                </div>
+                <div style={{display:'flex',alignItems:'flex-end'}}>
+                  <button className="btn btn-ghost" style={{width:'100%',justifyContent:'center'}} onClick={()=>{
+                    setFiltStEntrega('todos');setFiltStPag('todos');setFiltModoPag('todos');
+                    setFiltValMin('');setFiltValMax('');
+                  }}>Limpar filtros</button>
+                </div>
+              </div>
+            </div>
+
+            {/* KPIs */}
             <div className="kpi-grid">
               {[
-                { lbl:'Pedidos',      val:vendas.length,         sub:'no período selecionado', c:'#0099ff' },
-                { lbl:'Receita',      val:fmtBRL(totalVendas),   sub:'total bruto',            c:'#00d4aa' },
-                { lbl:'Lucro',        val:fmtBRL(totalLucro),    sub:`Margem ${vendas.length?fmtPct(totalLucro/totalVendas*100):'0%'}`, c:'#a855f7' },
-                { lbl:'Ticket médio', val:fmtBRL(ticketMedio),   sub:'por pedido',             c:'#ff6b35' },
+                { lbl:'Pedidos',      val:vendas.length,         sub:'no período filtrado', c:'#0099ff' },
+                { lbl:'Receita',      val:fmtBRL(totalVendas),   sub:'total bruto',         c:'#00d4aa' },
+                { lbl:'Lucro',        val:fmtBRL(totalLucro),    sub:`Margem ${vendas.length&&totalVendas?fmtPct(totalLucro/totalVendas*100):'0%'}`, c:'#a855f7' },
+                { lbl:'Ticket médio', val:fmtBRL(ticketMedio),   sub:'por pedido',          c:'#ff6b35' },
               ].map(k => (
                 <div key={k.lbl} className="kpi" style={{'--c':k.c}}>
                   <div className="kpi-lbl">{k.lbl}</div>
@@ -354,6 +460,65 @@ export default function Relatorios() {
               ))}
             </div>
 
+            {/* Gráficos visuais */}
+            {vendas.length > 0 && (
+              <div className="g2">
+                {/* Status de entrega e pagamento */}
+                <div className="card">
+                  <div className="card-hdr"><div className="card-title">Status de Entrega</div></div>
+                  <div className="mini-bars">
+                    {porStEntrega.map(r => (
+                      <div key={r.label} className="mini-bar-row">
+                        <div className="mini-bar-lbl">{r.label}</div>
+                        <div className="mini-bar-track">
+                          <div className="mini-bar-fill" style={{width:`${(r.val/maxEntrega)*100}%`, background:r.color}}/>
+                        </div>
+                        <div className="mini-bar-val">{r.val} {r.val===1?'pedido':'pedidos'}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="card-hdr" style={{borderTop:'1px solid rgba(255,255,255,.06)'}}><div className="card-title">Status de Pagamento</div></div>
+                  <div className="mini-bars">
+                    {porStPag.map(r => (
+                      <div key={r.label} className="mini-bar-row">
+                        <div className="mini-bar-lbl">{r.label}</div>
+                        <div className="mini-bar-track">
+                          <div className="mini-bar-fill" style={{width:`${(r.val/maxPag)*100}%`, background:r.color}}/>
+                        </div>
+                        <div className="mini-bar-val">{r.val} {r.val===1?'pedido':'pedidos'}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Formas de pagamento */}
+                <div className="card">
+                  <div className="card-hdr"><div className="card-title">Formas de Pagamento</div><div className="card-sub">por quantidade de pedidos</div></div>
+                  <div className="mini-bars">
+                    {porModo.length === 0 ? (
+                      <div className="empty">Sem dados</div>
+                    ) : porModo.sort((a,b)=>b.val-a.val).map((r,i) => {
+                      const cores = ['#00d4aa','#0099ff','#a855f7','#ff6b35','#ffd32a','#ff4757'];
+                      const cor = cores[i % cores.length];
+                      return (
+                        <div key={r.label} className="mini-bar-row">
+                          <div className="mini-bar-lbl" style={{fontSize:10}}>{r.label}</div>
+                          <div className="mini-bar-track">
+                            <div className="mini-bar-fill" style={{width:`${(r.val/maxModo)*100}%`, background:cor}}/>
+                          </div>
+                          <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',minWidth:70}}>
+                            <span style={{fontSize:11,fontFamily:'JetBrains Mono,monospace',color:'rgba(232,234,237,.5)'}}>{r.val}x</span>
+                            <span style={{fontSize:10,fontFamily:'JetBrains Mono,monospace',color:cor}}>{fmtBRL(r.receita)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tabela */}
             <div className="card">
               <div className="card-hdr">
                 <div><div className="card-title">Pedidos do Período</div><div className="card-sub">{vendas.length} resultado(s)</div></div>
@@ -368,20 +533,27 @@ export default function Relatorios() {
                 ) : (
                   <table className="tbl">
                     <thead>
-                      <tr><th>#</th><th>Cliente</th><th>Data</th><th>Itens</th><th className="r">Total</th><th className="r">Lucro</th><th>Status</th></tr>
+                      <tr>
+                        <th>#</th><th>Cliente</th><th>Produtos</th><th>Data</th>
+                        <th>Entrega</th><th>Pagamento</th><th>Forma</th>
+                        <th className="r">Total</th><th className="r">Lucro</th>
+                      </tr>
                     </thead>
                     <tbody>
                       {vendasSorted.map(v => {
-                        const st = STATUS_MAP[v.status]||{cls:'b-gray',label:v.status};
+                        const stE = STATUS_ENTREGA_MAP[v.status_entrega]||{cls:'b-gray',label:v.status_entrega||'—'};
+                        const stP = STATUS_PAG_MAP[v.status_pagamento]||{cls:'b-gray',label:v.status_pagamento||'—'};
                         return (
                           <tr key={v.id}>
                             <td className="mono" style={{color:'rgba(232,234,237,.3)',fontSize:11}}>#{v.id}</td>
-                            <td>{v.cliente}</td>
+                            <td style={{fontWeight:600}}>{v.cliente}</td>
+                            <td style={{fontSize:11,color:'rgba(232,234,237,.35)',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{v.produtos||'—'}</td>
                             <td className="mono" style={{fontSize:11}}>{v.data}</td>
-                            <td className="mono">{v.itens}</td>
+                            <td><span className={`badge ${stE.cls}`}>{stE.label}</span></td>
+                            <td><span className={`badge ${stP.cls}`}>{stP.label}</span></td>
+                            <td style={{fontSize:11,color:'rgba(232,234,237,.5)'}}>{v.modo_pagamento||'—'}</td>
                             <td className="mono r" style={{color:'#00d4aa',fontWeight:700}}>{fmtBRL(v.total)}</td>
                             <td className={`r ${v.lucro>=0?'green':'red'}`}>{fmtBRL(v.lucro)}</td>
-                            <td><span className={`badge ${st.cls}`}>{st.label}</span></td>
                           </tr>
                         );
                       })}
@@ -391,7 +563,8 @@ export default function Relatorios() {
               </div>
             </div>
           </>
-        )}
+          );
+        })()}
 
         {/* ── ABA ESTOQUE ── */}
         {aba === 'estoque' && (

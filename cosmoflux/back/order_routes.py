@@ -608,26 +608,58 @@ def resumo_geral(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
 
 @order_router.get("/relatorios/vendas-periodo")
 def vendas_periodo(
-    inicio: Optional[str] = Query(None),  # YYYY-MM-DD
-    fim:    Optional[str] = Query(None),
+    inicio:           Optional[str] = Query(None),
+    fim:              Optional[str] = Query(None),
+    status_entrega:   Optional[str] = Query(None),
+    status_pagamento: Optional[str] = Query(None),
+    modo_pagamento:   Optional[str] = Query(None),
+    valor_min:        Optional[float] = Query(None),
+    valor_max:        Optional[float] = Query(None),
     ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)
 ):
-    q = tf(db.query(Pedido), Pedido, ctx).filter(Pedido.status != "cancelado")
+    from sqlalchemy import func as sqlfunc
+    q = tf(db.query(Pedido), Pedido, ctx)
     if inicio: q = q.filter(Pedido.criado_em >= datetime.strptime(inicio, "%Y-%m-%d"))
     if fim:    q = q.filter(Pedido.criado_em <= datetime.strptime(fim, "%Y-%m-%d").replace(hour=23,minute=59))
+    if status_entrega and status_entrega != "todos":
+        q = q.filter(Pedido.status == status_entrega)
+    if valor_min is not None: q = q.filter(Pedido.total >= valor_min)
+    if valor_max is not None: q = q.filter(Pedido.total <= valor_max)
     pedidos = q.order_by(desc(Pedido.criado_em)).all()
 
-    return [{
-        "id":      p.id,
-        "cliente": p.cliente_rel.nome if p.cliente_rel else "—",
-        "total":   p.total,
-        "desconto":p.desconto,
-        "status":  p.status,
-        "itens":   len(p.itens),
-        "lucro":   round(sum((it.preco_unitario-(it.produto_rel.preco_custo or 0))*it.quantidade for it in p.itens), 2),
-        "data":    p.criado_em.strftime("%d/%m/%Y") if p.criado_em else None,
-        "data_raw":p.criado_em.isoformat() if p.criado_em else None,
-    } for p in pedidos]
+    resultado = []
+    for p in pedidos:
+        lucro = round(sum((it.preco_unitario-(it.produto_rel.preco_custo or 0))*it.quantidade for it in p.itens), 2)
+        # busca venda financeira vinculada
+        venda = db.query(Venda).filter(
+            Venda.cliente_id == p.cliente_id,
+            Venda.tenant_id == p.tenant_id,
+        ).order_by(desc(Venda.id)).first() if p.cliente_id else None
+
+        st_pag = calc_status_pagamento(venda) if venda else ("pago" if p.status != "cancelado" else "cancelado")
+        modo_pag = venda.modo_pagamento if venda else "—"
+
+        # filtro por status_pagamento e modo_pagamento após cálculo
+        if status_pagamento and status_pagamento != "todos" and st_pag != status_pagamento:
+            continue
+        if modo_pagamento and modo_pagamento != "todos" and modo_pag.lower() != modo_pagamento.lower():
+            continue
+
+        resultado.append({
+            "id":               p.id,
+            "cliente":          p.cliente_rel.nome if p.cliente_rel else "Balcão",
+            "total":            p.total,
+            "desconto":         p.desconto or 0,
+            "status_entrega":   p.status,
+            "status_pagamento": st_pag,
+            "modo_pagamento":   modo_pag,
+            "itens":            len(p.itens),
+            "produtos":         ", ".join(it.produto_rel.nome for it in p.itens if it.produto_rel),
+            "lucro":            lucro,
+            "data":             p.criado_em.strftime("%d/%m/%Y") if p.criado_em else None,
+            "data_raw":         p.criado_em.isoformat() if p.criado_em else None,
+        })
+    return resultado
 
 @order_router.get("/relatorios/estoque-snapshot")
 def estoque_snapshot(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
