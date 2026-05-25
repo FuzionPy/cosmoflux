@@ -617,7 +617,9 @@ def vendas_periodo(
     valor_max:        Optional[float] = Query(None),
     ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)
 ):
-    from sqlalchemy import func as sqlfunc
+    from models import Venda, Parcela
+    from datetime import date as date_hoje
+
     q = tf(db.query(Pedido), Pedido, ctx)
     if inicio: q = q.filter(Pedido.criado_em >= datetime.strptime(inicio, "%Y-%m-%d"))
     if fim:    q = q.filter(Pedido.criado_em <= datetime.strptime(fim, "%Y-%m-%d").replace(hour=23,minute=59))
@@ -627,19 +629,42 @@ def vendas_periodo(
     if valor_max is not None: q = q.filter(Pedido.total <= valor_max)
     pedidos = q.order_by(desc(Pedido.criado_em)).all()
 
+    def calc_st_pag(venda):
+        if not venda: return "pago"
+        if venda.status_pagamento == "cancelado": return "cancelado"
+        parcelas = db.query(Parcela).filter(Parcela.venda_id == venda.id).all()
+        if not parcelas:
+            if not venda.data_vencimento: return "pago"
+            return "pago" if venda.data_vencimento >= date_hoje.today() else "vencido"
+        nao_pagas = [p for p in parcelas if not p.pago]
+        if not nao_pagas: return "pago"
+        vencidas = [p for p in nao_pagas if p.vencimento and p.vencimento < date_hoje.today()]
+        return "vencido" if vencidas else "em_aberto"
+
     resultado = []
     for p in pedidos:
-        lucro = round(sum((it.preco_unitario-(it.produto_rel.preco_custo or 0))*it.quantidade for it in p.itens), 2)
-        # busca venda financeira vinculada
-        venda = db.query(Venda).filter(
-            Venda.cliente_id == p.cliente_id,
-            Venda.tenant_id == p.tenant_id,
-        ).order_by(desc(Venda.id)).first() if p.cliente_id else None
+        try:
+            lucro = round(sum(
+                (it.preco_unitario - (it.produto_rel.preco_custo or 0)) * it.quantidade
+                for it in p.itens if it.produto_rel
+            ), 2)
+        except Exception:
+            lucro = 0.0
 
-        st_pag = calc_status_pagamento(venda) if venda else ("pago" if p.status != "cancelado" else "cancelado")
-        modo_pag = venda.modo_pagamento if venda else "—"
+        # busca venda financeira vinculada ao mesmo cliente
+        venda = None
+        if p.cliente_id:
+            try:
+                venda = db.query(Venda).filter(
+                    Venda.cliente_id == p.cliente_id,
+                    Venda.tenant_id == p.tenant_id,
+                ).order_by(desc(Venda.id)).first()
+            except Exception:
+                venda = None
 
-        # filtro por status_pagamento e modo_pagamento após cálculo
+        st_pag  = "cancelado" if p.status == "cancelado" else calc_st_pag(venda)
+        modo_pag = (venda.modo_pagamento if venda else None) or "—"
+
         if status_pagamento and status_pagamento != "todos" and st_pag != status_pagamento:
             continue
         if modo_pagamento and modo_pagamento != "todos" and modo_pag.lower() != modo_pagamento.lower():
