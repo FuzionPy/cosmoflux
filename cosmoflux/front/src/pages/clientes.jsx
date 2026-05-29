@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
 // ── API helpers ───────────────────────────────────────────────────────────────
-const BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000') + '/api';
+const BASE = 'http://127.0.0.1:8000/api';
 const token = () => localStorage.getItem('token') || sessionStorage.getItem('token');
 const h = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` });
 
@@ -181,9 +181,9 @@ const S = `
   width:28px;height:28px;border-radius:6px;border:none;
   display:flex;align-items:center;justify-content:center;
   cursor:pointer;transition:all .15s;
-  background:rgba(255, 255, 255, 0.04);color:rgba(255, 255, 255, 0.4);
+  background:rgba(255,255,255,.04);color:rgba(232,234,237,.4);
 }
-.icon-btn:hover               { background:rgba(0, 130, 173, 0.09);color:#e8eaed; }
+.icon-btn:hover               { background:rgba(255,255,255,.09);color:#e8eaed; }
 .icon-btn.danger:hover        { background:rgba(255,71,87,.15);color:#ff4757; }
 
 /* ── EMPTY ── */
@@ -722,13 +722,32 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
 
   const toggleVenda = id => setVendaOpen(s => ({ ...s, [id]: !s[id] }));
 
-  const pagarParcela = async (parcId) => {
+  const [modalAbat, setModalAbat] = useState(null); // { parcela }
+  const [valorAbat, setValorAbat] = useState('');
+  const [abatMsg,   setAbatMsg]   = useState('');
+
+  const pagarParcela = async (parcId, valorAbatido = null) => {
     setPagando(parcId);
+    setAbatMsg('');
     try {
-      await api.patch(`/parcelas/${parcId}/pagar`, { data_pago: hoje() });
+      const body = { data_pago: hoje() };
+      if (valorAbatido !== null) body.valor_abatido = parseFloat(valorAbatido);
+      const res = await api.patch(`/parcelas/${parcId}/pagar`, body);
       const updated = await api.get(`/clientes/${cliente.id}`);
       setDados(updated);
-      onParcelaPaga();
+      if (res.quitada || valorAbatido === null) {
+        setModalAbat(null);
+        onParcelaPaga();
+      } else {
+        setAbatMsg(res.mensagem);
+        // atualiza a parcela no modal com novo saldo
+        setModalAbat(prev => prev ? ({
+          ...prev,
+          valor_pago: res.valor_pago,
+          saldo_restante: res.saldo_restante,
+        }) : null);
+        setValorAbat('');
+      }
     } finally { setPagando(null); }
   };
 
@@ -737,6 +756,55 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
   return (
     <>
       <div className="overlay" onClick={onClose} />
+
+      {/* Modal de abatimento parcial */}
+      {modalAbat && (
+        <div className="modal-abat" style={{zIndex:400}}>
+          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)'}} onClick={()=>setModalAbat(null)}/>
+          <div className="modal-abat-box" style={{position:'relative',zIndex:1}}>
+            <div className="modal-abat-title">◑ Abatimento Parcial</div>
+            <div className="modal-abat-info">
+              <div className="modal-abat-row">
+                <span className="modal-abat-lbl">Parcela</span>
+                <span className="modal-abat-val">{modalAbat.numero === 0 ? 'Entrada' : `${modalAbat.numero}ª parcela`}</span>
+              </div>
+              <div className="modal-abat-row">
+                <span className="modal-abat-lbl">Valor total</span>
+                <span className="modal-abat-val">{fmtBRL(modalAbat.valor)}</span>
+              </div>
+              <div className="modal-abat-row">
+                <span className="modal-abat-lbl">Já pago</span>
+                <span className="modal-abat-val" style={{color:'#ffd32a'}}>{fmtBRL(modalAbat.valor_pago||0)}</span>
+              </div>
+              <div className="modal-abat-row">
+                <span className="modal-abat-lbl" style={{fontWeight:700,color:'#e8eaed'}}>Saldo restante</span>
+                <span className="modal-abat-val" style={{color:'#ff6b35',fontSize:15}}>{fmtBRL(modalAbat.saldo_restante ?? modalAbat.valor)}</span>
+              </div>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:'rgba(232,234,237,.4)',marginBottom:6,fontFamily:"'JetBrains Mono',monospace"}}>VALOR DO ABATIMENTO (R$)</div>
+              <input
+                type="number" min="0.01" step="0.01"
+                style={{width:'100%',background:'#0e1013',border:'1px solid rgba(255,255,255,.1)',borderRadius:8,padding:'10px 14px',fontSize:16,color:'#e8eaed',fontFamily:"'JetBrains Mono',monospace",outline:'none'}}
+                placeholder={`máx. ${fmtBRL(modalAbat.saldo_restante ?? modalAbat.valor)}`}
+                value={valorAbat}
+                onChange={e=>setValorAbat(e.target.value)}
+                autoFocus
+              />
+            </div>
+            {abatMsg && <div className="modal-abat-msg">{abatMsg}</div>}
+            <div className="modal-abat-btns">
+              <button className="btn btn-ghost" style={{flex:1}} onClick={()=>setModalAbat(null)}>Cancelar</button>
+              <button className="btn btn-primary" style={{flex:2}}
+                disabled={!valorAbat || parseFloat(valorAbat)<=0 || pagando===modalAbat.id}
+                onClick={()=>pagarParcela(modalAbat.id, valorAbat)}>
+                {pagando===modalAbat.id ? 'Registrando...' : `Abater ${valorAbat ? fmtBRL(parseFloat(valorAbat)) : ''}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="dp">
         <div className="dp-head">
           <div style={{ display:'flex', gap:12, alignItems:'flex-start', flex:1, minWidth:0 }}>
@@ -847,12 +915,10 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                         <div className="vi-lbl">Status</div>
                         <div className="vi-val">
                           {v.status_pagamento === 'pago'
-                              ? <span className="badge b-green">PAGO</span>
-                              : v.status_pagamento === 'vencido'
-                              ? <span className="badge b-red">VENCIDO</span>
-                              : v.status_pagamento === 'cancelado'
-                              ? <span className="badge b-red">CANCELADO</span>
-                              : <span className="badge b-yellow">EM ABERTO</span>}
+                            ? <span className="badge b-green">PAGO</span>
+                            : v.status_pagamento === 'atrasado'
+                            ? <span className="badge b-red">ATRASADO</span>
+                            : <span className="badge b-yellow">PENDENTE</span>}
                         </div>
                       </div>
                       {v.data_vencimento && (
@@ -872,29 +938,51 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                     {/* Parcelas */}
                     {v.parcelas?.length > 0 && (
                       <div>
-                        {v.parcelas.map(p => (
-                          <div key={p.id} className="parcela-row">
-                            <span className="parc-num">{p.numero}ª</span>
-                            <span className="parc-venc">{p.vencimento}</span>
-                            <span className={`badge ${
-                              p.status === 'pago'    ? 'b-green' :
-                              p.status === 'vencido' ? 'b-red'   :
-                              p.status === 'proximo' ? 'b-yellow' : 'b-gray'
-                            }`}>
-                              {p.status === 'pago' ? '✓ PAGO' :
-                               p.status === 'vencido' ? 'VENCIDO' :
-                               p.status === 'proximo' ? 'EM BREVE' : 'OK'}
-                            </span>
-                            <span className="parc-val">{fmtBRL(p.valor)}</span>
-                            {!p.pago && (
-                              <button className="parc-pay-btn"
-                                disabled={pagando === p.id}
-                                onClick={() => pagarParcela(p.id)}>
-                                {pagando === p.id ? '...' : 'Pagar'}
-                              </button>
-                            )}
-                          </div>
-                        ))}
+                        {v.parcelas.map(p => {
+                          const pct = p.valor > 0 ? Math.min(((p.valor_pago||0)/p.valor)*100, 100) : 0;
+                          const parcial = !p.pago && (p.valor_pago||0) > 0;
+                          const stBadge = p.pago ? 'b-green' : parcial ? 'b-yellow' : p.status === 'vencido' ? 'b-red' : p.status === 'proximo' ? 'b-yellow' : 'b-gray';
+                          const stLabel = p.pago ? '✓ PAGO' : parcial ? '◑ PARCIAL' : p.status === 'vencido' ? 'VENCIDO' : p.status === 'proximo' ? 'EM BREVE' : 'EM ABERTO';
+                          return (
+                            <div key={p.id} className="parcela-row">
+                              <span className="parc-num">{p.numero === 0 ? 'Entrada' : `${p.numero}ª`}</span>
+                              <span className="parc-venc">{p.vencimento}</span>
+                              <span className={`badge ${stBadge}`}>{stLabel}</span>
+                              <span className="parc-val" style={{marginLeft:'auto'}}>
+                                {parcial ? (
+                                  <span>
+                                    <span style={{color:'#ffd32a'}}>{fmtBRL(p.valor_pago||0)}</span>
+                                    <span style={{color:'rgba(232,234,237,.3)'}}> / {fmtBRL(p.valor)}</span>
+                                  </span>
+                                ) : fmtBRL(p.valor)}
+                              </span>
+                              {!p.pago && (
+                                <>
+                                  <button className="parc-pay-btn"
+                                    style={{background:'rgba(0,212,170,.15)',color:'#00d4aa'}}
+                                    disabled={pagando === p.id}
+                                    onClick={() => pagarParcela(p.id)}>
+                                    {pagando === p.id ? '...' : '✓ Pagar total'}
+                                  </button>
+                                  <button className="parc-pay-btn"
+                                    style={{background:'rgba(255,211,42,.1)',color:'#ffd32a'}}
+                                    disabled={pagando === p.id}
+                                    onClick={() => { setModalAbat(p); setValorAbat(''); setAbatMsg(''); }}>
+                                    ◑ Abater
+                                  </button>
+                                </>
+                              )}
+                              {parcial && (
+                                <div className="parc-progress">
+                                  <div className="parc-track">
+                                    <div className="parc-fill" style={{width:`${pct}%`}}/>
+                                  </div>
+                                  <span className="parc-abat-info">Restam {fmtBRL(p.saldo_restante||0)}</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1127,14 +1215,14 @@ export default function Clientes() {
                     {c.vendedor ? `Vendedor: ${c.vendedor}` : `Desde ${c.criado_em}`}
                   </div>
                   <div className="cl-actions">
-                    <button className="ib" title="Editar"
+                    <button className="icon-btn" title="Editar"
                       onClick={e => { e.stopPropagation(); setSelected(c); setModal('edit'); }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                         <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/>
                       </svg>
                     </button>
-                    <button className="ib danger" title="Remover"
+                    <button className="icon-btn danger" title="Remover"
                       onClick={e => { e.stopPropagation(); setConfirmDel(c); }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>

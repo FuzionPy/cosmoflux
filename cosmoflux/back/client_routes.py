@@ -70,7 +70,8 @@ class VendaUnificadaSchema(BaseModel):
     modo_pagamento_entrada: Optional[str] = None
 
 class PagarParcelaSchema(BaseModel):
-    data_pago: Optional[str] = None
+    data_pago:      Optional[str] = None
+    valor_abatido:  Optional[float] = None   # None = paga total; float = abatimento parcial
 
 
 # ── VENDA UNIFICADA ───────────────────────────────────────────────
@@ -294,15 +295,47 @@ def criar_venda(dados: VendaSchema, ctx: dict = Depends(get_ctx), db: Session = 
 def pagar_parcela(parcela_id: int, dados: PagarParcelaSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
     p = db.query(Parcela).filter(Parcela.id == parcela_id).first()
     if not p: raise HTTPException(404, "Parcela não encontrada")
-    # verifica tenant da venda
     if not ctx["admin"] and p.venda_rel.tenant_id != ctx["tenant_id"]:
         raise HTTPException(403, "Acesso negado")
-    p.pago = True
-    p.data_pago = datetime.strptime(dados.data_pago, "%Y-%m-%d").date() if dados.data_pago else date.today()
+
+    data = datetime.strptime(dados.data_pago, "%Y-%m-%d").date() if dados.data_pago else date.today()
+    saldo_atual = p.valor_pago or 0.0
+
+    if dados.valor_abatido is not None:
+        # abatimento parcial
+        abatimento = round(dados.valor_abatido, 2)
+        if abatimento <= 0:
+            raise HTTPException(400, "Valor de abatimento deve ser maior que zero")
+        novo_valor_pago = round(saldo_atual + abatimento, 2)
+        if novo_valor_pago > p.valor:
+            novo_valor_pago = p.valor   # não deixa ultrapassar o valor da parcela
+        p.valor_pago = novo_valor_pago
+        if novo_valor_pago >= p.valor:
+            p.pago = True
+            p.data_pago = data
+            msg = "Parcela quitada"
+        else:
+            saldo_restante = round(p.valor - novo_valor_pago, 2)
+            msg = f"Abatimento de R$ {abatimento:.2f} registrado. Restam R$ {saldo_restante:.2f}"
+    else:
+        # pagamento total
+        p.valor_pago = p.valor
+        p.pago = True
+        p.data_pago = data
+        msg = "Parcela marcada como paga"
+
+    # atualiza status da venda se todas as parcelas estiverem pagas
     if all(parc.pago for parc in p.venda_rel.parcelas):
         p.venda_rel.status_pagamento = "pago"
+
     db.commit()
-    return {"mensagem": "Parcela marcada como paga"}
+    return {
+        "mensagem": msg,
+        "valor_pago": p.valor_pago,
+        "valor_total": p.valor,
+        "saldo_restante": round(p.valor - (p.valor_pago or 0), 2),
+        "quitada": p.pago,
+    }
 
 @client_router.get("/alertas/pagamentos")
 def alertas_pagamentos(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
