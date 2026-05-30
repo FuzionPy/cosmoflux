@@ -5,12 +5,18 @@ const BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000') + '/api';
 const token = () => localStorage.getItem('token') || sessionStorage.getItem('token');
 const h = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` });
 
+const apiCall = async (url, opts={}) => {
+  const r = await fetch(BASE + url, { headers: h(), ...opts });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw { status: r.status, detail: data.detail || `Erro ${r.status}` };
+  return data;
+};
 const api = {
-  get:   (url)         => fetch(BASE + url, { headers: h() }).then(r => r.json()),
-  post:  (url, body)   => fetch(BASE + url, { method: 'POST',  headers: h(), body: JSON.stringify(body) }).then(r => r.json()),
-  put:   (url, body)   => fetch(BASE + url, { method: 'PUT',   headers: h(), body: JSON.stringify(body) }).then(r => r.json()),
-  patch: (url, body)   => fetch(BASE + url, { method: 'PATCH', headers: h(), body: JSON.stringify(body) }).then(r => r.json()),
-  del:   (url)         => fetch(BASE + url, { method: 'DELETE', headers: h() }).then(r => r.json()),
+  get:   (url)       => apiCall(url),
+  post:  (url, body) => apiCall(url, { method:'POST',  body: JSON.stringify(body) }),
+  put:   (url, body) => apiCall(url, { method:'PUT',   body: JSON.stringify(body) }),
+  patch: (url, body) => apiCall(url, { method:'PATCH', body: JSON.stringify(body) }),
+  del:   (url)       => apiCall(url, { method:'DELETE' }),
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -767,7 +773,7 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
         setValorAbat('');
       }
     } catch(e) {
-      const msg = await e?.json?.().then?.(r=>r.detail).catch?.(()=>null) || 'Erro ao aplicar abatimento';
+      const msg = e?.detail || e?.message || 'Erro ao aplicar abatimento';
       setAbatMsg({ text: msg, type:'error' });
     } finally { setAplicando(false); }
   };
