@@ -831,108 +831,118 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
     <>
       <div className="overlay" onClick={onClose} />
 
-      {/* Modal de abatimento */}
+      {/* Modal de abatimento — inline styles, sem dependência de CSS externo */}
       {modalAbat && (() => {
         const val = parseFloat(valorAbat) || 0;
         const excede = val > modalAbat.saldo_total + 0.01;
         const valido = val > 0 && !excede && !aplicando;
-        const restantePreview = Math.max(modalAbat.saldo_total - val, 0);
+        const restante = Math.max(modalAbat.saldo_total - val, 0);
         return (
-          <div className="modal-abat" style={{zIndex:400}}>
-            <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',backdropFilter:'blur(3px)'}} onClick={()=>setModalAbat(null)}/>
-            <div className="modal-abat-box" style={{position:'relative',zIndex:1}}>
+          <div
+            onClick={e => { if (e.target === e.currentTarget) setModalAbat(null); }}
+            style={{position:'fixed',inset:0,zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16,background:'rgba(0,0,0,.72)',backdropFilter:'blur(5px)'}}>
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{background:'#13161a',border:'1px solid rgba(255,255,255,.12)',borderRadius:16,width:'100%',maxWidth:420,display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 32px 80px rgba(0,0,0,.8)'}}>
 
               {/* Header */}
-              <div className="modal-abat-head">
-                <div className="modal-abat-title">
-                  <div className="modal-abat-title-icon">◑</div>
+              <div style={{padding:'18px 20px',borderBottom:'1px solid rgba(255,255,255,.06)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,fontSize:15,fontWeight:700,color:'#e8eaed'}}>
+                  <div style={{width:32,height:32,borderRadius:9,background:'rgba(255,211,42,.12)',border:'1px solid rgba(255,211,42,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,color:'#ffd32a'}}>◑</div>
                   Registrar Abatimento
                 </div>
-                <button style={{background:'none',border:'none',color:'rgba(232,234,237,.3)',cursor:'pointer',fontSize:20,lineHeight:1,padding:'0 2px'}} onClick={()=>setModalAbat(null)}>×</button>
+                <button onClick={() => setModalAbat(null)} style={{background:'none',border:'none',color:'rgba(232,234,237,.35)',cursor:'pointer',fontSize:22,lineHeight:1,padding:'2px 6px',borderRadius:6}}>×</button>
               </div>
 
-              <div className="modal-abat-body">
-                {/* Resumo do saldo */}
-                <div className="modal-abat-saldo">
-                  <div className="modal-abat-row">
-                    <span className="modal-abat-lbl">Venda</span>
-                    <span className="modal-abat-val" style={{fontSize:12}}>{modalAbat.venda.descricao || `#${modalAbat.venda.id}`}</span>
+              {/* Body */}
+              <div style={{padding:'18px 20px',display:'flex',flexDirection:'column',gap:14}}>
+
+                {/* Saldo box */}
+                <div style={{background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.06)',borderRadius:10,padding:'14px 16px',display:'flex',flexDirection:'column',gap:8}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <span style={{fontSize:11,color:'rgba(232,234,237,.4)',fontFamily:"'JetBrains Mono',monospace"}}>Venda</span>
+                    <span style={{fontSize:12,fontWeight:700,fontFamily:"'JetBrains Mono',monospace",color:'#e8eaed'}}>{modalAbat.venda.descricao || `#${modalAbat.venda.id}`}</span>
                   </div>
-                  <div className="modal-abat-row">
-                    <span className="modal-abat-lbl">Parcelas em aberto</span>
-                    <span className="modal-abat-val" style={{fontSize:12}}>{modalAbat.abertas.length}</span>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <span style={{fontSize:11,color:'rgba(232,234,237,.4)',fontFamily:"'JetBrains Mono',monospace"}}>Parcelas em aberto</span>
+                    <span style={{fontSize:12,fontWeight:700,fontFamily:"'JetBrains Mono',monospace",color:'#e8eaed'}}>{modalAbat.abertas.length}</span>
                   </div>
-                  <hr className="modal-abat-sep"/>
-                  <div className="modal-abat-row">
-                    <span className="modal-abat-lbl" style={{fontWeight:600,color:'#e8eaed'}}>Saldo devedor total</span>
-                    <span className="modal-abat-val" style={{color:'#ff6b35',fontSize:14}}>{fmtBRL(modalAbat.saldo_total)}</span>
+                  <div style={{borderTop:'1px solid rgba(255,255,255,.06)',margin:'2px 0'}}/>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <span style={{fontSize:12,fontWeight:700,color:'#e8eaed'}}>Saldo devedor total</span>
+                    <span style={{fontSize:17,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:'#ff6b35'}}>{fmtBRL(modalAbat.saldo_total)}</span>
                   </div>
-                  {/* Lista de parcelas abertas */}
+                  {/* Lista de parcelas */}
                   {modalAbat.abertas.length > 0 && (
-                    <div className="modal-abat-parcelas">
+                    <div style={{display:'flex',flexDirection:'column',gap:3,maxHeight:110,overflowY:'auto',marginTop:2}}>
                       {modalAbat.abertas.map(p => (
-                        <div key={p.id} className="modal-abat-parc-item">
-                          <span className="modal-abat-parc-num">{p.numero===0?'Entrada':`${p.numero}ª parcela`} · {p.vencimento||'—'}</span>
-                          <span className="modal-abat-parc-val">{fmtBRL(p.saldo_restante??p.valor)}</span>
+                        <div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 10px',background:'rgba(255,255,255,.02)',borderRadius:7,border:'1px solid rgba(255,255,255,.04)'}}>
+                          <span style={{fontSize:11,color:'rgba(232,234,237,.45)',fontFamily:"'JetBrains Mono',monospace"}}>
+                            {p.numero===0 ? 'Entrada' : `${p.numero}ª parcela`}{p.vencimento ? ` · ${p.vencimento}` : ''}
+                          </span>
+                          <span style={{fontSize:12,fontWeight:700,fontFamily:"'JetBrains Mono',monospace",color:'#ff6b35'}}>{fmtBRL(p.saldo_restante ?? p.valor)}</span>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
 
-                {/* Input do valor */}
-                <div className="modal-abat-input-wrap">
-                  <div className="modal-abat-input-lbl">Valor a abater (R$)</div>
+                {/* Input */}
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  <div style={{fontSize:9,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>Valor a abater (R$)</div>
                   <input
-                    className="modal-abat-input"
                     type="number" min="0.01" step="0.01"
                     placeholder="0,00"
                     value={valorAbat}
+                    onClick={e => e.stopPropagation()}
+                    onFocus={e => e.stopPropagation()}
                     onChange={e => setValorAbat(e.target.value)}
                     autoFocus
+                    style={{
+                      background:'#0a0c0f',
+                      border:`1px solid ${excede?'rgba(255,71,87,.5)':val>0?'rgba(255,211,42,.4)':'rgba(255,255,255,.1)'}`,
+                      borderRadius:10,padding:'13px 16px',fontSize:22,fontWeight:700,
+                      color:'#e8eaed',fontFamily:"'JetBrains Mono',monospace",outline:'none',width:'100%',
+                      boxShadow:val>0&&!excede?'0 0 0 3px rgba(255,211,42,.08)':excede?'0 0 0 3px rgba(255,71,87,.08)':'none',
+                      transition:'border-color .2s, box-shadow .2s',
+                    }}
                   />
                   {val > 0 && (
-                    <div className={`modal-abat-preview${excede?' warn':''}`}>
-                      <span>{excede ? '⚠ Valor excede o saldo devedor' : `Saldo após abatimento`}</span>
-                      {!excede && <span>{fmtBRL(restantePreview)}</span>}
+                    <div style={{display:'flex',justifyContent:'space-between',fontSize:11,fontFamily:"'JetBrains Mono',monospace",padding:'0 2px',color:excede?'#ff4757':'rgba(232,234,237,.35)'}}>
+                      <span>{excede ? '⚠ Valor excede o saldo devedor' : 'Saldo após abatimento'}</span>
+                      {!excede && <span style={{color:'#00d4aa',fontWeight:700}}>{fmtBRL(restante)}</span>}
                     </div>
                   )}
                 </div>
 
                 {/* Feedback */}
                 {abatMsg.text && (
-                  <div className={`modal-abat-msg ${abatMsg.type}`}>{abatMsg.text}</div>
+                  <div style={{fontSize:12,fontFamily:"'JetBrains Mono',monospace",borderRadius:8,padding:'10px 14px',textAlign:'center',lineHeight:1.5,color:abatMsg.type==='success'?'#00d4aa':'#ff4757',background:abatMsg.type==='success'?'rgba(0,212,170,.08)':'rgba(255,71,87,.08)',border:`1px solid ${abatMsg.type==='success'?'rgba(0,212,170,.2)':'rgba(255,71,87,.2)'}`}}>
+                    {abatMsg.text}
+                  </div>
                 )}
               </div>
 
               {/* Footer */}
-              <div className="modal-abat-foot">
-                <button className="btn btn-ghost" style={{flex:1,justifyContent:'center'}} onClick={()=>setModalAbat(null)}>
+              <div style={{padding:'14px 20px',borderTop:'1px solid rgba(255,255,255,.06)',display:'flex',gap:10}}>
+                <button
+                  onClick={() => setModalAbat(null)}
+                  style={{flex:1,padding:'10px',borderRadius:9,border:'1px solid rgba(255,255,255,.08)',background:'transparent',color:'rgba(232,234,237,.5)',cursor:'pointer',fontFamily:"'Syne',sans-serif",fontWeight:600,fontSize:13}}>
                   Cancelar
                 </button>
                 <button
-                  style={{
-                    flex:2, display:'flex', alignItems:'center', justifyContent:'center', gap:6,
-                    padding:'10px 16px', borderRadius:9, border:'none', cursor: valido ? 'pointer' : 'not-allowed',
-                    fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:13, transition:'all .15s',
-                    background: valido ? 'linear-gradient(135deg,#ffd32a,#ff9500)' : 'rgba(255,255,255,.06)',
-                    color: valido ? '#0d1117' : 'rgba(232,234,237,.25)',
-                  }}
                   disabled={!valido}
                   onClick={aplicarAbatimento}
-                >
+                  style={{flex:2,display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'11px 16px',borderRadius:9,border:'none',cursor:valido?'pointer':'not-allowed',fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13,transition:'all .2s',background:valido?'linear-gradient(135deg,#ffd32a,#ff9500)':'rgba(255,255,255,.05)',color:valido?'#0d1117':'rgba(232,234,237,.2)'}}>
                   {aplicando ? (
-                    <span style={{display:'flex',alignItems:'center',gap:6}}>
-                      <span style={{width:14,height:14,border:'2px solid rgba(0,0,0,.3)',borderTopColor:'#0d1117',borderRadius:'50%',animation:'spin .6s linear infinite',display:'inline-block'}}/>
+                    <>
+                      <span style={{width:14,height:14,border:'2px solid rgba(0,0,0,.3)',borderTopColor:'#0d1117',borderRadius:'50%',animation:'spin .7s linear infinite',display:'inline-block'}}/>
                       Aplicando...
-                    </span>
-                  ) : val > 0 && !excede ? (
-                    `Abater ${fmtBRL(val)}`
-                  ) : (
-                    'Informe o valor'
-                  )}
+                    </>
+                  ) : val > 0 && !excede ? `✓ Abater ${fmtBRL(val)}` : 'Informe o valor'}
                 </button>
               </div>
+
             </div>
           </div>
         );
