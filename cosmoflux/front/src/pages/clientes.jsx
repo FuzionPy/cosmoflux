@@ -722,32 +722,106 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
 
   const toggleVenda = id => setVendaOpen(s => ({ ...s, [id]: !s[id] }));
 
-  const [modalAbat, setModalAbat] = useState(null); // { parcela }
-  const [valorAbat, setValorAbat] = useState('');
-  const [abatMsg,   setAbatMsg]   = useState('');
+  const [modalAbat,   setModalAbat]   = useState(null); // { venda, parcelas_abertas, saldo_total }
+  const [valorAbat,   setValorAbat]   = useState('');
+  const [abatMsg,     setAbatMsg]     = useState({ text:'', type:'' }); // type: success|error
+  const [aplicando,   setAplicando]   = useState(false);
 
-  const pagarParcela = async (parcId, valorAbatido = null) => {
-    setPagando(parcId);
-    setAbatMsg('');
+  const abrirAbat = (venda) => {
+    const abertas = (venda.parcelas || []).filter(p => !p.pago);
+    const saldo = abertas.reduce((a, p) => a + (p.saldo_restante ?? p.valor), 0);
+    setModalAbat({ venda, abertas, saldo_total: Math.round(saldo * 100) / 100 });
+    setValorAbat('');
+    setAbatMsg({ text:'', type:'' });
+  };
+
+  const aplicarAbatimento = async () => {
+    if (!modalAbat || !valorAbat) return;
+    const val = parseFloat(valorAbat);
+    if (!val || val <= 0) return;
+    if (val > modalAbat.saldo_total + 0.01) {
+      setAbatMsg({ text: `Valor excede o saldo devedor de ${fmtBRL(modalAbat.saldo_total)}`, type:'error' });
+      return;
+    }
+    setAplicando(true);
+    setAbatMsg({ text:'', type:'' });
     try {
-      const body = { data_pago: hoje() };
-      if (valorAbatido !== null) body.valor_abatido = parseFloat(valorAbatido);
-      const res = await api.patch(`/parcelas/${parcId}/pagar`, body);
+      // envia para a primeira parcela em aberto — o backend distribui automaticamente
+      const primeiraAberta = modalAbat.abertas[0];
+      const res = await api.patch(`/parcelas/${primeiraAberta.id}/pagar`, {
+        data_pago: hoje(),
+        valor_abatido: val,
+      });
       const updated = await api.get(`/clientes/${cliente.id}`);
       setDados(updated);
-      if (res.quitada || valorAbatido === null) {
+      onParcelaPaga();
+      const novoSaldo = res.saldo_total_restante ?? 0;
+      if (novoSaldo <= 0.01) {
         setModalAbat(null);
-        onParcelaPaga();
       } else {
-        setAbatMsg(res.mensagem);
-        // atualiza a parcela no modal com novo saldo
-        setModalAbat(prev => prev ? ({
-          ...prev,
-          valor_pago: res.valor_pago,
-          saldo_restante: res.saldo_restante,
-        }) : null);
+        // atualiza saldo no modal
+        const abertas = (updated.vendas?.find(v=>v.id===modalAbat.venda.id)?.parcelas||[]).filter(p=>!p.pago);
+        const saldo = abertas.reduce((a,p)=>a+(p.saldo_restante??p.valor),0);
+        setModalAbat(prev=>({...prev, abertas, saldo_total: Math.round(saldo*100)/100}));
+        setAbatMsg({ text: res.mensagem, type:'success' });
         setValorAbat('');
       }
+    } catch(e) {
+      const msg = await e?.json?.().then?.(r=>r.detail).catch?.(()=>null) || 'Erro ao aplicar abatimento';
+      setAbatMsg({ text: msg, type:'error' });
+    } finally { setAplicando(false); }
+  };
+  const [modalVenda,  setModalVenda]  = useState(null); // venda em edição
+  const [editVenda,   setEditVenda]   = useState({});
+  const [salvandoV,   setSalvandoV]   = useState(false);
+  const [cancelando,  setCancelando]  = useState(null);
+
+  const abrirEditVenda = (v) => {
+    setModalVenda(v);
+    setEditVenda({
+      modo_pagamento:  v.modo_pagamento  || '',
+      data_vencimento: v.data_vencimento_raw || '',
+      observacao:      v.observacao      || '',
+      descricao:       v.descricao       || '',
+    });
+  };
+
+  const salvarVenda = async () => {
+    if (!modalVenda) return;
+    setSalvandoV(true);
+    try {
+      await api.patch(`/vendas/${modalVenda.id}`, editVenda);
+      const updated = await api.get(`/clientes/${cliente.id}`);
+      setDados(updated);
+      setModalVenda(null);
+      onParcelaPaga();
+    } finally { setSalvandoV(false); }
+  };
+
+  const cancelarVenda = async (vendaId) => {
+    if (!window.confirm('Cancelar esta venda? Esta ação não pode ser desfeita.')) return;
+    setCancelando(vendaId);
+    try {
+      await api.patch(`/vendas/${vendaId}/cancelar`, {});
+      const updated = await api.get(`/clientes/${cliente.id}`);
+      setDados(updated);
+      onParcelaPaga();
+    } finally { setCancelando(null); }
+  };
+
+  const alterarVencParcela = async (parcId, novaData) => {
+    await api.patch(`/parcelas/${parcId}/vencimento`, { data_vencimento: novaData });
+    const updated = await api.get(`/clientes/${cliente.id}`);
+    setDados(updated);
+  };
+
+  const pagarParcela = async (parcId) => {
+    setPagando(parcId);
+    try {
+      await api.patch(`/parcelas/${parcId}/pagar`, { data_pago: hoje() });
+      const updated = await api.get(`/clientes/${cliente.id}`);
+      setDados(updated);
+      onParcelaPaga();
     } finally { setPagando(null); }
   };
 
@@ -757,48 +831,151 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
     <>
       <div className="overlay" onClick={onClose} />
 
-      {/* Modal de abatimento parcial */}
-      {modalAbat && (
-        <div className="modal-abat" style={{zIndex:400}}>
-          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)'}} onClick={()=>setModalAbat(null)}/>
-          <div className="modal-abat-box" style={{position:'relative',zIndex:1}}>
-            <div className="modal-abat-title">◑ Abatimento Parcial</div>
-            <div className="modal-abat-info">
-              <div className="modal-abat-row">
-                <span className="modal-abat-lbl">Parcela</span>
-                <span className="modal-abat-val">{modalAbat.numero === 0 ? 'Entrada' : `${modalAbat.numero}ª parcela`}</span>
+      {/* Modal de abatimento */}
+      {modalAbat && (() => {
+        const val = parseFloat(valorAbat) || 0;
+        const excede = val > modalAbat.saldo_total + 0.01;
+        const valido = val > 0 && !excede && !aplicando;
+        const restantePreview = Math.max(modalAbat.saldo_total - val, 0);
+        return (
+          <div className="modal-abat" style={{zIndex:400}}>
+            <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',backdropFilter:'blur(3px)'}} onClick={()=>setModalAbat(null)}/>
+            <div className="modal-abat-box" style={{position:'relative',zIndex:1}}>
+
+              {/* Header */}
+              <div className="modal-abat-head">
+                <div className="modal-abat-title">
+                  <div className="modal-abat-title-icon">◑</div>
+                  Registrar Abatimento
+                </div>
+                <button style={{background:'none',border:'none',color:'rgba(232,234,237,.3)',cursor:'pointer',fontSize:20,lineHeight:1,padding:'0 2px'}} onClick={()=>setModalAbat(null)}>×</button>
               </div>
-              <div className="modal-abat-row">
-                <span className="modal-abat-lbl">Valor total</span>
-                <span className="modal-abat-val">{fmtBRL(modalAbat.valor)}</span>
+
+              <div className="modal-abat-body">
+                {/* Resumo do saldo */}
+                <div className="modal-abat-saldo">
+                  <div className="modal-abat-row">
+                    <span className="modal-abat-lbl">Venda</span>
+                    <span className="modal-abat-val" style={{fontSize:12}}>{modalAbat.venda.descricao || `#${modalAbat.venda.id}`}</span>
+                  </div>
+                  <div className="modal-abat-row">
+                    <span className="modal-abat-lbl">Parcelas em aberto</span>
+                    <span className="modal-abat-val" style={{fontSize:12}}>{modalAbat.abertas.length}</span>
+                  </div>
+                  <hr className="modal-abat-sep"/>
+                  <div className="modal-abat-row">
+                    <span className="modal-abat-lbl" style={{fontWeight:600,color:'#e8eaed'}}>Saldo devedor total</span>
+                    <span className="modal-abat-val" style={{color:'#ff6b35',fontSize:14}}>{fmtBRL(modalAbat.saldo_total)}</span>
+                  </div>
+                  {/* Lista de parcelas abertas */}
+                  {modalAbat.abertas.length > 0 && (
+                    <div className="modal-abat-parcelas">
+                      {modalAbat.abertas.map(p => (
+                        <div key={p.id} className="modal-abat-parc-item">
+                          <span className="modal-abat-parc-num">{p.numero===0?'Entrada':`${p.numero}ª parcela`} · {p.vencimento||'—'}</span>
+                          <span className="modal-abat-parc-val">{fmtBRL(p.saldo_restante??p.valor)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Input do valor */}
+                <div className="modal-abat-input-wrap">
+                  <div className="modal-abat-input-lbl">Valor a abater (R$)</div>
+                  <input
+                    className="modal-abat-input"
+                    type="number" min="0.01" step="0.01"
+                    placeholder="0,00"
+                    value={valorAbat}
+                    onChange={e => setValorAbat(e.target.value)}
+                    autoFocus
+                  />
+                  {val > 0 && (
+                    <div className={`modal-abat-preview${excede?' warn':''}`}>
+                      <span>{excede ? '⚠ Valor excede o saldo devedor' : `Saldo após abatimento`}</span>
+                      {!excede && <span>{fmtBRL(restantePreview)}</span>}
+                    </div>
+                  )}
+                </div>
+
+                {/* Feedback */}
+                {abatMsg.text && (
+                  <div className={`modal-abat-msg ${abatMsg.type}`}>{abatMsg.text}</div>
+                )}
               </div>
-              <div className="modal-abat-row">
-                <span className="modal-abat-lbl">Já pago</span>
-                <span className="modal-abat-val" style={{color:'#ffd32a'}}>{fmtBRL(modalAbat.valor_pago||0)}</span>
-              </div>
-              <div className="modal-abat-row">
-                <span className="modal-abat-lbl" style={{fontWeight:700,color:'#e8eaed'}}>Saldo restante</span>
-                <span className="modal-abat-val" style={{color:'#ff6b35',fontSize:15}}>{fmtBRL(modalAbat.saldo_restante ?? modalAbat.valor)}</span>
+
+              {/* Footer */}
+              <div className="modal-abat-foot">
+                <button className="btn btn-ghost" style={{flex:1,justifyContent:'center'}} onClick={()=>setModalAbat(null)}>
+                  Cancelar
+                </button>
+                <button
+                  style={{
+                    flex:2, display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                    padding:'10px 16px', borderRadius:9, border:'none', cursor: valido ? 'pointer' : 'not-allowed',
+                    fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:13, transition:'all .15s',
+                    background: valido ? 'linear-gradient(135deg,#ffd32a,#ff9500)' : 'rgba(255,255,255,.06)',
+                    color: valido ? '#0d1117' : 'rgba(232,234,237,.25)',
+                  }}
+                  disabled={!valido}
+                  onClick={aplicarAbatimento}
+                >
+                  {aplicando ? (
+                    <span style={{display:'flex',alignItems:'center',gap:6}}>
+                      <span style={{width:14,height:14,border:'2px solid rgba(0,0,0,.3)',borderTopColor:'#0d1117',borderRadius:'50%',animation:'spin .6s linear infinite',display:'inline-block'}}/>
+                      Aplicando...
+                    </span>
+                  ) : val > 0 && !excede ? (
+                    `Abater ${fmtBRL(val)}`
+                  ) : (
+                    'Informe o valor'
+                  )}
+                </button>
               </div>
             </div>
-            <div>
-              <div style={{fontSize:11,color:'rgba(232,234,237,.4)',marginBottom:6,fontFamily:"'JetBrains Mono',monospace"}}>VALOR DO ABATIMENTO (R$)</div>
-              <input
-                type="number" min="0.01" step="0.01"
-                style={{width:'100%',background:'#0e1013',border:'1px solid rgba(255,255,255,.1)',borderRadius:8,padding:'10px 14px',fontSize:16,color:'#e8eaed',fontFamily:"'JetBrains Mono',monospace",outline:'none'}}
-                placeholder={`máx. ${fmtBRL(modalAbat.saldo_restante ?? modalAbat.valor)}`}
-                value={valorAbat}
-                onChange={e=>setValorAbat(e.target.value)}
-                autoFocus
-              />
+          </div>
+        );
+      })()}
+
+      {/* Modal edição de venda */}
+      {modalVenda && (
+        <div className="modal-ev">
+          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)'}} onClick={()=>setModalVenda(null)}/>
+          <div className="modal-ev-box">
+            <div className="modal-ev-title">
+              <span>✎ Editar Venda #{modalVenda.id}</span>
+              <button style={{background:'none',border:'none',color:'rgba(232,234,237,.4)',cursor:'pointer',fontSize:18}} onClick={()=>setModalVenda(null)}>×</button>
             </div>
-            {abatMsg && <div className="modal-abat-msg">{abatMsg}</div>}
-            <div className="modal-abat-btns">
-              <button className="btn btn-ghost" style={{flex:1}} onClick={()=>setModalAbat(null)}>Cancelar</button>
-              <button className="btn btn-primary" style={{flex:2}}
-                disabled={!valorAbat || parseFloat(valorAbat)<=0 || pagando===modalAbat.id}
-                onClick={()=>pagarParcela(modalAbat.id, valorAbat)}>
-                {pagando===modalAbat.id ? 'Registrando...' : `Abater ${valorAbat ? fmtBRL(parseFloat(valorAbat)) : ''}`}
+
+            <div className="ev-field">
+              <label className="ev-label">Descrição</label>
+              <input className="ev-input" value={editVenda.descricao||''} onChange={e=>setEditVenda(s=>({...s,descricao:e.target.value}))} placeholder="Ex: Compra de produtos"/>
+            </div>
+
+            <div className="ev-field">
+              <label className="ev-label">Forma de pagamento</label>
+              <select className="ev-select" value={editVenda.modo_pagamento||''} onChange={e=>setEditVenda(s=>({...s,modo_pagamento:e.target.value}))}>
+                {['PIX','Dinheiro','Cartão de crédito','Cartão de débito','Fiado','Transferência','Boleto'].map(m=>(
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="ev-field">
+              <label className="ev-label">Data de vencimento (redistribui parcelas em aberto)</label>
+              <input type="date" className="ev-input" value={editVenda.data_vencimento||''} onChange={e=>setEditVenda(s=>({...s,data_vencimento:e.target.value}))}/>
+            </div>
+
+            <div className="ev-field">
+              <label className="ev-label">Observação</label>
+              <input className="ev-input" value={editVenda.observacao||''} onChange={e=>setEditVenda(s=>({...s,observacao:e.target.value}))} placeholder="Observação opcional"/>
+            </div>
+
+            <div className="ev-btns">
+              <button className="btn btn-ghost" style={{flex:1}} onClick={()=>setModalVenda(null)}>Cancelar</button>
+              <button className="btn btn-primary" style={{flex:2,justifyContent:'center'}} disabled={salvandoV} onClick={salvarVenda}>
+                {salvandoV ? 'Salvando...' : 'Salvar alterações'}
               </button>
             </div>
           </div>
@@ -892,14 +1069,28 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
               <div key={v.id} className="venda-block" style={{ marginBottom:10 }}>
                 <div className="venda-header" onClick={() => toggleVenda(v.id)}>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div className="venda-desc">{v.descricao || `Venda #${v.id}`}</div>
+                    <div className="venda-desc" style={{display:'flex',alignItems:'center',gap:6}}>
+                      {v.descricao || `Venda #${v.id}`}
+                      {v.status_pagamento === 'cancelado' && <span className="badge b-red" style={{fontSize:9}}>CANCELADA</span>}
+                    </div>
                     <div style={{ fontSize:11, color:'rgba(232,234,237,.3)', fontFamily:'JetBrains Mono, monospace', marginTop:2 }}>
                       {v.data_venda} · {v.modo_pagamento}
                       {v.parcelado && ` · ${v.num_parcelas}x de ${fmtBRL(v.valor_parcela)}`}
                     </div>
                   </div>
                   <div className="venda-total">{fmtBRL(v.valor_total)}</div>
-                  <span style={{ fontSize:11, color:'rgba(232,234,237,.3)', marginLeft:8 }}>
+                  {v.status_pagamento !== 'cancelado' && (
+                    <div style={{display:'flex',gap:4,marginLeft:8}} onClick={e=>e.stopPropagation()}>
+                      <button className="parc-pay-btn" style={{padding:'3px 8px',fontSize:11,background:'rgba(0,153,255,.1)',color:'#0099ff'}}
+                        onClick={() => abrirEditVenda(v)}>✎ Editar</button>
+                      <button className="parc-pay-btn" style={{padding:'3px 8px',fontSize:11,background:'rgba(255,71,87,.1)',color:'#ff4757'}}
+                        disabled={cancelando===v.id}
+                        onClick={() => cancelarVenda(v.id)}>
+                        {cancelando===v.id ? '...' : '✕ Cancelar'}
+                      </button>
+                    </div>
+                  )}
+                  <span style={{ fontSize:11, color:'rgba(232,234,237,.3)', marginLeft:4 }}>
                     {vendaOpen[v.id] ? '▲' : '▼'}
                   </span>
                 </div>
@@ -912,13 +1103,22 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                         <div className="vi-val">{v.modo_pagamento}</div>
                       </div>
                       <div>
-                        <div className="vi-lbl">Status</div>
+                        <div className="vi-lbl">Status Pagamento</div>
                         <div className="vi-val">
-                          {v.status_pagamento === 'pago'
-                            ? <span className="badge b-green">PAGO</span>
-                            : v.status_pagamento === 'atrasado'
-                            ? <span className="badge b-red">ATRASADO</span>
-                            : <span className="badge b-yellow">PENDENTE</span>}
+                          {v.status_pagamento === 'pago'      ? <span className="badge b-green">✓ PAGO</span>
+                          :v.status_pagamento === 'cancelado' ? <span className="badge b-red">CANCELADO</span>
+                          :v.status_pagamento === 'vencido'   ? <span className="badge b-red">VENCIDO</span>
+                          :v.status_pagamento === 'em_aberto' ? <span className="badge b-yellow">EM ABERTO</span>
+                          :                                     <span className="badge b-yellow">PENDENTE</span>}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="vi-lbl">Status Entrega</div>
+                        <div className="vi-val">
+                          {v.status_entrega === 'entregue'         ? <span className="badge b-green">ENTREGUE</span>
+                          :v.status_entrega === 'pendente_entrega' ? <span className="badge b-yellow">PENDENTE</span>
+                          :v.status_entrega === 'cancelado'        ? <span className="badge b-red">CANCELADO</span>
+                          :                                          <span className="badge b-gray">—</span>}
                         </div>
                       </div>
                       {v.data_vencimento && (
@@ -946,7 +1146,15 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                           return (
                             <div key={p.id} className="parcela-row">
                               <span className="parc-num">{p.numero === 0 ? 'Entrada' : `${p.numero}ª`}</span>
-                              <span className="parc-venc">{p.vencimento}</span>
+                              {!p.pago && v.status_pagamento !== 'cancelado' ? (
+                                <input type="date" className="parc-venc-edit"
+                                  defaultValue={p.vencimento_raw || ''}
+                                  onBlur={e => { if(e.target.value) alterarVencParcela(p.id, e.target.value); }}
+                                  onClick={e=>e.stopPropagation()}
+                                  title="Clique para alterar vencimento"/>
+                              ) : (
+                                <span className="parc-venc">{p.vencimento}</span>
+                              )}
                               <span className={`badge ${stBadge}`}>{stLabel}</span>
                               <span className="parc-val" style={{marginLeft:'auto'}}>
                                 {parcial ? (
@@ -967,7 +1175,7 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                                   <button className="parc-pay-btn"
                                     style={{background:'rgba(255,211,42,.1)',color:'#ffd32a'}}
                                     disabled={pagando === p.id}
-                                    onClick={() => { setModalAbat(p); setValorAbat(''); setAbatMsg(''); }}>
+                                    onClick={() => abrirAbat(v)}>
                                     ◑ Abater
                                   </button>
                                 </>

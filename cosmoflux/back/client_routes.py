@@ -299,43 +299,135 @@ def pagar_parcela(parcela_id: int, dados: PagarParcelaSchema, ctx: dict = Depend
         raise HTTPException(403, "Acesso negado")
 
     data = datetime.strptime(dados.data_pago, "%Y-%m-%d").date() if dados.data_pago else date.today()
-    saldo_atual = p.valor_pago or 0.0
 
-    if dados.valor_abatido is not None:
-        # abatimento parcial
-        abatimento = round(dados.valor_abatido, 2)
-        if abatimento <= 0:
-            raise HTTPException(400, "Valor de abatimento deve ser maior que zero")
-        novo_valor_pago = round(saldo_atual + abatimento, 2)
-        if novo_valor_pago > p.valor:
-            novo_valor_pago = p.valor   # não deixa ultrapassar o valor da parcela
-        p.valor_pago = novo_valor_pago
-        if novo_valor_pago >= p.valor:
-            p.pago = True
-            p.data_pago = data
-            msg = "Parcela quitada"
-        else:
-            saldo_restante = round(p.valor - novo_valor_pago, 2)
-            msg = f"Abatimento de R$ {abatimento:.2f} registrado. Restam R$ {saldo_restante:.2f}"
-    else:
-        # pagamento total
+    if dados.valor_abatido is None:
+        # pagamento total da parcela
         p.valor_pago = p.valor
         p.pago = True
         p.data_pago = data
-        msg = "Parcela marcada como paga"
+        if all(parc.pago for parc in p.venda_rel.parcelas):
+            p.venda_rel.status_pagamento = "pago"
+        db.commit()
+        return {"mensagem": "Parcela marcada como paga", "quitada": True,
+                "valor_pago": p.valor, "saldo_restante": 0.0}
 
-    # atualiza status da venda se todas as parcelas estiverem pagas
+    # abatimento distribuído entre parcelas em aberto da mesma venda
+    abatimento = round(float(dados.valor_abatido), 2)
+    if abatimento <= 0:
+        raise HTTPException(400, "Valor deve ser maior que zero")
+
+    # todas as parcelas em aberto da venda, ordenadas por numero
+    parcelas_abertas = sorted(
+        [x for x in p.venda_rel.parcelas if not x.pago],
+        key=lambda x: x.numero
+    )
+    saldo_total = round(sum(x.valor - (x.valor_pago or 0) for x in parcelas_abertas), 2)
+
+    if abatimento > saldo_total + 0.01:
+        raise HTTPException(400, f"Valor R$ {abatimento:.2f} excede o saldo devedor total de R$ {saldo_total:.2f}")
+
+    restante = abatimento
+    parcelas_afetadas = []
+    for parc in parcelas_abertas:
+        if restante <= 0: break
+        saldo_parc = round(parc.valor - (parc.valor_pago or 0), 2)
+        aplicar = round(min(restante, saldo_parc), 2)
+        parc.valor_pago = round((parc.valor_pago or 0) + aplicar, 2)
+        restante = round(restante - aplicar, 2)
+        if parc.valor_pago >= parc.valor - 0.01:
+            parc.valor_pago = parc.valor
+            parc.pago = True
+            parc.data_pago = data
+            parcelas_afetadas.append({"id": parc.id, "numero": parc.numero, "quitada": True})
+        else:
+            parcelas_afetadas.append({"id": parc.id, "numero": parc.numero, "quitada": False,
+                                      "saldo_restante": round(parc.valor - parc.valor_pago, 2)})
+
     if all(parc.pago for parc in p.venda_rel.parcelas):
         p.venda_rel.status_pagamento = "pago"
 
     db.commit()
+
+    quitadas = sum(1 for x in parcelas_afetadas if x["quitada"])
+    msg = f"R$ {abatimento:.2f} distribuídos. {quitadas} parcela(s) quitada(s)."
+    if restante < 0.01 and any(not x["quitada"] for x in parcelas_afetadas):
+        ultimo = next(x for x in reversed(parcelas_afetadas) if not x["quitada"])
+        msg += f" Saldo restante na {ultimo['numero']}ª parcela: R$ {ultimo['saldo_restante']:.2f}"
+
     return {
         "mensagem": msg,
-        "valor_pago": p.valor_pago,
-        "valor_total": p.valor,
-        "saldo_restante": round(p.valor - (p.valor_pago or 0), 2),
-        "quitada": p.pago,
+        "parcelas_afetadas": parcelas_afetadas,
+        "saldo_total_restante": round(saldo_total - abatimento, 2),
     }
+
+class EditarVendaSchema(BaseModel):
+    modo_pagamento:  Optional[str]   = None
+    data_vencimento: Optional[str]   = None
+    observacao:      Optional[str]   = None
+    descricao:       Optional[str]   = None
+
+@client_router.patch("/vendas/{venda_id}")
+def editar_venda(venda_id: int, dados: EditarVendaSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    v = db.query(Venda).filter(Venda.id == venda_id).first()
+    if not v: raise HTTPException(404, "Venda não encontrada")
+    if not ctx["admin"] and v.tenant_id != ctx["tenant_id"]:
+        raise HTTPException(403, "Acesso negado")
+    if v.status_pagamento == "cancelado":
+        raise HTTPException(400, "Venda cancelada não pode ser editada")
+
+    if dados.modo_pagamento  is not None: v.modo_pagamento  = dados.modo_pagamento
+    if dados.observacao      is not None: v.observacao      = dados.observacao
+    if dados.descricao       is not None: v.descricao       = dados.descricao
+    if dados.data_vencimento is not None:
+        nova_venc = datetime.strptime(dados.data_vencimento, "%Y-%m-%d").date()
+        v.data_vencimento = nova_venc
+        # atualiza parcelas não pagas redistribuindo os vencimentos
+        parcelas_em_aberto = sorted(
+            [p for p in v.parcelas if not p.pago],
+            key=lambda x: x.numero
+        )
+        for i, p in enumerate(parcelas_em_aberto):
+            mes = nova_venc.month + i
+            ano = nova_venc.year + (mes - 1) // 12
+            mes = ((mes - 1) % 12) + 1
+            try:    p.vencimento = nova_venc.replace(year=ano, month=mes)
+            except ValueError:
+                import calendar
+                ultimo = calendar.monthrange(ano, mes)[1]
+                p.vencimento = nova_venc.replace(year=ano, month=mes, day=ultimo)
+
+    db.commit()
+    return {"mensagem": "Venda atualizada"}
+
+@client_router.patch("/vendas/{venda_id}/cancelar")
+def cancelar_venda(venda_id: int, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    v = db.query(Venda).filter(Venda.id == venda_id).first()
+    if not v: raise HTTPException(404, "Venda não encontrada")
+    if not ctx["admin"] and v.tenant_id != ctx["tenant_id"]:
+        raise HTTPException(403, "Acesso negado")
+    if v.status_pagamento == "cancelado":
+        raise HTTPException(400, "Venda já cancelada")
+    v.status_pagamento = "cancelado"
+    # marca todas as parcelas em aberto como canceladas (pago=False mantido, apenas vencimento limpo)
+    for p in v.parcelas:
+        if not p.pago:
+            p.vencimento = None
+    db.commit()
+    return {"mensagem": "Venda cancelada"}
+
+@client_router.patch("/parcelas/{parcela_id}/vencimento")
+def alterar_vencimento_parcela(parcela_id: int, dados: dict, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    from pydantic import BaseModel as BM
+    p = db.query(Parcela).filter(Parcela.id == parcela_id).first()
+    if not p: raise HTTPException(404, "Parcela não encontrada")
+    if not ctx["admin"] and p.venda_rel.tenant_id != ctx["tenant_id"]:
+        raise HTTPException(403, "Acesso negado")
+    if p.pago: raise HTTPException(400, "Parcela já paga")
+    nova = dados.get("data_vencimento")
+    if not nova: raise HTTPException(400, "data_vencimento obrigatório")
+    p.vencimento = datetime.strptime(nova, "%Y-%m-%d").date()
+    db.commit()
+    return {"mensagem": "Vencimento atualizado"}
 
 @client_router.get("/alertas/pagamentos")
 def alertas_pagamentos(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
