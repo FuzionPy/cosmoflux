@@ -1066,24 +1066,53 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
             </div>
           </div>
 
-          {/* Resumo Financeiro */}
+          {/* Resumo Financeiro — apenas vendas ativas (não canceladas, não 100% pagas) */}
           {dados?.vendas?.length > 0 && (() => {
-            const vendasAtivas = dados.vendas.filter(v => v.status_pagamento !== 'cancelado');
-            const totalVendas  = vendasAtivas.reduce((a,v) => a + v.valor_total, 0);
-            const totalPago    = vendasAtivas.reduce((a,v) => {
-              const pagas = (v.parcelas||[]).filter(p=>p.pago).reduce((s,p)=>s+p.valor,0);
+            const vendasAtivas = dados.vendas.filter(v =>
+              v.status_pagamento !== 'cancelado' && v.status_pagamento !== 'pago'
+            );
+            const todasCanceladas = dados.vendas.every(v => v.status_pagamento === 'cancelado');
+            const todasPagas = dados.vendas.length > 0 &&
+              dados.vendas.filter(v => v.status_pagamento !== 'cancelado').every(v => v.status_pagamento === 'pago');
+
+            // sem compras ativas
+            if (vendasAtivas.length === 0) {
+              return (
+                <div style={{background:'rgba(255,255,255,.02)',border:'1px solid rgba(255,255,255,.06)',borderRadius:12,padding:'20px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:12}}>
+                  <div style={{width:36,height:36,borderRadius:10,background: todasPagas ? 'rgba(0,212,170,.12)' : 'rgba(255,255,255,.04)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>
+                    {todasPagas ? '✓' : '○'}
+                  </div>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color: todasPagas ? '#00d4aa' : 'rgba(232,234,237,.4)'}}>
+                      {todasPagas ? 'Tudo quitado!' : 'Sem compras ativas'}
+                    </div>
+                    <div style={{fontSize:11,color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace",marginTop:2}}>
+                      {todasPagas ? 'Todas as vendas foram pagas' : 'Nenhuma venda em aberto no momento'}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            const totalVendas = vendasAtivas.reduce((a,v) => a + v.valor_total, 0);
+            const totalPago   = vendasAtivas.reduce((a,v) => {
+              const pagas   = (v.parcelas||[]).filter(p=>p.pago).reduce((s,p)=>s+p.valor,0);
               const parciais = (v.parcelas||[]).filter(p=>!p.pago&&(p.valor_pago||0)>0).reduce((s,p)=>s+(p.valor_pago||0),0);
               return a + pagas + parciais;
             }, 0);
-            const totalAberto  = Math.max(totalVendas - totalPago, 0);
+            const totalAberto = Math.max(totalVendas - totalPago, 0);
             const pct = totalVendas > 0 ? Math.min((totalPago/totalVendas)*100, 100) : 0;
             const vencidas = vendasAtivas.filter(v => v.status_pagamento === 'vencido').length;
+
             return (
               <div style={{background:'rgba(255,255,255,.02)',border:'1px solid rgba(255,255,255,.06)',borderRadius:12,padding:'16px',marginBottom:16,display:'flex',flexDirection:'column',gap:12}}>
-                <div style={{fontSize:11,fontWeight:600,letterSpacing:'.1em',textTransform:'uppercase',color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>Resumo Financeiro</div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div style={{fontSize:11,fontWeight:600,letterSpacing:'.1em',textTransform:'uppercase',color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>Resumo Financeiro</div>
+                  <div style={{fontSize:10,color:'rgba(232,234,237,.25)',fontFamily:"'JetBrains Mono',monospace"}}>{vendasAtivas.length} venda(s) ativa(s)</div>
+                </div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
                   <div style={{display:'flex',flexDirection:'column',gap:3}}>
-                    <span style={{fontSize:10,color:'rgba(232,234,237,.35)',fontFamily:"'JetBrains Mono',monospace"}}>TOTAL COMPRAS</span>
+                    <span style={{fontSize:10,color:'rgba(232,234,237,.35)',fontFamily:"'JetBrains Mono',monospace"}}>TOTAL</span>
                     <span style={{fontSize:15,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:'#e8eaed'}}>{fmtBRL(totalVendas)}</span>
                   </div>
                   <div style={{display:'flex',flexDirection:'column',gap:3}}>
@@ -1095,10 +1124,9 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                     <span style={{fontSize:15,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:totalAberto>0?'#ff6b35':'#00d4aa'}}>{fmtBRL(totalAberto)}</span>
                   </div>
                 </div>
-                {/* Barra de progresso geral */}
                 <div style={{display:'flex',flexDirection:'column',gap:5}}>
                   <div style={{height:8,background:'rgba(255,255,255,.06)',borderRadius:4,overflow:'hidden'}}>
-                    <div style={{height:'100%',width:`${pct}%`,background:`linear-gradient(90deg,#00d4aa,#0099ff)`,borderRadius:4,transition:'width .6s ease'}}/>
+                    <div style={{height:'100%',width:`${pct}%`,background:'linear-gradient(90deg,#00d4aa,#0099ff)',borderRadius:4,transition:'width .6s ease'}}/>
                   </div>
                   <div style={{display:'flex',justifyContent:'space-between',fontSize:10,fontFamily:"'JetBrains Mono',monospace",color:'rgba(232,234,237,.35)'}}>
                     <span>{pct.toFixed(0)}% quitado</span>
