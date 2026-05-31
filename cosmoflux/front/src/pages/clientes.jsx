@@ -184,14 +184,14 @@ const S = `
 
 /* ── ICON BTN ── */
 .icon-btn {
-  width:30px;height:30px;border-radius:7px;border:1px solid rgba(0,153,255,.2);
+  width:30px;height:30px;border-radius:7px;border:1px solid rgba(255,255,255,.06);
   display:flex;align-items:center;justify-content:center;
-  cursor:pointer;transition:all .15s;
-  background:rgba(0,153,255,.1);color:#0099ff;
+  cursor:pointer;transition:all .2s;
+  background:rgba(255,255,255,.03);color:rgba(232,234,237,.35);
 }
-.icon-btn:hover               { background:rgba(0,153,255,.2);color:#33b5ff;transform:translateY(-1px); }
-.icon-btn.danger              { background:rgba(255,71,87,.1);color:#ff4757;border-color:rgba(255,71,87,.2); }
-.icon-btn.danger:hover        { background:rgba(255,71,87,.2);color:#ff6b7a;transform:translateY(-1px); }
+.icon-btn:hover               { background:rgba(0,153,255,.12);color:#0099ff;border-color:rgba(0,153,255,.25);transform:translateY(-1px); }
+.icon-btn.danger              { background:rgba(255,255,255,.03);color:rgba(232,234,237,.35);border-color:rgba(255,255,255,.06); }
+.icon-btn.danger:hover        { background:rgba(255,71,87,.12);color:#ff4757;border-color:rgba(255,71,87,.25);transform:translateY(-1px); }
 
 /* ── EMPTY ── */
 .cl-empty { grid-column:1/-1;padding:60px 20px;text-align:center;color:rgba(232,234,237,.25); }
