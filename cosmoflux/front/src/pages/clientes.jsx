@@ -804,14 +804,18 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
     } finally { setSalvandoV(false); }
   };
 
+  const [confirmCancel, setConfirmCancel] = useState(null); // vendaId
+
   const cancelarVenda = async (vendaId) => {
-    if (!window.confirm('Cancelar esta venda? Esta ação não pode ser desfeita.')) return;
     setCancelando(vendaId);
+    setConfirmCancel(null);
     try {
       await api.patch(`/vendas/${vendaId}/cancelar`, {});
       const updated = await api.get(`/clientes/${cliente.id}`);
       setDados(updated);
       onParcelaPaga();
+    } catch(e) {
+      alert(e?.detail || 'Erro ao cancelar venda');
     } finally { setCancelando(null); }
   };
 
@@ -1152,11 +1156,24 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                     <div style={{display:'flex',gap:4,marginLeft:8}} onClick={e=>e.stopPropagation()}>
                       <button className="parc-pay-btn" style={{padding:'3px 8px',fontSize:11,background:'rgba(0,153,255,.1)',color:'#0099ff'}}
                         onClick={() => abrirEditVenda(v)}>✎ Editar</button>
-                      <button className="parc-pay-btn" style={{padding:'3px 8px',fontSize:11,background:'rgba(255,71,87,.1)',color:'#ff4757'}}
-                        disabled={cancelando===v.id}
-                        onClick={() => cancelarVenda(v.id)}>
-                        {cancelando===v.id ? '...' : '✕ Cancelar'}
-                      </button>
+                      {confirmCancel === v.id ? (
+                        <div style={{display:'flex',gap:4,alignItems:'center'}} onClick={e=>e.stopPropagation()}>
+                          <span style={{fontSize:10,color:'rgba(232,234,237,.5)'}}>Confirmar?</span>
+                          <button className="parc-pay-btn" style={{padding:'3px 8px',fontSize:11,background:'rgba(255,71,87,.2)',color:'#ff4757'}}
+                            disabled={cancelando===v.id}
+                            onClick={()=>cancelarVenda(v.id)}>
+                            {cancelando===v.id?'...':'Sim'}
+                          </button>
+                          <button className="parc-pay-btn" style={{padding:'3px 8px',fontSize:11,background:'rgba(255,255,255,.06)',color:'rgba(232,234,237,.5)'}}
+                            onClick={()=>setConfirmCancel(null)}>Não</button>
+                        </div>
+                      ) : (
+                        <button className="parc-pay-btn" style={{padding:'3px 8px',fontSize:11,background:'rgba(255,71,87,.1)',color:'#ff4757'}}
+                          disabled={cancelando===v.id}
+                          onClick={()=>setConfirmCancel(v.id)}>
+                          ✕ Cancelar
+                        </button>
+                      )}
                     </div>
                   )}
                   <span style={{ fontSize:11, color:'rgba(232,234,237,.3)', marginLeft:4 }}>
