@@ -1113,7 +1113,12 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
           <div>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
               <div className="dp-sec-title" style={{ marginBottom:0 }}>
-                Vendas ({dados?.vendas?.length || 0})
+                Vendas ({dados?.vendas?.filter(v=>v.status_pagamento!=='cancelado').length || 0}
+                {dados?.vendas?.some(v=>v.status_pagamento==='cancelado') && (
+                  <span style={{fontSize:10,color:'rgba(232,234,237,.3)',fontWeight:400,marginLeft:4}}>
+                    + {dados.vendas.filter(v=>v.status_pagamento==='cancelado').length} cancelada(s)
+                  </span>
+                )})
               </div>
               <button className="btn btn-outline" style={{ padding:'5px 12px', fontSize:12 }} onClick={onNovaVenda}>
                 + Nova Venda
@@ -1128,9 +1133,11 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
               <div style={{ textAlign:'center', padding:'20px', color:'rgba(232,234,237,.25)', fontSize:12, fontFamily:'JetBrains Mono, monospace' }}>
                 Nenhuma venda registrada
               </div>
-            ) : dados.vendas.map(v => (
-              <div key={v.id} className="venda-block" style={{ marginBottom:10 }}>
-                <div className="venda-header" onClick={() => toggleVenda(v.id)}>
+            ) : dados.vendas.map(v => {
+              const cancelada = v.status_pagamento === 'cancelado';
+              return (
+              <div key={v.id} className="venda-block" style={{ marginBottom:10, opacity: cancelada ? 0.45 : 1, filter: cancelada ? 'grayscale(0.4)' : 'none', transition:'opacity .2s' }}>
+                <div className="venda-header" onClick={() => !cancelada && toggleVenda(v.id)} style={{cursor: cancelada ? 'default' : 'pointer'}}>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div className="venda-desc" style={{display:'flex',alignItems:'center',gap:6}}>
                       {v.descricao || `Venda #${v.id}`}
@@ -1181,7 +1188,7 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                   </span>
                 </div>
 
-                {vendaOpen[v.id] && (
+                {vendaOpen[v.id] && !cancelada && (
                   <div className="venda-body">
                     {/* Resumo financeiro da venda */}
                     {(() => {
@@ -1326,7 +1333,8 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
