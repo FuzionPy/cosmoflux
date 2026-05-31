@@ -801,7 +801,12 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
       setDados(updated);
       setModalVenda(null);
       onParcelaPaga();
-    } finally { setSalvandoV(false); }
+    } catch(e) {
+      setSalvandoV('erro');
+      setTimeout(() => setSalvandoV(false), 3000);
+      return;
+    }
+    setSalvandoV(false);
   };
 
   const [confirmCancel, setConfirmCancel] = useState(null); // vendaId
@@ -959,43 +964,93 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
       })()}
 
       {/* Modal edição de venda */}
+      {/* Modal edição de venda — 100% inline */}
       {modalVenda && (
-        <div className="modal-ev">
-          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)'}} onClick={()=>setModalVenda(null)}/>
-          <div className="modal-ev-box">
-            <div className="modal-ev-title">
-              <span>✎ Editar Venda #{modalVenda.id}</span>
-              <button style={{background:'none',border:'none',color:'rgba(232,234,237,.4)',cursor:'pointer',fontSize:18}} onClick={()=>setModalVenda(null)}>×</button>
+        <div onClick={e=>{if(e.target===e.currentTarget)setModalVenda(null);}}
+          style={{position:'fixed',inset:0,zIndex:450,display:'flex',alignItems:'center',justifyContent:'center',padding:16,background:'rgba(0,0,0,.72)',backdropFilter:'blur(4px)'}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{background:'#13161a',border:'1px solid rgba(255,255,255,.12)',borderRadius:16,width:'100%',maxWidth:420,display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 32px 80px rgba(0,0,0,.8)'}}>
+
+            {/* Header */}
+            <div style={{padding:'18px 20px',borderBottom:'1px solid rgba(255,255,255,.06)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,fontSize:15,fontWeight:700,color:'#e8eaed'}}>
+                <div style={{width:32,height:32,borderRadius:9,background:'rgba(0,153,255,.12)',border:'1px solid rgba(0,153,255,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,color:'#0099ff'}}>✎</div>
+                Editar Venda #{modalVenda.id}
+              </div>
+              <button onClick={()=>setModalVenda(null)} style={{background:'none',border:'none',color:'rgba(232,234,237,.35)',cursor:'pointer',fontSize:22,lineHeight:1,padding:'2px 6px'}}>×</button>
             </div>
 
-            <div className="ev-field">
-              <label className="ev-label">Descrição</label>
-              <input className="ev-input" value={editVenda.descricao||''} onChange={e=>setEditVenda(s=>({...s,descricao:e.target.value}))} placeholder="Ex: Compra de produtos"/>
+            {/* Body */}
+            <div style={{padding:'18px 20px',display:'flex',flexDirection:'column',gap:14}}>
+
+              {/* Descrição */}
+              <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                <div style={{fontSize:9,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>Descrição</div>
+                <input
+                  value={editVenda.descricao||''}
+                  onChange={e=>setEditVenda(s=>({...s,descricao:e.target.value}))}
+                  placeholder="Ex: Compra de produtos"
+                  onClick={e=>e.stopPropagation()}
+                  style={{background:'#0e1013',border:'1px solid rgba(255,255,255,.08)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#e8eaed',fontFamily:"'Syne',sans-serif",outline:'none',width:'100%'}}
+                />
+              </div>
+
+              {/* Forma de pagamento */}
+              <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                <div style={{fontSize:9,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>Forma de pagamento</div>
+                <select
+                  value={editVenda.modo_pagamento||''}
+                  onChange={e=>setEditVenda(s=>({...s,modo_pagamento:e.target.value}))}
+                  style={{background:'#0e1013',border:'1px solid rgba(255,255,255,.08)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#e8eaed',fontFamily:"'Syne',sans-serif",outline:'none',cursor:'pointer',width:'100%'}}>
+                  {['PIX','Dinheiro','Cartão de crédito','Cartão de débito','Fiado','Transferência','Boleto'].map(m=>(
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Data vencimento */}
+              <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                <div style={{fontSize:9,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>Data de vencimento</div>
+                <div style={{fontSize:10,color:'rgba(232,234,237,.25)',fontFamily:"'JetBrains Mono',monospace",marginTop:-2}}>Redistribui automaticamente as parcelas em aberto</div>
+                <input
+                  type="date"
+                  value={editVenda.data_vencimento||''}
+                  onChange={e=>setEditVenda(s=>({...s,data_vencimento:e.target.value}))}
+                  onClick={e=>e.stopPropagation()}
+                  style={{background:'#0e1013',border:'1px solid rgba(255,255,255,.08)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#e8eaed',fontFamily:"'JetBrains Mono',monospace",outline:'none',width:'100%'}}
+                />
+              </div>
+
+              {/* Observação */}
+              <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                <div style={{fontSize:9,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>Observação</div>
+                <input
+                  value={editVenda.observacao||''}
+                  onChange={e=>setEditVenda(s=>({...s,observacao:e.target.value}))}
+                  placeholder="Observação opcional"
+                  onClick={e=>e.stopPropagation()}
+                  style={{background:'#0e1013',border:'1px solid rgba(255,255,255,.08)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#e8eaed',fontFamily:"'Syne',sans-serif",outline:'none',width:'100%'}}
+                />
+              </div>
+
+              {salvandoV === 'erro' && (
+                <div style={{fontSize:12,color:'#ff4757',background:'rgba(255,71,87,.08)',border:'1px solid rgba(255,71,87,.2)',borderRadius:8,padding:'10px 14px',textAlign:'center'}}>
+                  Erro ao salvar. Tente novamente.
+                </div>
+              )}
             </div>
 
-            <div className="ev-field">
-              <label className="ev-label">Forma de pagamento</label>
-              <select className="ev-select" value={editVenda.modo_pagamento||''} onChange={e=>setEditVenda(s=>({...s,modo_pagamento:e.target.value}))}>
-                {['PIX','Dinheiro','Cartão de crédito','Cartão de débito','Fiado','Transferência','Boleto'].map(m=>(
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="ev-field">
-              <label className="ev-label">Data de vencimento (redistribui parcelas em aberto)</label>
-              <input type="date" className="ev-input" value={editVenda.data_vencimento||''} onChange={e=>setEditVenda(s=>({...s,data_vencimento:e.target.value}))}/>
-            </div>
-
-            <div className="ev-field">
-              <label className="ev-label">Observação</label>
-              <input className="ev-input" value={editVenda.observacao||''} onChange={e=>setEditVenda(s=>({...s,observacao:e.target.value}))} placeholder="Observação opcional"/>
-            </div>
-
-            <div className="ev-btns">
-              <button className="btn btn-ghost" style={{flex:1}} onClick={()=>setModalVenda(null)}>Cancelar</button>
-              <button className="btn btn-primary" style={{flex:2,justifyContent:'center'}} disabled={salvandoV} onClick={salvarVenda}>
-                {salvandoV ? 'Salvando...' : 'Salvar alterações'}
+            {/* Footer */}
+            <div style={{padding:'14px 20px',borderTop:'1px solid rgba(255,255,255,.06)',display:'flex',gap:10}}>
+              <button onClick={()=>setModalVenda(null)}
+                style={{flex:1,padding:'10px',borderRadius:9,border:'1px solid rgba(255,255,255,.08)',background:'transparent',color:'rgba(232,234,237,.5)',cursor:'pointer',fontFamily:"'Syne',sans-serif",fontWeight:600,fontSize:13}}>
+                Cancelar
+              </button>
+              <button onClick={salvarVenda} disabled={salvandoV===true}
+                style={{flex:2,display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'11px 16px',borderRadius:9,border:'none',cursor:salvandoV===true?'not-allowed':'pointer',fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13,background:salvandoV===true?'rgba(255,255,255,.06)':'linear-gradient(135deg,#0099ff,#0066cc)',color:salvandoV===true?'rgba(232,234,237,.3)':'#fff',transition:'all .2s'}}>
+                {salvandoV === true ? (
+                  <><span style={{width:14,height:14,border:'2px solid rgba(255,255,255,.3)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .7s linear infinite',display:'inline-block'}}/> Salvando...</>
+                ) : '✓ Salvar alterações'}
               </button>
             </div>
           </div>
