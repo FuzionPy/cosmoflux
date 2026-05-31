@@ -415,6 +415,22 @@ class EditarVendaSchema(BaseModel):
     observacao:      Optional[str]   = None
     descricao:       Optional[str]   = None
 
+@client_router.patch("/vendas/{venda_id}/cancelar")
+def cancelar_venda_alias(venda_id: int, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    """Alias registrado antes da rota genérica para evitar conflito de rotas."""
+    v = db.query(Venda).filter(Venda.id == venda_id).first()
+    if not v: raise HTTPException(404, "Venda não encontrada")
+    if not ctx["admin"] and v.tenant_id != ctx["tenant_id"]:
+        raise HTTPException(403, "Acesso negado")
+    if v.status_pagamento == "cancelado":
+        raise HTTPException(400, "Venda já cancelada")
+    v.status_pagamento = "cancelado"
+    for p in v.parcelas:
+        if not p.pago:
+            p.vencimento = None
+    db.commit()
+    return {"mensagem": "Venda cancelada"}
+
 @client_router.patch("/vendas/{venda_id}")
 def editar_venda(venda_id: int, dados: EditarVendaSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
     v = db.query(Venda).filter(Venda.id == venda_id).first()
@@ -448,21 +464,7 @@ def editar_venda(venda_id: int, dados: EditarVendaSchema, ctx: dict = Depends(ge
     db.commit()
     return {"mensagem": "Venda atualizada"}
 
-@client_router.patch("/vendas/{venda_id}/cancelar")
-def cancelar_venda(venda_id: int, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
-    v = db.query(Venda).filter(Venda.id == venda_id).first()
-    if not v: raise HTTPException(404, "Venda não encontrada")
-    if not ctx["admin"] and v.tenant_id != ctx["tenant_id"]:
-        raise HTTPException(403, "Acesso negado")
-    if v.status_pagamento == "cancelado":
-        raise HTTPException(400, "Venda já cancelada")
-    v.status_pagamento = "cancelado"
-    # marca todas as parcelas em aberto como canceladas (pago=False mantido, apenas vencimento limpo)
-    for p in v.parcelas:
-        if not p.pago:
-            p.vencimento = None
-    db.commit()
-    return {"mensagem": "Venda cancelada"}
+# cancelar_venda movido para antes de editar_venda para evitar conflito de rota
 
 @client_router.patch("/parcelas/{parcela_id}/vencimento")
 def alterar_vencimento_parcela(parcela_id: int, dados: dict, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
