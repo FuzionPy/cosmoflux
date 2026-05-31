@@ -477,91 +477,179 @@ function AlertBanner({ items, type }) {
   );
 }
 
-// ── FORM VENDA ────────────────────────────────────────────────────────────────
-const VENDA_EMPTY = {
-  descricao:'', valor_total:'', modo_pagamento:'PIX',
-  parcelado:false, num_parcelas:'1', data_vencimento:'', observacao:'',
-};
+// ── FORM VENDA (normalizado com tela de Vendas) ───────────────────────────────
+const PAGAMENTOS = ['PIX','Dinheiro','Cartão de crédito','Cartão de débito','Fiado','Transferência','Boleto'];
 
 function ModalVenda({ clienteId, clienteNome, onClose, onSaved, showToast }) {
-  const [form, setForm] = useState(VENDA_EMPTY);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
+  const [form, setForm]       = useState({ modo_pagamento:'PIX', parcelado:false, num_parcelas:2, data_vencimento:'', desconto_geral:'', observacao:'', valor_entrada:'', modo_pagamento_entrada:'' });
+  const [itens, setItens]     = useState([]);
+  const [busca, setBusca]     = useState('');
+  const [sugestoes, setSugestoes] = useState([]);
+  const [saving, setSaving]   = useState(false);
+  const [err, setErr]         = useState('');
 
-  const F = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const valParcela = form.valor_total && form.num_parcelas > 1
-    ? (parseFloat(form.valor_total) / parseInt(form.num_parcelas)).toFixed(2)
-    : null;
+  const F = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  // busca produtos
+  useEffect(() => {
+    if (busca.length < 2) { setSugestoes([]); return; }
+    const t = setTimeout(async () => {
+      const data = await api.get(`/produtos?search=${encodeURIComponent(busca)}`).catch(()=>[]);
+      setSugestoes(Array.isArray(data) ? data.slice(0,8) : []);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [busca]);
+
+  const addItem = (prod) => {
+    setItens(its => {
+      const ex = its.find(i => i.produto_id === prod.id);
+      if (ex) return its.map(i => i.produto_id===prod.id ? {...i, quantidade:i.quantidade+1} : i);
+      return [...its, { produto_id:prod.id, nome:prod.nome, preco:prod.preco_venda, quantidade:1, desconto_item:0 }];
+    });
+    setBusca(''); setSugestoes([]);
+  };
+
+  const remItem = (id) => setItens(its => its.filter(i => i.produto_id!==id));
+  const updQtd  = (id,v) => setItens(its => its.map(i => i.produto_id===id ? {...i, quantidade:Math.max(1,parseInt(v)||1)} : i));
+
+  const desconto   = parseFloat(form.desconto_geral)||0;
+  const subtotal   = itens.reduce((a,i) => a + i.preco*i.quantidade - (i.desconto_item||0), 0);
+  const total      = Math.max(subtotal - desconto, 0);
+  const entrada    = Math.min(parseFloat(form.valor_entrada)||0, total);
+  const restante   = Math.max(total - entrada, 0);
+  const valParcela = form.parcelado && form.num_parcelas>1 && restante>0
+    ? restante / parseInt(form.num_parcelas) : null;
 
   const save = async () => {
-    if (!form.valor_total || !form.modo_pagamento || !form.data_vencimento) {
-      setErr('Valor, modo de pagamento e data de vencimento são obrigatórios.'); return;
-    }
+    if (itens.length === 0) { setErr('Adicione pelo menos um produto.'); return; }
+    if (!form.data_vencimento) { setErr('Data de vencimento é obrigatória.'); return; }
     setSaving(true); setErr('');
     try {
-      await api.post('/vendas', {
+      await api.post('/vendas/unificada', {
         cliente_id: clienteId,
-        descricao: form.descricao || null,
-        valor_total: parseFloat(form.valor_total),
+        itens: itens.map(i=>({ produto_id:i.produto_id, quantidade:i.quantidade, preco_unitario:i.preco, desconto_item:i.desconto_item||0 })),
         modo_pagamento: form.modo_pagamento,
         parcelado: form.parcelado,
         num_parcelas: form.parcelado ? parseInt(form.num_parcelas) : 1,
         data_vencimento: form.data_vencimento,
+        desconto_geral: desconto,
         observacao: form.observacao || null,
+        valor_entrada: entrada,
+        modo_pagamento_entrada: form.modo_pagamento_entrada || null,
       });
       showToast('Venda registrada!', '✓');
       onSaved();
-    } catch (e) {
-      setErr('Erro ao registrar venda.');
+    } catch(e) {
+      setErr(e?.detail || 'Erro ao registrar venda.');
     } finally { setSaving(false); }
   };
 
   return (
-    <div className="modal-bg" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
+    <div className="modal-bg" onClick={e => e.target===e.currentTarget && onClose()}>
+      <div className="modal" style={{maxWidth:600,maxHeight:'90vh',overflow:'hidden',display:'flex',flexDirection:'column'}}>
         <div className="modal-head">
           <div>
             <div className="modal-title">Nova Venda</div>
-            <div className="modal-sub">Cliente: {clienteNome}</div>
+            <div className="modal-sub">Registra venda, baixa estoque e financeiro · {clienteNome}</div>
           </div>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
-        <div className="modal-body">
+
+        <div className="modal-body" style={{overflowY:'auto',flex:1}}>
           {err && <div className="form-err">⚠ {err}</div>}
 
-          <div className="form-field">
-            <label className="form-lbl">Descrição da venda</label>
-            <input className="form-inp" placeholder="Ex: Creme hidratante + sérum vitamina C"
-              value={form.descricao} onChange={e => F('descricao', e.target.value)} />
+          {/* PRODUTOS */}
+          <div className="form-section-title">Produtos</div>
+          <div style={{position:'relative',marginBottom:8}}>
+            <div style={{display:'flex',gap:8}}>
+              <input className="form-inp" style={{flex:1}} placeholder="Buscar produto por nome ou SKU..."
+                value={busca} onChange={e=>setBusca(e.target.value)}/>
+            </div>
+            {sugestoes.length > 0 && (
+              <div style={{position:'absolute',top:'100%',left:0,right:0,background:'#1a1d22',border:'1px solid rgba(255,255,255,.1)',borderRadius:8,zIndex:50,maxHeight:200,overflowY:'auto'}}>
+                {sugestoes.map(p=>(
+                  <div key={p.id} onClick={()=>addItem(p)}
+                    style={{padding:'10px 14px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:13,borderBottom:'1px solid rgba(255,255,255,.05)'}}
+                    onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.04)'}
+                    onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                    <div>
+                      <span style={{color:'#e8eaed',fontWeight:600}}>{p.nome}</span>
+                      {p.sku && <span style={{fontSize:10,color:'rgba(232,234,237,.3)',marginLeft:8,fontFamily:'JetBrains Mono,monospace'}}>{p.sku}</span>}
+                    </div>
+                    <div style={{display:'flex',gap:12,alignItems:'center'}}>
+                      <span style={{fontSize:11,color:'rgba(232,234,237,.4)'}}>Estoque: {p.estoque_atual}</span>
+                      <span style={{fontWeight:700,color:'#00d4aa',fontFamily:'JetBrains Mono,monospace'}}>{fmtBRL(p.preco_venda)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
+          {itens.length === 0 ? (
+            <div style={{textAlign:'center',padding:'16px',color:'rgba(232,234,237,.25)',fontSize:12,fontFamily:'JetBrains Mono,monospace',background:'rgba(255,255,255,.02)',borderRadius:8,marginBottom:12}}>
+              Nenhum produto adicionado
+            </div>
+          ) : (
+            <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:12}}>
+              {itens.map(i=>(
+                <div key={i.produto_id} style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.06)',borderRadius:8,padding:'8px 12px'}}>
+                  <div style={{flex:1,fontSize:13,fontWeight:600,color:'#e8eaed'}}>{i.nome}</div>
+                  <div style={{display:'flex',alignItems:'center',gap:6}}>
+                    <button onClick={()=>updQtd(i.produto_id,i.quantidade-1)} style={{width:24,height:24,borderRadius:5,border:'1px solid rgba(255,255,255,.1)',background:'transparent',color:'#e8eaed',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
+                    <span style={{fontSize:13,fontFamily:'JetBrains Mono,monospace',minWidth:24,textAlign:'center'}}>{i.quantidade}</span>
+                    <button onClick={()=>updQtd(i.produto_id,i.quantidade+1)} style={{width:24,height:24,borderRadius:5,border:'1px solid rgba(255,255,255,.1)',background:'transparent',color:'#e8eaed',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
+                  </div>
+                  <span style={{fontSize:13,fontFamily:'JetBrains Mono,monospace',color:'#00d4aa',minWidth:80,textAlign:'right'}}>{fmtBRL(i.preco*i.quantidade)}</span>
+                  <button onClick={()=>remItem(i.produto_id)} style={{background:'none',border:'none',color:'rgba(255,71,87,.5)',cursor:'pointer',fontSize:16,padding:'0 2px'}}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* PAGAMENTO */}
+          <div className="form-section-title">Pagamento</div>
           <div className="form-row2">
             <div className="form-field">
-              <label className="form-lbl">Valor Total (R$) *</label>
-              <input className="form-inp" type="number" step="0.01" min="0" placeholder="0,00"
-                value={form.valor_total} onChange={e => F('valor_total', e.target.value)} />
-            </div>
-            <div className="form-field">
-              <label className="form-lbl">Modo de Pagamento *</label>
-              <select className="form-sel" value={form.modo_pagamento} onChange={e => F('modo_pagamento', e.target.value)}>
-                {MODOS.map(m => <option key={m}>{m}</option>)}
+              <label className="form-lbl">Forma de pagamento (restante)</label>
+              <select className="form-sel" value={form.modo_pagamento} onChange={e=>F('modo_pagamento',e.target.value)}>
+                {PAGAMENTOS.map(p=><option key={p}>{p}</option>)}
               </select>
             </div>
+            <div className="form-field">
+              <label className="form-lbl">Desconto geral (R$)</label>
+              <input className="form-inp" type="number" min="0" step="0.01" placeholder="0,00"
+                value={form.desconto_geral} onChange={e=>F('desconto_geral',e.target.value)}/>
+            </div>
           </div>
 
           <div className="form-row2">
             <div className="form-field">
-              <label className="form-lbl">Data de Vencimento *</label>
-              <input className="form-inp" type="date" min={hoje()}
-                value={form.data_vencimento} onChange={e => F('data_vencimento', e.target.value)} />
+              <label className="form-lbl">Valor de entrada (R$)</label>
+              <input className="form-inp" type="number" min="0" step="0.01" placeholder="0,00 — opcional"
+                value={form.valor_entrada} onChange={e=>F('valor_entrada',e.target.value)}/>
             </div>
-            <div className="form-field" style={{ justifyContent:'flex-end' }}>
+            {parseFloat(form.valor_entrada)>0 && (
+              <div className="form-field">
+                <label className="form-lbl">Forma pagamento da entrada</label>
+                <select className="form-sel" value={form.modo_pagamento_entrada} onChange={e=>F('modo_pagamento_entrada',e.target.value)}>
+                  <option value="">Mesma do restante</option>
+                  {PAGAMENTOS.map(p=><option key={p}>{p}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div className="form-row2">
+            <div className="form-field">
+              <label className="form-lbl">Data de vencimento *</label>
+              <input className="form-inp" type="date" value={form.data_vencimento} onChange={e=>F('data_vencimento',e.target.value)}/>
+            </div>
+            <div className="form-field">
               <label className="form-lbl">Parcelado?</label>
-              <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:6 }}>
-                <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', fontSize:13, color:'rgba(232,234,237,.7)' }}>
-                  <input type="checkbox" checked={form.parcelado}
-                    onChange={e => F('parcelado', e.target.checked)}
-                    style={{ accentColor:'#00d4aa', width:15, height:15 }} />
+              <div style={{display:'flex',alignItems:'center',gap:10,marginTop:6}}>
+                <label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:13,color:'rgba(232,234,237,.7)'}}>
+                  <input type="checkbox" checked={form.parcelado} onChange={e=>F('parcelado',e.target.checked)} style={{accentColor:'#00d4aa',width:15,height:15}}/>
                   Sim, parcelar
                 </label>
               </div>
@@ -571,18 +659,15 @@ function ModalVenda({ clienteId, clienteNome, onClose, onSaved, showToast }) {
           {form.parcelado && (
             <div className="form-row2">
               <div className="form-field">
-                <label className="form-lbl">Número de Parcelas</label>
-                <select className="form-sel" value={form.num_parcelas} onChange={e => F('num_parcelas', e.target.value)}>
-                  {[2,3,4,5,6,7,8,9,10,12].map(n => <option key={n} value={n}>{n}x</option>)}
+                <label className="form-lbl">Número de parcelas</label>
+                <select className="form-sel" value={form.num_parcelas} onChange={e=>F('num_parcelas',e.target.value)}>
+                  {[2,3,4,5,6,7,8,9,10,12].map(n=><option key={n} value={n}>{n}x</option>)}
                 </select>
               </div>
               {valParcela && (
-                <div style={{ display:'flex', flexDirection:'column', justifyContent:'flex-end' }}>
+                <div className="form-field" style={{justifyContent:'flex-end'}}>
                   <div className="parc-preview">
-                    <div>
-                      <div className="pp-item-lbl">Cada parcela</div>
-                      <div className="pp-item-val">{fmtBRL(valParcela)}</div>
-                    </div>
+                    <div><div className="pp-item-lbl">Cada parcela</div><div className="pp-item-val">{fmtBRL(valParcela)}</div></div>
                   </div>
                 </div>
               )}
@@ -590,15 +675,30 @@ function ModalVenda({ clienteId, clienteNome, onClose, onSaved, showToast }) {
           )}
 
           <div className="form-field">
-            <label className="form-lbl">Observações</label>
-            <textarea className="form-ta" placeholder="Notas adicionais..."
-              value={form.observacao} onChange={e => F('observacao', e.target.value)} />
+            <label className="form-lbl">Observação</label>
+            <textarea className="form-ta" placeholder="Opcional..."
+              value={form.observacao} onChange={e=>F('observacao',e.target.value)}/>
           </div>
+
+          {/* Totais */}
+          {itens.length > 0 && (
+            <div style={{background:'rgba(0,212,170,.04)',border:'1px solid rgba(0,212,170,.12)',borderRadius:10,padding:'12px 16px',display:'flex',flexDirection:'column',gap:6}}>
+              {desconto>0 && <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}><span style={{color:'rgba(232,234,237,.4)'}}>Subtotal</span><span style={{fontFamily:'JetBrains Mono,monospace'}}>{fmtBRL(subtotal)}</span></div>}
+              {desconto>0 && <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}><span style={{color:'rgba(232,234,237,.4)'}}>Desconto</span><span style={{fontFamily:'JetBrains Mono,monospace',color:'#ff6b35'}}>- {fmtBRL(desconto)}</span></div>}
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:15,fontWeight:800}}><span style={{color:'#e8eaed'}}>Total</span><span style={{fontFamily:'JetBrains Mono,monospace',color:'#00d4aa'}}>{fmtBRL(total)}</span></div>
+              {entrada>0 && <>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:12,borderTop:'1px solid rgba(255,255,255,.06)',paddingTop:6}}><span style={{color:'#00d4aa'}}>✓ Entrada</span><span style={{fontFamily:'JetBrains Mono,monospace',color:'#00d4aa'}}>- {fmtBRL(entrada)}</span></div>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:13,fontWeight:700}}><span style={{color:'#e8eaed'}}>Restante a pagar</span><span style={{fontFamily:'JetBrains Mono,monospace',color:'#ffd32a'}}>{fmtBRL(restante)}</span></div>
+              </>}
+              {valParcela && <div style={{fontSize:11,color:'rgba(232,234,237,.35)',fontFamily:'JetBrains Mono,monospace',textAlign:'right'}}>{form.num_parcelas}x de {fmtBRL(valParcela)}</div>}
+            </div>
+          )}
         </div>
+
         <div className="modal-foot">
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn-primary" onClick={save} disabled={saving}>
-            {saving ? 'Salvando...' : 'Registrar Venda'}
+            {saving ? 'Salvando...' : 'Confirmar Venda'}
           </button>
         </div>
       </div>
