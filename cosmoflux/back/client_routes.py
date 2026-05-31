@@ -203,35 +203,85 @@ def detalhe_cliente(cliente_id: int, ctx: dict = Depends(get_ctx), db: Session =
     if not c: raise HTTPException(404, "Cliente não encontrado")
     hoje = date.today()
     vendas = []
-    for v in c.vendas:
-        if v.status_pagamento == "cancelado":
-            continue
-        parcelas = [{
-            "id": p.id, "numero": p.numero, "valor": p.valor,
-            "vencimento":     p.vencimento.strftime("%d/%m/%Y"),
-            "vencimento_raw": p.vencimento.isoformat(),
-            "pago":     p.pago,
-            "data_pago":p.data_pago.strftime("%d/%m/%Y") if p.data_pago else None,
-            "status":   "pago" if p.pago else (
-                        "vencido" if p.vencimento < hoje else (
-                        "proximo" if (p.vencimento - hoje).days <= 5 else "ok")),
-        } for p in sorted(v.parcelas, key=lambda x: x.numero)]
+    for v in sorted(c.vendas, key=lambda x: x.id, reverse=True):
+        # inclui todas as vendas, inclusive canceladas (para exibir no painel)
+        vp = getattr(v, "valor_pago", None)  # campo legado ignorado
+
+        parcelas = []
+        for p in sorted(v.parcelas, key=lambda x: x.numero):
+            vp_parc = getattr(p, "valor_pago", None) or 0
+            saldo   = round(p.valor - vp_parc, 2)
+            if p.vencimento:
+                st = "pago" if p.pago else (
+                     "parcial" if vp_parc > 0 else (
+                     "vencido" if p.vencimento < hoje else (
+                     "proximo" if (p.vencimento - hoje).days <= 5 else "em_aberto")))
+                venc_fmt = p.vencimento.strftime("%d/%m/%Y")
+                venc_raw = p.vencimento.isoformat()
+            else:
+                st = "pago" if p.pago else "em_aberto"
+                venc_fmt = None
+                venc_raw = None
+
+            parcelas.append({
+                "id":              p.id,
+                "numero":          p.numero,
+                "valor":           p.valor,
+                "valor_pago":      round(vp_parc, 2),
+                "saldo_restante":  saldo,
+                "vencimento":      venc_fmt,
+                "vencimento_raw":  venc_raw,
+                "pago":            p.pago,
+                "data_pago":       p.data_pago.strftime("%d/%m/%Y") if p.data_pago else None,
+                "status":          st,
+            })
+
+        # calcular total pago e saldo da venda
+        total_pago_venda = round(sum(
+            p["valor"] if p["pago"] else p["valor_pago"]
+            for p in parcelas
+        ), 2) if parcelas else (v.valor_total if v.status_pagamento == "pago" else 0)
+        saldo_venda = round(max(v.valor_total - total_pago_venda, 0), 2)
+
+        # status de entrega via pedido vinculado
+        pedido = db.query(Pedido).filter(
+            Pedido.cliente_id == c.id,
+            Pedido.tenant_id == c.tenant_id,
+        ).order_by(desc(Pedido.id)).first() if c.id else None
+        status_entrega = pedido.status if pedido else None
+
         vendas.append({
-            "id": v.id, "descricao": v.descricao,
-            "valor_total": v.valor_total, "modo_pagamento": v.modo_pagamento,
-            "parcelado": v.parcelado, "num_parcelas": v.num_parcelas,
-            "valor_parcela": v.valor_parcela,
-            "data_venda":      v.data_venda.strftime("%d/%m/%Y") if v.data_venda else None,
-            "data_vencimento": v.data_vencimento.strftime("%d/%m/%Y") if v.data_vencimento else None,
-            "status_pagamento": calc_status_pag_cli(v, hoje), "observacao": v.observacao,
-            "parcelas": parcelas,
+            "id":               v.id,
+            "descricao":        v.descricao,
+            "valor_total":      v.valor_total,
+            "desconto":         v.desconto or 0,
+            "modo_pagamento":   v.modo_pagamento,
+            "parcelado":        v.parcelado,
+            "num_parcelas":     v.num_parcelas,
+            "valor_parcela":    v.valor_parcela,
+            "data_venda":       v.data_venda.strftime("%d/%m/%Y") if v.data_venda else None,
+            "data_vencimento":  v.data_vencimento.strftime("%d/%m/%Y") if v.data_vencimento else None,
+            "status_pagamento": calc_status_pag_cli(v, hoje),
+            "status_entrega":   status_entrega,
+            "observacao":       v.observacao,
+            "total_pago":       total_pago_venda,
+            "saldo_devedor":    saldo_venda,
+            "parcelas":         parcelas,
         })
+
+    # total em aberto calculado só das vendas não canceladas
+    total_aberto = round(sum(
+        v["saldo_devedor"] for v in vendas
+        if v["status_pagamento"] not in ("cancelado", "pago")
+    ), 2)
+
     return {
         "id": c.id, "nome": c.nome, "email": c.email, "telefone": c.telefone,
         "cpf": c.cpf, "endereco": c.endereco, "cidade": c.cidade, "cep": c.cep,
         "observacao": c.observacao,
         "criado_em": c.criado_em.strftime("%d/%m/%Y") if c.criado_em else None,
         "vendedor": c.usuario_rel.nome if c.usuario_rel else None,
+        "total_em_aberto": total_aberto,
         "vendas": vendas,
     }
 
