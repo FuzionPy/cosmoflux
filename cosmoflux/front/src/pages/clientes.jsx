@@ -184,14 +184,14 @@ const S = `
 
 /* ── ICON BTN ── */
 .icon-btn {
-  width:30px;height:30px;border-radius:7px;border:1px solid rgba(255,255,255,.06);
+  width:32px;height:32px;border-radius:7px;border:1px solid rgba(255,255,255,.1);
   display:flex;align-items:center;justify-content:center;
   cursor:pointer;transition:all .2s;
-  background:rgba(255,255,255,.03);color:rgba(232,234,237,.35);
+  background:rgba(255,255,255,.05);color:rgba(232,234,237,.7);
 }
-.icon-btn:hover               { background:rgba(0,153,255,.12);color:#0099ff;border-color:rgba(0,153,255,.25);transform:translateY(-1px); }
-.icon-btn.danger              { background:rgba(255,255,255,.03);color:rgba(232,234,237,.35);border-color:rgba(255,255,255,.06); }
-.icon-btn.danger:hover        { background:rgba(255,71,87,.12);color:#ff4757;border-color:rgba(255,71,87,.25);transform:translateY(-1px); }
+.icon-btn:hover               { background:rgba(0,153,255,.15);color:#0099ff;border-color:rgba(0,153,255,.3);transform:translateY(-1px); }
+.icon-btn.danger              { background:rgba(255,255,255,.05);color:rgba(232,234,237,.7);border-color:rgba(255,255,255,.1); }
+.icon-btn.danger:hover        { background:rgba(255,71,87,.15);color:#ff4757;border-color:rgba(255,71,87,.3);transform:translateY(-1px); }
 
 /* ── EMPTY ── */
 .cl-empty { grid-column:1/-1;padding:60px 20px;text-align:center;color:rgba(232,234,237,.25); }
@@ -1747,14 +1747,14 @@ export default function Clientes() {
                   <div className="cl-actions">
                     <button className="icon-btn" title="Editar cliente"
                       onClick={e => { e.stopPropagation(); setSelected(c); setModal('edit'); }}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 20h9"/>
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                       </svg>
                     </button>
                     <button className="icon-btn danger" title="Excluir cliente"
                       onClick={e => { e.stopPropagation(); setConfirmDel(c); }}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="3 6 5 6 21 6"/>
                         <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
                         <path d="M10 11v6M14 11v6"/>
