@@ -28,7 +28,7 @@ const MODOS = ['Dinheiro','PIX','Cartão Crédito','Cartão Débito','Boleto','F
 
 // ── STYLES ────────────────────────────────────────────────────────────────────
 const S = `
-@import url('https://fonts.googleapis.com/css2?family=Plus Jakarta Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -277,15 +277,17 @@ const S = `
 
 /* Parcelas */
 .parcela-row {
-  display:flex;align-items:center;gap:10px;
+  display:grid;
+  grid-template-columns: 40px 130px 90px 80px auto;
+  align-items:center;gap:8px;
   padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.03);
   transition:background .15s;
 }
 .parcela-row:last-child { border-bottom:none; }
 .parcela-row:hover { background:rgba(255,255,255,.02); }
-.parc-num  { font-size:11px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.3);width:28px; }
-.parc-venc { font-size:12px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.5);flex:1; }
-.parc-val  { font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#e8eaed; }
+.parc-num  { font-size:11px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.4);text-align:center; }
+.parc-venc { font-size:11px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.5); }
+.parc-val  { font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#e8eaed;text-align:right; }
 .parc-pay-btn {
   padding:3px 10px;border-radius:5px;border:none;
   font-size:10px;font-family:'JetBrains Mono',monospace;font-weight:600;
@@ -1465,48 +1467,66 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                           const stBadge = p.pago ? 'b-green' : parcial ? 'b-yellow' : p.status === 'vencido' ? 'b-red' : p.status === 'proximo' ? 'b-yellow' : 'b-gray';
                           const stLabel = p.pago ? '✓ PAGO' : parcial ? '◑ PARCIAL' : p.status === 'vencido' ? 'VENCIDO' : p.status === 'proximo' ? 'EM BREVE' : 'EM ABERTO';
                           return (
-                            <div key={p.id} className="parcela-row">
-                              <span className="parc-num">{p.numero === 0 ? 'Entrada' : `${p.numero}ª`}</span>
-                              {!p.pago && v.status_pagamento !== 'cancelado' ? (
-                                <input type="date" className="parc-venc-edit"
-                                  defaultValue={p.vencimento_raw || ''}
-                                  onBlur={e => { if(e.target.value) alterarVencParcela(p.id, e.target.value); }}
-                                  onClick={e=>e.stopPropagation()}
-                                  title="Clique para alterar vencimento"/>
-                              ) : (
-                                <span className="parc-venc">{p.vencimento}</span>
-                              )}
-                              <span className={`badge ${stBadge}`}>{stLabel}</span>
-                              <span className="parc-val" style={{marginLeft:'auto'}}>
-                                {parcial ? (
-                                  <span>
-                                    <span style={{color:'#ffd32a'}}>{fmtBRL(p.valor_pago||0)}</span>
-                                    <span style={{color:'rgba(232,234,237,.3)'}}> / {fmtBRL(p.valor)}</span>
-                                  </span>
-                                ) : fmtBRL(p.valor)}
-                              </span>
-                              {!p.pago && (
-                                <>
-                                  <button className="parc-pay-btn"
-                                    style={{background:'rgba(0,212,170,.15)',color:'#00d4aa'}}
-                                    disabled={pagando === p.id}
-                                    onClick={() => pagarParcela(p.id)}>
-                                    {pagando === p.id ? '...' : '✓ Pagar total'}
-                                  </button>
-                                  <button className="parc-pay-btn"
-                                    style={{background:'rgba(255,211,42,.1)',color:'#ffd32a'}}
-                                    disabled={pagando === p.id}
-                                    onClick={() => abrirAbat(v)}>
-                                    ◑ Abater
-                                  </button>
-                                </>
-                              )}
+                            <div key={p.id} style={{display:'flex',flexDirection:'column'}}>
+                              <div className="parcela-row">
+                                {/* col 1: número */}
+                                <span className="parc-num">{p.numero === 0 ? 'ENT' : `${p.numero}ª`}</span>
+
+                                {/* col 2: vencimento */}
+                                {!p.pago && v.status_pagamento !== 'cancelado' ? (
+                                  <input type="date" className="parc-venc-edit"
+                                    defaultValue={p.vencimento_raw || ''}
+                                    onBlur={e => { if(e.target.value) alterarVencParcela(p.id, e.target.value); }}
+                                    onClick={e=>e.stopPropagation()}
+                                    title="Clique para alterar vencimento"
+                                    style={{width:'100%'}}/>
+                                ) : (
+                                  <span className="parc-venc">{p.vencimento || '—'}</span>
+                                )}
+
+                                {/* col 3: status */}
+                                <span className={`badge ${stBadge}`} style={{justifySelf:'center',whiteSpace:'nowrap'}}>{stLabel}</span>
+
+                                {/* col 4: valor */}
+                                <span className="parc-val">
+                                  {parcial ? (
+                                    <span style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}>
+                                      <span style={{color:'#ffd32a',fontSize:11}}>{fmtBRL(p.valor_pago||0)}</span>
+                                      <span style={{color:'rgba(232,234,237,.3)',fontSize:10}}>/ {fmtBRL(p.valor)}</span>
+                                    </span>
+                                  ) : fmtBRL(p.valor)}
+                                </span>
+
+                                {/* col 5: ações */}
+                                <div style={{display:'flex',gap:4,justifyContent:'flex-end'}}>
+                                  {!p.pago ? (
+                                    <>
+                                      <button className="parc-pay-btn"
+                                        style={{background:'rgba(0,212,170,.15)',color:'#00d4aa',padding:'4px 8px',fontSize:10,whiteSpace:'nowrap'}}
+                                        disabled={pagando === p.id}
+                                        onClick={() => pagarParcela(p.id)}>
+                                        {pagando === p.id ? '...' : '✓ Pagar'}
+                                      </button>
+                                      <button className="parc-pay-btn"
+                                        style={{background:'rgba(255,211,42,.1)',color:'#ffd32a',padding:'4px 8px',fontSize:10,whiteSpace:'nowrap'}}
+                                        disabled={pagando === p.id}
+                                        onClick={() => abrirAbat(v)}>
+                                        ◑ Abater
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <span style={{fontSize:10,color:'rgba(232,234,237,.25)',fontFamily:"'JetBrains Mono',monospace"}}>
+                                      {p.data_pago || ''}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                               {parcial && (
-                                <div className="parc-progress">
-                                  <div className="parc-track">
-                                    <div className="parc-fill" style={{width:`${pct}%`}}/>
+                                <div style={{padding:'0 14px 8px',display:'flex',alignItems:'center',gap:8}}>
+                                  <div style={{flex:1,height:3,background:'rgba(255,255,255,.06)',borderRadius:2,overflow:'hidden'}}>
+                                    <div style={{height:'100%',width:`${pct}%`,background:'#ffd32a',borderRadius:2}}/>
                                   </div>
-                                  <span className="parc-abat-info">Restam {fmtBRL(p.saldo_restante||0)}</span>
+                                  <span style={{fontSize:10,fontFamily:"'JetBrains Mono',monospace",color:'#ffd32a',whiteSpace:'nowrap'}}>Restam {fmtBRL(p.saldo_restante||0)}</span>
                                 </div>
                               )}
                             </div>
