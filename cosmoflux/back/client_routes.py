@@ -425,9 +425,6 @@ def cancelar_venda_alias(venda_id: int, ctx: dict = Depends(get_ctx), db: Sessio
     if v.status_pagamento == "cancelado":
         raise HTTPException(400, "Venda já cancelada")
     v.status_pagamento = "cancelado"
-    for p in v.parcelas:
-        if not p.pago:
-            p.vencimento = None
     db.commit()
     return {"mensagem": "Venda cancelada"}
 
