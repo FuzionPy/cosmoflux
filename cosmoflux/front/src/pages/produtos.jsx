@@ -297,12 +297,28 @@ export default function Produtos() {
                     <div className="prod-stock-label"><span>Estoque</span><span>{p.estoque_atual} {p.unidade} / mín {p.estoque_minimo}</span></div>
                     <div className="prod-stock-track"><div className="prod-stock-fill" style={{width:`${pct}%`,background:sc}}/></div>
                   </div>
-                  <div className="prod-actions" onClick={e=>e.stopPropagation()}>
-                    <button className="icon-btn" onClick={e=>openEdit(p,e)} title="Editar">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  <div style={{display:'flex',gap:6}} onClick={e=>e.stopPropagation()}>
+                    <button title="Editar produto"
+                      onClick={e=>openEdit(p,e)}
+                      style={{width:32,height:32,borderRadius:7,border:'1px solid rgba(255,255,255,.1)',background:'rgba(255,255,255,.05)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',transition:'all .2s',color:'rgba(232,234,237,.7)',padding:0,flexShrink:0}}
+                      onMouseEnter={e=>{e.currentTarget.style.background='rgba(0,153,255,.15)';e.currentTarget.style.color='#0099ff';e.currentTarget.style.borderColor='rgba(0,153,255,.3)';}}
+                      onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,.05)';e.currentTarget.style.color='rgba(232,234,237,.7)';e.currentTarget.style.borderColor='rgba(255,255,255,.1)';}}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/>
+                      </svg>
                     </button>
-                    <button className="icon-btn danger" onClick={()=>setConfirmDel(p)} title="Remover">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                    <button title="Excluir produto"
+                      onClick={()=>setConfirmDel(p)}
+                      style={{width:32,height:32,borderRadius:7,border:'1px solid rgba(255,255,255,.1)',background:'rgba(255,255,255,.05)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',transition:'all .2s',color:'rgba(232,234,237,.7)',padding:0,flexShrink:0}}
+                      onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,71,87,.15)';e.currentTarget.style.color='#ff4757';e.currentTarget.style.borderColor='rgba(255,71,87,.3)';}}
+                      onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,.05)';e.currentTarget.style.color='rgba(232,234,237,.7)';e.currentTarget.style.borderColor='rgba(255,255,255,.1)';}}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                        <path d="M10 11v6M14 11v6"/>
+                        <path d="M9 6V4h6v2"/>
+                      </svg>
                     </button>
                   </div>
                 </div>
