@@ -278,9 +278,9 @@ const S = `
 /* Parcelas */
 .parcela-row {
   display:grid;
-  grid-template-columns: 40px 130px 90px 80px auto;
-  align-items:center;gap:8px;
-  padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.03);
+  grid-template-columns: 36px 1fr 80px 70px auto;
+  align-items:center;gap:6px;
+  padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.03);
   transition:background .15s;
 }
 .parcela-row:last-child { border-bottom:none; }
@@ -1502,13 +1502,13 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                                   {!p.pago ? (
                                     <>
                                       <button className="parc-pay-btn"
-                                        style={{background:'rgba(0,212,170,.15)',color:'#00d4aa',padding:'4px 8px',fontSize:10,whiteSpace:'nowrap'}}
+                                        style={{background:'rgba(0,212,170,.15)',color:'#00d4aa',padding:'3px 6px',fontSize:9,whiteSpace:'nowrap'}}
                                         disabled={pagando === p.id}
                                         onClick={() => pagarParcela(p.id)}>
                                         {pagando === p.id ? '...' : '✓ Pagar'}
                                       </button>
                                       <button className="parc-pay-btn"
-                                        style={{background:'rgba(255,211,42,.1)',color:'#ffd32a',padding:'4px 8px',fontSize:10,whiteSpace:'nowrap'}}
+                                        style={{background:'rgba(255,211,42,.1)',color:'#ffd32a',padding:'3px 6px',fontSize:9,whiteSpace:'nowrap'}}
                                         disabled={pagando === p.id}
                                         onClick={() => abrirAbat(v)}>
                                         ◑ Abater
