@@ -1,316 +1,451 @@
-from sqlalchemy import create_engine, Column, String, Integer, Boolean, ForeignKey, Float, DateTime, Text, Date
-from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy.orm import Session, sessionmaker
-from datetime import datetime, timedelta
-import os
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime, date, timedelta
+from models import Cliente, Venda, Parcela, Produto, Movimentacao, Pedido, ItemPedido, get_db
+from auth_routes import get_ctx
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///banco.db")
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+client_router = APIRouter(prefix="/api", tags=["clientes"])
 
-# SQLite precisa de check_same_thread, PostgreSQL não aceita esse argumento
-if DATABASE_URL.startswith("sqlite"):
-    db = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-else:
-    db = create_engine(DATABASE_URL)
+def calc_status_pag_cli(venda, hoje):
+    """Calcula status de pagamento em tempo real."""
+    if not venda: return "pago"
+    parcelas = venda.parcelas
+    if not parcelas:
+        if venda.data_vencimento and venda.data_vencimento < hoje:
+            return "vencido"
+        return venda.status_pagamento or "em_aberto"
+    if all(p.pago for p in parcelas): return "pago"
+    if any(not p.pago and p.vencimento < hoje for p in parcelas): return "vencido"
+    return "em_aberto"
 
-Base = declarative_base()
+def tf(q, model, ctx):
+    if not ctx["admin"] and ctx["tenant_id"] is not None:
+        return q.filter(model.tenant_id == ctx["tenant_id"])
+    return q
 
+def tid(ctx):
+    return None if ctx["admin"] else ctx.get("tenant_id")
 
-class Tenant(Base):
-    """Representa uma empresa/conta no sistema."""
-    __tablename__ = "tenants"
-    id        = Column(Integer, primary_key=True, autoincrement=True)
-    nome      = Column(String, nullable=False)
-    ativo     = Column(Boolean, default=True)
-    criado_em = Column(DateTime, default=datetime.utcnow)
-    usuarios  = relationship("Usuario", back_populates="tenant_rel")
-    def __init__(self, nome): self.nome = nome
+# ── SCHEMAS ───────────────────────────────────────────────────────
+class ClienteSchema(BaseModel):
+    nome: str
+    email: Optional[str] = None
+    telefone: Optional[str] = None
+    cpf: Optional[str] = None
+    endereco: Optional[str] = None
+    cidade: Optional[str] = None
+    cep: Optional[str] = None
+    observacao: Optional[str] = None
 
+class VendaSchema(BaseModel):
+    cliente_id: int
+    descricao: Optional[str] = None
+    valor_total: float
+    modo_pagamento: str
+    parcelado: bool = False
+    num_parcelas: int = 1
+    data_vencimento: Optional[str] = None
+    observacao: Optional[str] = None
+    valor_entrada: float = 0.0
+    modo_pagamento_entrada: Optional[str] = None
 
-class Usuario(Base):
-    __tablename__ = "usuarios"
-    id        = Column(Integer, primary_key=True, autoincrement=True)
-    nome      = Column(String, nullable=False)
-    email     = Column(String, nullable=False, unique=True)
-    senha     = Column(String, nullable=False)
-    avatar    = Column(Text, nullable=True)  # base64
-    ativo     = Column(Boolean, default=True)
-    admin     = Column(Boolean, default=False)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=True)
-    tenant_rel = relationship("Tenant", back_populates="usuarios")
-    def __init__(self, nome, email, senha, ativo=True, admin=False, tenant_id=None, avatar=None):
-        self.nome=nome; self.email=email; self.senha=senha; self.avatar=avatar
-        self.ativo=ativo; self.admin=admin; self.tenant_id=tenant_id
+class ItemVendaSchema(BaseModel):
+    produto_id: int
+    quantidade: int
+    preco_unitario: float
+    desconto_item: float = 0.0
 
+class VendaUnificadaSchema(BaseModel):
+    cliente_id: Optional[int] = None   # None = balcao
+    itens: list[ItemVendaSchema]
+    modo_pagamento: str
+    parcelado: bool = False
+    num_parcelas: int = 1
+    data_vencimento: Optional[str] = None
+    desconto_geral: float = 0.0
+    observacao: Optional[str] = None
+    valor_entrada: float = 0.0
+    modo_pagamento_entrada: Optional[str] = None
 
-class Categoria(Base):
-    __tablename__ = "categorias"
-    id        = Column(Integer, primary_key=True, autoincrement=True)
-    nome      = Column(String, nullable=False)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=True)
-    produtos  = relationship("Produto", back_populates="categoria_rel")
-    def __init__(self, nome, tenant_id=None):
-        self.nome=nome; self.tenant_id=tenant_id
-
-
-class Fornecedor(Base):
-    __tablename__ = "fornecedores"
-    id        = Column(Integer, primary_key=True, autoincrement=True)
-    nome      = Column(String, nullable=False)
-    contato   = Column(String)
-    email     = Column(String)
-    telefone  = Column(String)
-    ativo     = Column(Boolean, default=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=True)
-    produtos  = relationship("Produto", back_populates="fornecedor_rel")
-    def __init__(self, nome, contato=None, email=None, telefone=None, tenant_id=None):
-        self.nome=nome; self.contato=contato; self.email=email
-        self.telefone=telefone; self.tenant_id=tenant_id
-
-
-class Produto(Base):
-    __tablename__ = "produtos"
-    id             = Column(Integer, primary_key=True, autoincrement=True)
-    nome           = Column(String, nullable=False)
-    descricao      = Column(Text)
-    sku            = Column(String)
-    codigo_barras  = Column(String)
-    categoria_id   = Column(Integer, ForeignKey("categorias.id"))
-    fornecedor_id  = Column(Integer, ForeignKey("fornecedores.id"))
-    preco_custo    = Column(Float, default=0.0)
-    preco_venda    = Column(Float, default=0.0)
-    estoque_atual  = Column(Integer, default=0)
-    estoque_minimo = Column(Integer, default=5)
-    unidade        = Column(String, default="un")
-    ativo          = Column(Boolean, default=True)
-    tenant_id      = Column(Integer, ForeignKey("tenants.id"), nullable=True)
-    criado_em      = Column(DateTime, default=datetime.utcnow)
-    categoria_rel  = relationship("Categoria",   back_populates="produtos")
-    fornecedor_rel = relationship("Fornecedor",  back_populates="produtos")
-    movimentacoes  = relationship("Movimentacao",back_populates="produto_rel")
-    itens_pedido   = relationship("ItemPedido",  back_populates="produto_rel")
-    def __init__(self, nome, preco_venda, preco_custo=0, estoque_atual=0, estoque_minimo=5,
-                 categoria_id=None, fornecedor_id=None, descricao=None, sku=None,
-                 codigo_barras=None, unidade="un", tenant_id=None):
-        self.nome=nome; self.descricao=descricao; self.sku=sku; self.codigo_barras=codigo_barras
-        self.categoria_id=categoria_id; self.fornecedor_id=fornecedor_id
-        self.preco_custo=preco_custo; self.preco_venda=preco_venda
-        self.estoque_atual=estoque_atual; self.estoque_minimo=estoque_minimo
-        self.unidade=unidade; self.tenant_id=tenant_id
+class PagarParcelaSchema(BaseModel):
+    data_pago:      Optional[str] = None
+    valor_abatido:  Optional[float] = None   # None = paga total; float = abatimento parcial
 
 
-class Movimentacao(Base):
-    __tablename__ = "movimentacoes"
-    id         = Column(Integer, primary_key=True, autoincrement=True)
-    produto_id = Column(Integer, ForeignKey("produtos.id"), nullable=False)
-    tipo       = Column(String, nullable=False)
-    quantidade = Column(Integer, nullable=False)
-    motivo          = Column(String)
-    observacao      = Column(Text)
-    preco_custo_real= Column(Float, nullable=True)  # custo real desta entrada (opcional)
-    usuario_id = Column(Integer, ForeignKey("usuarios.id"))
-    tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=True)
-    criado_em  = Column(DateTime, default=datetime.utcnow)
-    produto_rel = relationship("Produto",  back_populates="movimentacoes")
-    usuario_rel = relationship("Usuario")
-    def __init__(self, produto_id, tipo, quantidade, motivo=None, observacao=None,
-                 usuario_id=None, tenant_id=None, preco_custo_real=None):
-        self.produto_id=produto_id; self.tipo=tipo; self.quantidade=quantidade
-        self.motivo=motivo; self.observacao=observacao
-        self.usuario_id=usuario_id; self.tenant_id=tenant_id
-        self.preco_custo_real=preco_custo_real
+# ── VENDA UNIFICADA ───────────────────────────────────────────────
+@client_router.post("/vendas/unificada")
+def criar_venda_unificada(dados: VendaUnificadaSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    from models import Produto, Movimentacao, ItemPedido, Pedido
+    if not dados.itens:
+        raise HTTPException(400, "Venda deve ter ao menos 1 item")
 
+    # verifica cliente se informado
+    cliente = None
+    if dados.cliente_id:
+        cliente = tf(db.query(Cliente), Cliente, ctx).filter(Cliente.id == dados.cliente_id).first()
+        if not cliente: raise HTTPException(404, "Cliente nao encontrado")
 
-class Cliente(Base):
-    __tablename__ = "clientes"
-    id         = Column(Integer, primary_key=True, autoincrement=True)
-    nome       = Column(String, nullable=False)
-    email      = Column(String)
-    telefone   = Column(String)
-    cpf        = Column(String)
-    endereco   = Column(String)
-    cidade     = Column(String)
-    cep        = Column(String)
-    observacao = Column(Text)
-    ativo      = Column(Boolean, default=True)
-    tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=True)
-    criado_em  = Column(DateTime, default=datetime.utcnow)
-    usuario_id = Column(Integer, ForeignKey("usuarios.id"))
-    pedidos    = relationship("Pedido", back_populates="cliente_rel")
-    vendas     = relationship("Venda",  back_populates="cliente_rel")
-    usuario_rel= relationship("Usuario")
-    def __init__(self, nome, email=None, telefone=None, cpf=None, endereco=None,
-                 cidade=None, cep=None, observacao=None, usuario_id=None, tenant_id=None):
-        self.nome=nome; self.email=email; self.telefone=telefone; self.cpf=cpf
-        self.endereco=endereco; self.cidade=cidade; self.cep=cep
-        self.observacao=observacao; self.usuario_id=usuario_id; self.tenant_id=tenant_id
+    # fiado exige cliente
+    if dados.modo_pagamento == "fiado" and not dados.cliente_id:
+        raise HTTPException(400, "Venda fiado exige cliente cadastrado")
 
+    # calcula total
+    subtotal = sum(it.quantidade * it.preco_unitario - it.desconto_item for it in dados.itens)
+    total = round(subtotal - dados.desconto_geral, 2)
 
-class Venda(Base):
-    __tablename__ = "vendas"
-    id               = Column(Integer, primary_key=True, autoincrement=True)
-    cliente_id       = Column(Integer, ForeignKey("clientes.id"), nullable=False)
-    usuario_id       = Column(Integer, ForeignKey("usuarios.id"))
-    tenant_id        = Column(Integer, ForeignKey("tenants.id"), nullable=True)
-    descricao        = Column(String)
-    valor_total      = Column(Float, nullable=False)
-    modo_pagamento   = Column(String, nullable=False)
-    parcelado        = Column(Boolean, default=False)
-    num_parcelas     = Column(Integer, default=1)
-    valor_parcela    = Column(Float)
-    data_venda       = Column(Date, default=datetime.utcnow().date)
-    data_vencimento  = Column(Date)
-    status_pagamento = Column(String, default="pendente")
-    observacao       = Column(Text)
-    criado_em        = Column(DateTime, default=datetime.utcnow)
-    cliente_rel = relationship("Cliente", back_populates="vendas")
-    usuario_rel = relationship("Usuario")
-    parcelas    = relationship("Parcela", back_populates="venda_rel", cascade="all, delete-orphan")
-    def __init__(self, cliente_id, valor_total, modo_pagamento, descricao=None,
-                 parcelado=False, num_parcelas=1, valor_parcela=None, data_vencimento=None,
-                 status_pagamento="pendente", observacao=None, usuario_id=None,
-                 data_venda=None, tenant_id=None):
-        self.cliente_id=cliente_id; self.usuario_id=usuario_id; self.tenant_id=tenant_id
-        self.descricao=descricao; self.valor_total=valor_total; self.modo_pagamento=modo_pagamento
-        self.parcelado=parcelado; self.num_parcelas=num_parcelas
-        self.valor_parcela=valor_parcela or round(valor_total/max(num_parcelas,1), 2)
-        self.data_venda=data_venda or datetime.utcnow().date()
-        self.data_vencimento=data_vencimento; self.status_pagamento=status_pagamento
-        self.observacao=observacao
+    # cria pedido vinculado
+    pedido = Pedido(
+        cliente_id=dados.cliente_id, usuario_id=ctx["usuario_id"],
+        status="concluido", total=total,
+        desconto=dados.desconto_geral, observacao=dados.observacao, tenant_id=tid(ctx),
+    )
+    db.add(pedido); db.flush()
 
+    # itens + baixa estoque + movimentacao saida
+    for it in dados.itens:
+        p = tf(db.query(Produto), Produto, ctx).filter(Produto.id == it.produto_id).first()
+        if not p: raise HTTPException(404, f"Produto {it.produto_id} nao encontrado")
+        if p.estoque_atual < it.quantidade:
+            raise HTTPException(400, f"Estoque insuficiente para '{p.nome}'. Disponivel: {p.estoque_atual}")
+        db.add(ItemPedido(pedido_id=pedido.id, produto_id=it.produto_id,
+                          quantidade=it.quantidade, preco_unitario=it.preco_unitario,
+                          desconto_item=it.desconto_item))
+        p.estoque_atual -= it.quantidade
+        db.add(Movimentacao(produto_id=p.id, tipo="saida", quantidade=it.quantidade,
+                            motivo="venda", observacao=f"Venda #{pedido.id}",
+                            usuario_id=ctx["usuario_id"], tenant_id=tid(ctx)))
 
-class Parcela(Base):
-    __tablename__ = "parcelas"
-    id         = Column(Integer, primary_key=True, autoincrement=True)
-    venda_id   = Column(Integer, ForeignKey("vendas.id"), nullable=False)
-    numero     = Column(Integer, nullable=False)
-    valor      = Column(Float, nullable=False)
-    valor_pago = Column(Float, default=0.0)
-    vencimento = Column(Date, nullable=True)
-    pago       = Column(Boolean, default=False)
-    data_pago  = Column(Date)
-    observacao = Column(Text)
-    venda_rel  = relationship("Venda", back_populates="parcelas")
-    def __init__(self, venda_id, numero, valor, vencimento=None, pago=False, data_pago=None):
-        self.venda_id=venda_id; self.numero=numero; self.valor=valor
-        self.vencimento=vencimento; self.pago=pago
-        self.valor_pago = valor if pago else 0.0
-        self.data_pago = data_pago
+    # cria venda financeira se tiver cliente
+    venda_id = None
+    if dados.cliente_id:
+        venc = datetime.strptime(dados.data_vencimento, "%Y-%m-%d").date() if dados.data_vencimento else None
+        entrada = round(min(dados.valor_entrada or 0.0, total), 2)
+        restante = round(total - entrada, 2)
+        tem_restante = restante > 0.01
+        status_pag = "pendente" if (tem_restante or dados.modo_pagamento in ["fiado", "boleto"] or dados.parcelado) else "pago"
+        obs_entrada = f"Entrada: R$ {entrada:.2f} ({dados.modo_pagamento_entrada or dados.modo_pagamento}). " if entrada > 0 else ""
+        venda = Venda(
+            cliente_id=dados.cliente_id, usuario_id=ctx["usuario_id"],
+            descricao=f"Pedido #{pedido.id}", valor_total=total,
+            modo_pagamento=dados.modo_pagamento, parcelado=dados.parcelado,
+            num_parcelas=dados.num_parcelas, data_vencimento=venc,
+            status_pagamento=status_pag,
+            observacao=(obs_entrada + (dados.observacao or "")).strip() or None,
+            tenant_id=tid(ctx),
+        )
+        db.add(venda); db.flush()
+        venda_id = venda.id
 
+        # parcela de entrada (já paga)
+        if entrada > 0:
+            from datetime import date as date_type
+            db.add(Parcela(venda_id=venda.id, numero=0, valor=entrada,
+                           vencimento=date_type.today(), pago=True,
+                           data_pago=date_type.today()))
 
-class Pedido(Base):
-    __tablename__ = "pedidos"
-    id         = Column(Integer, primary_key=True, autoincrement=True)
-    cliente_id = Column(Integer, ForeignKey("clientes.id"))
-    usuario_id = Column(Integer, ForeignKey("usuarios.id"))
-    tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=True)
-    status     = Column(String, default="pendente")
-    total      = Column(Float, default=0.0)
-    desconto   = Column(Float, default=0.0)
-    observacao = Column(Text)
-    criado_em  = Column(DateTime, default=datetime.utcnow)
-    cliente_rel = relationship("Cliente",   back_populates="pedidos")
-    usuario_rel = relationship("Usuario")
-    itens       = relationship("ItemPedido",back_populates="pedido_rel")
-    def __init__(self, cliente_id=None, usuario_id=None, status="pendente", total=0,
-                 desconto=0, observacao=None, tenant_id=None):
-        self.cliente_id=cliente_id; self.usuario_id=usuario_id; self.tenant_id=tenant_id
-        self.status=status; self.total=total; self.desconto=desconto; self.observacao=observacao
+        # parcelas do restante
+        if tem_restante:
+            if dados.parcelado and dados.num_parcelas > 1 and venc:
+                valor_parc = round(restante / dados.num_parcelas, 2)
+                for i in range(dados.num_parcelas):
+                    mes = venc.month + i
+                    ano = venc.year + (mes - 1) // 12
+                    mes = ((mes - 1) % 12) + 1
+                    try:    venc_parc = venc.replace(year=ano, month=mes)
+                    except ValueError:
+                        import calendar
+                        ultimo_dia = calendar.monthrange(ano, mes)[1]
+                        venc_parc = venc.replace(year=ano, month=mes, day=ultimo_dia)
+                    db.add(Parcela(venda_id=venda.id, numero=i+1, valor=valor_parc, vencimento=venc_parc))
+            elif venc:
+                db.add(Parcela(venda_id=venda.id, numero=1, valor=restante, vencimento=venc))
 
+    db.commit()
+    return {"mensagem": "Venda registrada", "pedido_id": pedido.id, "venda_id": venda_id, "total": total}
 
-class ItemPedido(Base):
-    __tablename__ = "itens_pedido"
-    id             = Column(Integer, primary_key=True, autoincrement=True)
-    pedido_id      = Column(Integer, ForeignKey("pedidos.id"), nullable=False)
-    produto_id     = Column(Integer, ForeignKey("produtos.id"), nullable=False)
-    quantidade     = Column(Integer, nullable=False)
-    preco_unitario = Column(Float, nullable=False)
-    desconto_item  = Column(Float, default=0.0)
-    pedido_rel  = relationship("Pedido",  back_populates="itens")
-    produto_rel = relationship("Produto", back_populates="itens_pedido")
-    def __init__(self, pedido_id, produto_id, quantidade, preco_unitario, desconto_item=0):
-        self.pedido_id=pedido_id; self.produto_id=produto_id; self.quantidade=quantidade
-        self.preco_unitario=preco_unitario; self.desconto_item=desconto_item
+# ── CLIENTES ──────────────────────────────────────────────────────
+@client_router.get("/clientes")
+def listar_clientes(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    clientes = tf(db.query(Cliente), Cliente, ctx).filter(
+        Cliente.ativo == True).order_by(Cliente.nome).all()
+    hoje = date.today()
+    resultado = []
+    for c in clientes:
+        parcelas_vencidas = parcelas_proximas = 0
+        total_em_aberto = 0.0
+        vendas_ativas = [v for v in c.vendas if v.status_pagamento != "cancelado"]
+        for v in vendas_ativas:
+            for p in v.parcelas:
+                if not p.pago:
+                    total_em_aberto += p.valor
+                    if p.vencimento < hoje:            parcelas_vencidas += 1
+                    elif (p.vencimento - hoje).days <= 5: parcelas_proximas += 1
+        resultado.append({
+            "id": c.id, "nome": c.nome, "email": c.email,
+            "telefone": c.telefone, "cpf": c.cpf,
+            "endereco": c.endereco, "cidade": c.cidade, "cep": c.cep,
+            "observacao": c.observacao, "usuario_id": c.usuario_id,
+            "vendedor": c.usuario_rel.nome if c.usuario_rel else None,
+            "criado_em": c.criado_em.strftime("%d/%m/%Y") if c.criado_em else None,
+            "total_vendas": len(vendas_ativas),
+            "total_em_aberto": round(total_em_aberto, 2),
+            "parcelas_vencidas": parcelas_vencidas,
+            "parcelas_proximas": parcelas_proximas,
+            "alerta": "vencido" if parcelas_vencidas > 0 else "proximo" if parcelas_proximas > 0 else None,
+        })
+    return resultado
 
+@client_router.get("/clientes/{cliente_id}")
+def detalhe_cliente(cliente_id: int, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    c = tf(db.query(Cliente), Cliente, ctx).filter(Cliente.id == cliente_id).first()
+    if not c: raise HTTPException(404, "Cliente não encontrado")
+    hoje = date.today()
+    vendas = []
+    for v in c.vendas:
+        if v.status_pagamento == "cancelado":
+            continue
+        parcelas = [{
+            "id": p.id, "numero": p.numero, "valor": p.valor,
+            "vencimento":     p.vencimento.strftime("%d/%m/%Y"),
+            "vencimento_raw": p.vencimento.isoformat(),
+            "pago":     p.pago,
+            "data_pago":p.data_pago.strftime("%d/%m/%Y") if p.data_pago else None,
+            "status":   "pago" if p.pago else (
+                        "vencido" if p.vencimento < hoje else (
+                        "proximo" if (p.vencimento - hoje).days <= 5 else "ok")),
+        } for p in sorted(v.parcelas, key=lambda x: x.numero)]
+        vendas.append({
+            "id": v.id, "descricao": v.descricao,
+            "valor_total": v.valor_total, "modo_pagamento": v.modo_pagamento,
+            "parcelado": v.parcelado, "num_parcelas": v.num_parcelas,
+            "valor_parcela": v.valor_parcela,
+            "data_venda":      v.data_venda.strftime("%d/%m/%Y") if v.data_venda else None,
+            "data_vencimento": v.data_vencimento.strftime("%d/%m/%Y") if v.data_vencimento else None,
+            "status_pagamento": calc_status_pag_cli(v, hoje), "observacao": v.observacao,
+            "parcelas": parcelas,
+        })
+    return {
+        "id": c.id, "nome": c.nome, "email": c.email, "telefone": c.telefone,
+        "cpf": c.cpf, "endereco": c.endereco, "cidade": c.cidade, "cep": c.cep,
+        "observacao": c.observacao,
+        "criado_em": c.criado_em.strftime("%d/%m/%Y") if c.criado_em else None,
+        "vendedor": c.usuario_rel.nome if c.usuario_rel else None,
+        "vendas": vendas,
+    }
 
+@client_router.post("/clientes")
+def criar_cliente(dados: ClienteSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    cliente = Cliente(**dados.model_dump(), usuario_id=ctx["usuario_id"], tenant_id=tid(ctx))
+    db.add(cliente); db.commit(); db.refresh(cliente)
+    return {"mensagem": "Cliente criado", "id": cliente.id}
 
+@client_router.put("/clientes/{cliente_id}")
+def atualizar_cliente(cliente_id: int, dados: ClienteSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    c = tf(db.query(Cliente), Cliente, ctx).filter(Cliente.id == cliente_id).first()
+    if not c: raise HTTPException(404, "Cliente não encontrado")
+    for k, v in dados.model_dump().items(): setattr(c, k, v)
+    db.commit()
+    return {"mensagem": "Cliente atualizado"}
 
-# ══════════════════════════════════════════════════════════════════
-# PARCEIRAS
-# ══════════════════════════════════════════════════════════════════
-class Parceira(Base):
-    __tablename__ = "parceiras"
-    id         = Column(Integer, primary_key=True, autoincrement=True)
-    nome       = Column(String, nullable=False)
-    telefone   = Column(String, nullable=True)
-    email      = Column(String, nullable=True)
-    observacao = Column(Text, nullable=True)
-    ativa      = Column(Boolean, default=True)
-    tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=True)
-    criado_em  = Column(DateTime, default=datetime.utcnow)
-    compras    = relationship("CompraParceira",  back_populates="parceira_rel")
-    clientes   = relationship("ClienteParceira", back_populates="parceira_rel")
+@client_router.delete("/clientes/{cliente_id}")
+def deletar_cliente(cliente_id: int, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    c = tf(db.query(Cliente), Cliente, ctx).filter(Cliente.id == cliente_id).first()
+    if not c: raise HTTPException(404, "Cliente não encontrado")
+    c.ativo = False; db.commit()
+    return {"mensagem": "Cliente removido"}
 
+# ── VENDAS ────────────────────────────────────────────────────────
+@client_router.post("/vendas")
+def criar_venda(dados: VendaSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    # verifica se cliente pertence ao tenant
+    c = tf(db.query(Cliente), Cliente, ctx).filter(Cliente.id == dados.cliente_id).first()
+    if not c: raise HTTPException(404, "Cliente não encontrado")
 
-class CompraParceira(Base):
-    """Compra de produtos feita pela parceira (baixa no estoque)."""
-    __tablename__ = "compras_parceira"
-    id             = Column(Integer, primary_key=True, autoincrement=True)
-    parceira_id    = Column(Integer, ForeignKey("parceiras.id"), nullable=False)
-    usuario_id     = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
-    tenant_id      = Column(Integer, ForeignKey("tenants.id"), nullable=True)
-    valor_total    = Column(Float, nullable=False, default=0.0)
-    status_pag     = Column(String, default="em_aberto")  # em_aberto | pago | parcelado
-    observacao     = Column(Text, nullable=True)
-    criado_em      = Column(DateTime, default=datetime.utcnow)
-    parceira_rel   = relationship("Parceira",      back_populates="compras")
-    itens          = relationship("ItemCompraParceira", back_populates="compra_rel")
-    repasses       = relationship("RepasseParceira",    back_populates="compra_rel")
+    venc = datetime.strptime(dados.data_vencimento, "%Y-%m-%d").date() if dados.data_vencimento else None
+    venda = Venda(
+        cliente_id=dados.cliente_id, usuario_id=ctx["usuario_id"],
+        descricao=dados.descricao, valor_total=dados.valor_total,
+        modo_pagamento=dados.modo_pagamento, parcelado=dados.parcelado,
+        num_parcelas=dados.num_parcelas, data_vencimento=venc,
+        observacao=dados.observacao, tenant_id=tid(ctx),
+    )
+    db.add(venda); db.flush()
 
+    if dados.parcelado and dados.num_parcelas > 1 and venc:
+        valor_parc = round(dados.valor_total / dados.num_parcelas, 2)
+        for i in range(dados.num_parcelas):
+            mes = venc.month + i
+            ano = venc.year + (mes - 1) // 12
+            mes = ((mes - 1) % 12) + 1
+            try:                venc_parc = venc.replace(year=ano, month=mes)
+            except ValueError:
+                import calendar
+                ultimo_dia = calendar.monthrange(ano, mes)[1]
+                venc_parc = venc.replace(year=ano, month=mes, day=ultimo_dia)
+            db.add(Parcela(venda_id=venda.id, numero=i+1, valor=valor_parc, vencimento=venc_parc))
+    elif venc:
+        db.add(Parcela(venda_id=venda.id, numero=1, valor=dados.valor_total, vencimento=venc))
 
-class ItemCompraParceira(Base):
-    __tablename__ = "itens_compra_parceira"
-    id             = Column(Integer, primary_key=True, autoincrement=True)
-    compra_id      = Column(Integer, ForeignKey("compras_parceira.id"), nullable=False)
-    produto_id     = Column(Integer, ForeignKey("produtos.id"), nullable=False)
-    quantidade     = Column(Integer, nullable=False)
-    preco_unitario = Column(Float, nullable=False)
-    compra_rel  = relationship("CompraParceira", back_populates="itens")
-    produto_rel = relationship("Produto")
+    db.commit()
+    return {"mensagem": "Venda registrada", "id": venda.id}
 
+@client_router.patch("/parcelas/{parcela_id}/pagar")
+def pagar_parcela(parcela_id: int, dados: PagarParcelaSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    p = db.query(Parcela).filter(Parcela.id == parcela_id).first()
+    if not p: raise HTTPException(404, "Parcela não encontrada")
+    if not ctx["admin"] and p.venda_rel.tenant_id != ctx["tenant_id"]:
+        raise HTTPException(403, "Acesso negado")
 
-class RepasseParceira(Base):
-    """Pagamento realizado pela parceira."""
-    __tablename__ = "repasses_parceira"
-    id          = Column(Integer, primary_key=True, autoincrement=True)
-    compra_id   = Column(Integer, ForeignKey("compras_parceira.id"), nullable=False)
-    parceira_id = Column(Integer, ForeignKey("parceiras.id"), nullable=False)
-    tenant_id   = Column(Integer, ForeignKey("tenants.id"), nullable=True)
-    valor       = Column(Float, nullable=False)
-    observacao  = Column(Text, nullable=True)
-    data_repasse= Column(DateTime, default=datetime.utcnow)
-    compra_rel  = relationship("CompraParceira", back_populates="repasses")
+    data = datetime.strptime(dados.data_pago, "%Y-%m-%d").date() if dados.data_pago else date.today()
 
+    if dados.valor_abatido is None:
+        # pagamento total da parcela
+        setattr(p, "valor_pago", p.valor)
+        p.pago = True
+        p.data_pago = data
+        if all(parc.pago for parc in p.venda_rel.parcelas):
+            p.venda_rel.status_pagamento = "pago"
+        db.commit()
+        return {"mensagem": "Parcela marcada como paga", "quitada": True,
+                "valor_pago": p.valor, "saldo_restante": 0.0}
 
-class ClienteParceira(Base):
-    """Cliente vinculado a uma parceira."""
-    __tablename__ = "clientes_parceira"
-    id          = Column(Integer, primary_key=True, autoincrement=True)
-    parceira_id = Column(Integer, ForeignKey("parceiras.id"), nullable=False)
-    tenant_id   = Column(Integer, ForeignKey("tenants.id"), nullable=True)
-    nome        = Column(String, nullable=False)
-    telefone    = Column(String, nullable=True)
-    observacao  = Column(Text, nullable=True)
-    criado_em   = Column(DateTime, default=datetime.utcnow)
-    parceira_rel = relationship("Parceira", back_populates="clientes")
+    # abatimento distribuído entre parcelas em aberto da mesma venda
+    abatimento = round(float(dados.valor_abatido), 2)
+    if abatimento <= 0:
+        raise HTTPException(400, "Valor deve ser maior que zero")
 
-Base.metadata.create_all(bind=db)
-SessionLocal = sessionmaker(bind=db)
+    # todas as parcelas em aberto da venda, ordenadas por numero
+    parcelas_abertas = sorted(
+        [x for x in p.venda_rel.parcelas if not x.pago],
+        key=lambda x: x.numero
+    )
+    saldo_total = round(sum(x.valor - (getattr(x, "valor_pago", None) or 0) for x in parcelas_abertas), 2)
 
-def get_db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
+    if abatimento > saldo_total + 0.01:
+        raise HTTPException(400, f"Valor R$ {abatimento:.2f} excede o saldo devedor total de R$ {saldo_total:.2f}")
+
+    restante = abatimento
+    parcelas_afetadas = []
+    for parc in parcelas_abertas:
+        if restante <= 0: break
+        saldo_parc = round(parc.valor - (getattr(parc, "valor_pago", None) or 0), 2)
+        aplicar = round(min(restante, saldo_parc), 2)
+        parc.valor_pago = round((getattr(parc, "valor_pago", None) or 0) + aplicar, 2)
+        restante = round(restante - aplicar, 2)
+        if (getattr(parc, "valor_pago", None) or 0) >= parc.valor - 0.01:
+            setattr(parc, "valor_pago", parc.valor)
+            parc.pago = True
+            parc.data_pago = data
+            parcelas_afetadas.append({"id": parc.id, "numero": parc.numero, "quitada": True})
+        else:
+            parcelas_afetadas.append({"id": parc.id, "numero": parc.numero, "quitada": False,
+                                      "saldo_restante": round(parc.valor - (getattr(parc, "valor_pago", None) or 0), 2)})
+
+    if all(parc.pago for parc in p.venda_rel.parcelas):
+        p.venda_rel.status_pagamento = "pago"
+
+    db.commit()
+
+    quitadas = sum(1 for x in parcelas_afetadas if x["quitada"])
+    msg = f"R$ {abatimento:.2f} distribuídos. {quitadas} parcela(s) quitada(s)."
+    if restante < 0.01 and any(not x["quitada"] for x in parcelas_afetadas):
+        ultimo = next(x for x in reversed(parcelas_afetadas) if not x["quitada"])
+        msg += f" Saldo restante na {ultimo['numero']}ª parcela: R$ {ultimo['saldo_restante']:.2f}"
+
+    return {
+        "mensagem": msg,
+        "parcelas_afetadas": parcelas_afetadas,
+        "saldo_total_restante": round(saldo_total - abatimento, 2),
+    }
+
+class EditarVendaSchema(BaseModel):
+    modo_pagamento:  Optional[str]   = None
+    data_vencimento: Optional[str]   = None
+    observacao:      Optional[str]   = None
+    descricao:       Optional[str]   = None
+
+@client_router.patch("/vendas/{venda_id}")
+def editar_venda(venda_id: int, dados: EditarVendaSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    v = db.query(Venda).filter(Venda.id == venda_id).first()
+    if not v: raise HTTPException(404, "Venda não encontrada")
+    if not ctx["admin"] and v.tenant_id != ctx["tenant_id"]:
+        raise HTTPException(403, "Acesso negado")
+    if v.status_pagamento == "cancelado":
+        raise HTTPException(400, "Venda cancelada não pode ser editada")
+
+    if dados.modo_pagamento  is not None: v.modo_pagamento  = dados.modo_pagamento
+    if dados.observacao      is not None: v.observacao      = dados.observacao
+    if dados.descricao       is not None: v.descricao       = dados.descricao
+    if dados.data_vencimento is not None:
+        nova_venc = datetime.strptime(dados.data_vencimento, "%Y-%m-%d").date()
+        v.data_vencimento = nova_venc
+        # atualiza parcelas não pagas redistribuindo os vencimentos
+        parcelas_em_aberto = sorted(
+            [p for p in v.parcelas if not p.pago],
+            key=lambda x: x.numero
+        )
+        for i, p in enumerate(parcelas_em_aberto):
+            mes = nova_venc.month + i
+            ano = nova_venc.year + (mes - 1) // 12
+            mes = ((mes - 1) % 12) + 1
+            try:    p.vencimento = nova_venc.replace(year=ano, month=mes)
+            except ValueError:
+                import calendar
+                ultimo = calendar.monthrange(ano, mes)[1]
+                p.vencimento = nova_venc.replace(year=ano, month=mes, day=ultimo)
+
+    db.commit()
+    return {"mensagem": "Venda atualizada"}
+
+@client_router.patch("/vendas/{venda_id}/cancelar")
+def cancelar_venda(venda_id: int, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    v = db.query(Venda).filter(Venda.id == venda_id).first()
+    if not v: raise HTTPException(404, "Venda não encontrada")
+    if not ctx["admin"] and v.tenant_id != ctx["tenant_id"]:
+        raise HTTPException(403, "Acesso negado")
+    if v.status_pagamento == "cancelado":
+        raise HTTPException(400, "Venda já cancelada")
+    v.status_pagamento = "cancelado"
+    # marca todas as parcelas em aberto como canceladas (pago=False mantido, apenas vencimento limpo)
+    for p in v.parcelas:
+        if not p.pago:
+            p.vencimento = None
+    db.commit()
+    return {"mensagem": "Venda cancelada"}
+
+@client_router.patch("/parcelas/{parcela_id}/vencimento")
+def alterar_vencimento_parcela(parcela_id: int, dados: dict, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    from pydantic import BaseModel as BM
+    p = db.query(Parcela).filter(Parcela.id == parcela_id).first()
+    if not p: raise HTTPException(404, "Parcela não encontrada")
+    if not ctx["admin"] and p.venda_rel.tenant_id != ctx["tenant_id"]:
+        raise HTTPException(403, "Acesso negado")
+    if p.pago: raise HTTPException(400, "Parcela já paga")
+    nova = dados.get("data_vencimento")
+    if not nova: raise HTTPException(400, "data_vencimento obrigatório")
+    p.vencimento = datetime.strptime(nova, "%Y-%m-%d").date()
+    db.commit()
+    return {"mensagem": "Vencimento atualizado"}
+
+@client_router.get("/alertas/pagamentos")
+def alertas_pagamentos(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    hoje = date.today()
+    limite = hoje + timedelta(days=5)
+    q = db.query(Parcela).join(Parcela.venda_rel).filter(
+        Parcela.pago == False, Parcela.vencimento <= limite,
+    )
+    if not ctx["admin"] and ctx["tenant_id"] is not None:
+        q = q.filter(Venda.tenant_id == ctx["tenant_id"])
+    parcelas = q.order_by(Parcela.vencimento).all()
+    return [{
+        "parcela_id": p.id, "numero": p.numero, "valor": p.valor,
+        "vencimento": p.vencimento.strftime("%d/%m/%Y"),
+        "status": "vencido" if p.vencimento < hoje else "proximo",
+        "dias": (hoje - p.vencimento).days if p.vencimento < hoje else (p.vencimento - hoje).days,
+        "cliente":     p.venda_rel.cliente_rel.nome if p.venda_rel and p.venda_rel.cliente_rel else None,
+        "cliente_tel": p.venda_rel.cliente_rel.telefone if p.venda_rel and p.venda_rel.cliente_rel else None,
+        "descricao":   p.venda_rel.descricao if p.venda_rel else None,
+        "venda_id":    p.venda_id,
+    } for p in parcelas]
