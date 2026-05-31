@@ -184,13 +184,14 @@ const S = `
 
 /* ── ICON BTN ── */
 .icon-btn {
-  width:28px;height:28px;border-radius:6px;border:none;
+  width:30px;height:30px;border-radius:7px;border:1px solid rgba(0,153,255,.2);
   display:flex;align-items:center;justify-content:center;
   cursor:pointer;transition:all .15s;
-  background:rgba(255,255,255,.04);color:rgba(232,234,237,.4);
+  background:rgba(0,153,255,.1);color:#0099ff;
 }
-.icon-btn:hover               { background:rgba(255,255,255,.09);color:#e8eaed; }
-.icon-btn.danger:hover        { background:rgba(255,71,87,.15);color:#ff4757; }
+.icon-btn:hover               { background:rgba(0,153,255,.2);color:#33b5ff;transform:translateY(-1px); }
+.icon-btn.danger              { background:rgba(255,71,87,.1);color:#ff4757;border-color:rgba(255,71,87,.2); }
+.icon-btn.danger:hover        { background:rgba(255,71,87,.2);color:#ff6b7a;transform:translateY(-1px); }
 
 /* ── EMPTY ── */
 .cl-empty { grid-column:1/-1;padding:60px 20px;text-align:center;color:rgba(232,234,237,.25); }
