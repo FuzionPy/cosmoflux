@@ -186,14 +186,17 @@ class Parcela(Base):
     venda_id   = Column(Integer, ForeignKey("vendas.id"), nullable=False)
     numero     = Column(Integer, nullable=False)
     valor      = Column(Float, nullable=False)
-    vencimento = Column(Date, nullable=False)
+    valor_pago = Column(Float, default=0.0)
+    vencimento = Column(Date, nullable=True)
     pago       = Column(Boolean, default=False)
     data_pago  = Column(Date)
     observacao = Column(Text)
     venda_rel  = relationship("Venda", back_populates="parcelas")
-    def __init__(self, venda_id, numero, valor, vencimento, pago=False):
+    def __init__(self, venda_id, numero, valor, vencimento=None, pago=False, data_pago=None):
         self.venda_id=venda_id; self.numero=numero; self.valor=valor
         self.vencimento=vencimento; self.pago=pago
+        self.valor_pago = valor if pago else 0.0
+        self.data_pago = data_pago
 
 
 class Pedido(Base):
