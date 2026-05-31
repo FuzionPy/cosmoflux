@@ -1062,6 +1062,49 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
             </div>
           </div>
 
+          {/* Resumo Financeiro */}
+          {dados?.vendas?.length > 0 && (() => {
+            const vendasAtivas = dados.vendas.filter(v => v.status_pagamento !== 'cancelado');
+            const totalVendas  = vendasAtivas.reduce((a,v) => a + v.valor_total, 0);
+            const totalPago    = vendasAtivas.reduce((a,v) => {
+              const pagas = (v.parcelas||[]).filter(p=>p.pago).reduce((s,p)=>s+p.valor,0);
+              const parciais = (v.parcelas||[]).filter(p=>!p.pago&&(p.valor_pago||0)>0).reduce((s,p)=>s+(p.valor_pago||0),0);
+              return a + pagas + parciais;
+            }, 0);
+            const totalAberto  = Math.max(totalVendas - totalPago, 0);
+            const pct = totalVendas > 0 ? Math.min((totalPago/totalVendas)*100, 100) : 0;
+            const vencidas = vendasAtivas.filter(v => v.status_pagamento === 'vencido').length;
+            return (
+              <div style={{background:'rgba(255,255,255,.02)',border:'1px solid rgba(255,255,255,.06)',borderRadius:12,padding:'16px',marginBottom:16,display:'flex',flexDirection:'column',gap:12}}>
+                <div style={{fontSize:11,fontWeight:600,letterSpacing:'.1em',textTransform:'uppercase',color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>Resumo Financeiro</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+                  <div style={{display:'flex',flexDirection:'column',gap:3}}>
+                    <span style={{fontSize:10,color:'rgba(232,234,237,.35)',fontFamily:"'JetBrains Mono',monospace"}}>TOTAL COMPRAS</span>
+                    <span style={{fontSize:15,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:'#e8eaed'}}>{fmtBRL(totalVendas)}</span>
+                  </div>
+                  <div style={{display:'flex',flexDirection:'column',gap:3}}>
+                    <span style={{fontSize:10,color:'rgba(232,234,237,.35)',fontFamily:"'JetBrains Mono',monospace"}}>PAGO</span>
+                    <span style={{fontSize:15,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:'#00d4aa'}}>{fmtBRL(totalPago)}</span>
+                  </div>
+                  <div style={{display:'flex',flexDirection:'column',gap:3}}>
+                    <span style={{fontSize:10,color:'rgba(232,234,237,.35)',fontFamily:"'JetBrains Mono',monospace"}}>EM ABERTO</span>
+                    <span style={{fontSize:15,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:totalAberto>0?'#ff6b35':'#00d4aa'}}>{fmtBRL(totalAberto)}</span>
+                  </div>
+                </div>
+                {/* Barra de progresso geral */}
+                <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                  <div style={{height:8,background:'rgba(255,255,255,.06)',borderRadius:4,overflow:'hidden'}}>
+                    <div style={{height:'100%',width:`${pct}%`,background:`linear-gradient(90deg,#00d4aa,#0099ff)`,borderRadius:4,transition:'width .6s ease'}}/>
+                  </div>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:10,fontFamily:"'JetBrains Mono',monospace",color:'rgba(232,234,237,.35)'}}>
+                    <span>{pct.toFixed(0)}% quitado</span>
+                    {vencidas > 0 && <span style={{color:'#ff4757'}}>⚠ {vencidas} venda(s) vencida(s)</span>}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Vendas */}
           <div>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
@@ -1089,9 +1132,19 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                       {v.descricao || `Venda #${v.id}`}
                       {v.status_pagamento === 'cancelado' && <span className="badge b-red" style={{fontSize:9}}>CANCELADA</span>}
                     </div>
-                    <div style={{ fontSize:11, color:'rgba(232,234,237,.3)', fontFamily:'JetBrains Mono, monospace', marginTop:2 }}>
-                      {v.data_venda} · {v.modo_pagamento}
-                      {v.parcelado && ` · ${v.num_parcelas}x de ${fmtBRL(v.valor_parcela)}`}
+                    <div style={{ fontSize:11, color:'rgba(232,234,237,.3)', fontFamily:'JetBrains Mono, monospace', marginTop:2, display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+                      <span>{v.data_venda}</span>
+                      <span>·</span>
+                      <span>{v.modo_pagamento}</span>
+                      {v.parcelado && <><span>·</span><span>{v.num_parcelas}x de {fmtBRL(v.valor_parcela)}</span></>}
+                      {(() => {
+                        const abertas = (v.parcelas||[]).filter(p=>!p.pago);
+                        const saldo = abertas.reduce((a,p)=>a+(p.saldo_restante??p.valor),0);
+                        if (saldo > 0 && v.status_pagamento !== 'cancelado') return (
+                          <><span>·</span><span style={{color:'#ff6b35',fontWeight:700}}>saldo: {fmtBRL(saldo)}</span></>
+                        );
+                        return null;
+                      })()}
                     </div>
                   </div>
                   <div className="venda-total">{fmtBRL(v.valor_total)}</div>
@@ -1113,13 +1166,51 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
 
                 {vendaOpen[v.id] && (
                   <div className="venda-body">
+                    {/* Resumo financeiro da venda */}
+                    {(() => {
+                      const totalParcelas = (v.parcelas||[]).length;
+                      const pagas = (v.parcelas||[]).filter(p=>p.pago).length;
+                      const totalPago = (v.parcelas||[]).reduce((a,p)=>a+(p.valor_pago||0),0);
+                      const saldo = Math.max(v.valor_total - totalPago, 0);
+                      const pct = v.valor_total > 0 ? Math.min((totalPago/v.valor_total)*100,100) : 0;
+                      return (
+                        <div style={{background:'rgba(255,255,255,.02)',borderRadius:10,padding:'12px 14px',marginBottom:10,display:'flex',flexDirection:'column',gap:10}}>
+                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+                            <div>
+                              <div style={{fontSize:9,color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace",marginBottom:3}}>TOTAL</div>
+                              <div style={{fontSize:14,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:'#e8eaed'}}>{fmtBRL(v.valor_total)}</div>
+                            </div>
+                            <div>
+                              <div style={{fontSize:9,color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace",marginBottom:3}}>PAGO</div>
+                              <div style={{fontSize:14,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:'#00d4aa'}}>{fmtBRL(totalPago)}</div>
+                            </div>
+                            <div>
+                              <div style={{fontSize:9,color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace",marginBottom:3}}>SALDO</div>
+                              <div style={{fontSize:14,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:saldo>0?'#ff6b35':'#00d4aa'}}>{fmtBRL(saldo)}</div>
+                            </div>
+                          </div>
+                          {totalParcelas > 0 && (
+                            <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                              <div style={{height:6,background:'rgba(255,255,255,.06)',borderRadius:3,overflow:'hidden'}}>
+                                <div style={{height:'100%',width:`${pct}%`,background:'linear-gradient(90deg,#00d4aa,#0099ff)',borderRadius:3,transition:'width .5s'}}/>
+                              </div>
+                              <div style={{display:'flex',justifyContent:'space-between',fontSize:10,fontFamily:"'JetBrains Mono',monospace",color:'rgba(232,234,237,.3)'}}>
+                                <span>{pagas}/{totalParcelas} parcelas pagas</span>
+                                <span>{pct.toFixed(0)}% quitado</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     <div className="venda-info">
                       <div>
                         <div className="vi-lbl">Pagamento</div>
                         <div className="vi-val">{v.modo_pagamento}</div>
                       </div>
                       <div>
-                        <div className="vi-lbl">Status Pagamento</div>
+                        <div className="vi-lbl">Status Pgto.</div>
                         <div className="vi-val">
                           {v.status_pagamento === 'pago'      ? <span className="badge b-green">✓ PAGO</span>
                           :v.status_pagamento === 'cancelado' ? <span className="badge b-red">CANCELADO</span>
@@ -1129,7 +1220,7 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                         </div>
                       </div>
                       <div>
-                        <div className="vi-lbl">Status Entrega</div>
+                        <div className="vi-lbl">Entrega</div>
                         <div className="vi-val">
                           {v.status_entrega === 'entregue'         ? <span className="badge b-green">ENTREGUE</span>
                           :v.status_entrega === 'pendente_entrega' ? <span className="badge b-yellow">PENDENTE</span>
@@ -1140,13 +1231,19 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                       {v.data_vencimento && (
                         <div>
                           <div className="vi-lbl">Vencimento</div>
-                          <div className="vi-val">{v.data_vencimento}</div>
+                          <div className="vi-val mono">{v.data_vencimento}</div>
+                        </div>
+                      )}
+                      {v.desconto > 0 && (
+                        <div>
+                          <div className="vi-lbl">Desconto</div>
+                          <div className="vi-val mono" style={{color:'#ff6b35'}}>- {fmtBRL(v.desconto)}</div>
                         </div>
                       )}
                       {v.observacao && (
                         <div style={{ gridColumn:'1/-1' }}>
                           <div className="vi-lbl">Obs.</div>
-                          <div className="vi-val" style={{ fontSize:12 }}>{v.observacao}</div>
+                          <div style={{fontSize:12,color:'rgba(232,234,237,.5)',background:'rgba(255,255,255,.03)',borderRadius:7,padding:'8px 10px',marginTop:2,lineHeight:1.5}}>{v.observacao}</div>
                         </div>
                       )}
                     </div>
