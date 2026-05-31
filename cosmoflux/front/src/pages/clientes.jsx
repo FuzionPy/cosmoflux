@@ -913,6 +913,7 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
   };
 
   const [confirmCancel, setConfirmCancel] = useState(null); // vendaId
+  const [modalDetalhe, setModalDetalhe] = useState(null); // venda completa
 
   const cancelarVenda = async (vendaId) => {
     setCancelando(vendaId);
@@ -1067,6 +1068,202 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
       })()}
 
       {/* Modal edição de venda */}
+      {/* Modal detalhe da venda */}
+      {modalDetalhe && (() => {
+        const v = modalDetalhe;
+        const cancelada = v.status_pagamento === 'cancelado';
+        const totalParcelas = (v.parcelas||[]).length;
+        const pagas = (v.parcelas||[]).filter(p=>p.pago).length;
+        const totalPago = (v.parcelas||[]).reduce((a,p)=>a+(p.valor_pago||0),0);
+        const saldo = Math.max(v.valor_total - totalPago, 0);
+        const pct = v.valor_total > 0 ? Math.min((totalPago/v.valor_total)*100,100) : 0;
+        return (
+          <div onClick={e=>{if(e.target===e.currentTarget)setModalDetalhe(null);}}
+            style={{position:'fixed',inset:0,zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16,background:'rgba(0,0,0,.75)',backdropFilter:'blur(6px)'}}>
+            <div onClick={e=>e.stopPropagation()}
+              style={{background:'#13161a',border:'1px solid rgba(255,255,255,.1)',borderRadius:16,width:'100%',maxWidth:680,maxHeight:'88vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 32px 80px rgba(0,0,0,.8)'}}>
+
+              {/* Header */}
+              <div style={{padding:'18px 24px',borderBottom:'1px solid rgba(255,255,255,.06)',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:16,fontWeight:700,color:'#e8eaed',display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                    {v.descricao || `Venda #${v.id}`}
+                    {cancelada && <span className="badge b-red" style={{fontSize:10}}>CANCELADA</span>}
+                  </div>
+                  <div style={{fontSize:11,color:'rgba(232,234,237,.35)',fontFamily:"'JetBrains Mono',monospace",marginTop:4,display:'flex',gap:12,flexWrap:'wrap'}}>
+                    <span>{v.data_venda}</span>
+                    <span>·</span>
+                    <span>{v.modo_pagamento}</span>
+                    {v.parcelado && <><span>·</span><span>{v.num_parcelas}x</span></>}
+                  </div>
+                </div>
+                <div style={{display:'flex',gap:8,alignItems:'center',flexShrink:0}}>
+                  {!cancelada && (
+                    <>
+                      <button onClick={()=>{setModalDetalhe(null);abrirEditVenda(v);}}
+                        style={{padding:'6px 12px',borderRadius:8,border:'1px solid rgba(0,153,255,.2)',background:'rgba(0,153,255,.1)',color:'#0099ff',cursor:'pointer',fontSize:12,fontWeight:600}}>
+                        ✎ Editar
+                      </button>
+                      {confirmCancel===v.id ? (
+                        <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                          <span style={{fontSize:11,color:'rgba(232,234,237,.5)'}}>Confirmar?</span>
+                          <button onClick={()=>cancelarVenda(v.id)} style={{padding:'5px 10px',borderRadius:7,border:'none',background:'rgba(255,71,87,.2)',color:'#ff4757',cursor:'pointer',fontSize:12,fontWeight:600}}>{cancelando===v.id?'...':'Sim'}</button>
+                          <button onClick={()=>setConfirmCancel(null)} style={{padding:'5px 10px',borderRadius:7,border:'1px solid rgba(255,255,255,.08)',background:'transparent',color:'rgba(232,234,237,.5)',cursor:'pointer',fontSize:12}}>Não</button>
+                        </div>
+                      ) : (
+                        <button onClick={()=>setConfirmCancel(v.id)}
+                          style={{padding:'6px 12px',borderRadius:8,border:'1px solid rgba(255,71,87,.2)',background:'rgba(255,71,87,.1)',color:'#ff4757',cursor:'pointer',fontSize:12,fontWeight:600}}>
+                          ✕ Cancelar
+                        </button>
+                      )}
+                    </>
+                  )}
+                  <button onClick={()=>setModalDetalhe(null)}
+                    style={{background:'none',border:'none',color:'rgba(232,234,237,.35)',cursor:'pointer',fontSize:22,lineHeight:1,padding:'2px 4px'}}>×</button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div style={{overflowY:'auto',flex:1,padding:'20px 24px',display:'flex',flexDirection:'column',gap:20}}>
+
+                {/* Resumo financeiro */}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
+                  {[
+                    {lbl:'TOTAL',   val:fmtBRL(v.valor_total), color:'#e8eaed'},
+                    {lbl:'PAGO',    val:fmtBRL(totalPago),     color:'#00d4aa'},
+                    {lbl:'SALDO',   val:fmtBRL(saldo),         color:saldo>0?'#ff6b35':'#00d4aa'},
+                  ].map(k=>(
+                    <div key={k.lbl} style={{background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.06)',borderRadius:10,padding:'14px 16px'}}>
+                      <div style={{fontSize:9,fontWeight:600,letterSpacing:'.12em',color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace",marginBottom:6}}>{k.lbl}</div>
+                      <div style={{fontSize:20,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:k.color}}>{k.val}</div>
+                    </div>
+                  ))}
+                </div>
+                {totalParcelas > 0 && (
+                  <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                    <div style={{height:6,background:'rgba(255,255,255,.06)',borderRadius:3,overflow:'hidden'}}>
+                      <div style={{height:'100%',width:`${pct}%`,background:'linear-gradient(90deg,#00d4aa,#0099ff)',borderRadius:3,transition:'width .6s'}}/>
+                    </div>
+                    <div style={{display:'flex',justifyContent:'space-between',fontSize:10,fontFamily:"'JetBrains Mono',monospace",color:'rgba(232,234,237,.3)'}}>
+                      <span>{pagas}/{totalParcelas} parcelas pagas</span>
+                      <span>{pct.toFixed(0)}% quitado</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Info grid */}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:12}}>
+                  {[
+                    {lbl:'Pagamento',        val:v.modo_pagamento||'—'},
+                    {lbl:'Status Pgto.',     val: v.status_pagamento==='pago'?<span className="badge b-green">✓ PAGO</span>:v.status_pagamento==='cancelado'?<span className="badge b-red">CANCELADO</span>:v.status_pagamento==='vencido'?<span className="badge b-red">VENCIDO</span>:<span className="badge b-yellow">EM ABERTO</span>},
+                    {lbl:'Entrega',          val: v.status_entrega==='entregue'?<span className="badge b-green">ENTREGUE</span>:v.status_entrega==='pendente_entrega'?<span className="badge b-yellow">PENDENTE</span>:<span className="badge b-gray">—</span>},
+                    {lbl:'Vencimento',       val:v.data_vencimento||'—'},
+                  ].map(k=>(
+                    <div key={k.lbl}>
+                      <div style={{fontSize:9,fontWeight:600,letterSpacing:'.1em',textTransform:'uppercase',color:'rgba(232,234,237,.28)',fontFamily:"'JetBrains Mono',monospace",marginBottom:5}}>{k.lbl}</div>
+                      <div style={{fontSize:13,fontWeight:600,color:'#e8eaed'}}>{k.val}</div>
+                    </div>
+                  ))}
+                </div>
+                {v.observacao && (
+                  <div style={{background:'rgba(255,255,255,.02)',borderRadius:8,padding:'10px 14px',fontSize:12,color:'rgba(232,234,237,.5)',lineHeight:1.6}}>
+                    <span style={{fontSize:9,fontWeight:600,letterSpacing:'.1em',textTransform:'uppercase',color:'rgba(232,234,237,.28)',fontFamily:"'JetBrains Mono',monospace",display:'block',marginBottom:4}}>Observação</span>
+                    {v.observacao}
+                  </div>
+                )}
+
+                {/* Parcelas */}
+                {v.parcelas?.length > 0 && (
+                  <div>
+                    <div style={{fontSize:10,fontWeight:600,letterSpacing:'.1em',textTransform:'uppercase',color:'rgba(232,234,237,.28)',fontFamily:"'JetBrains Mono',monospace",marginBottom:10}}>
+                      Parcelas ({v.parcelas.length})
+                    </div>
+                    <div style={{background:'rgba(255,255,255,.02)',border:'1px solid rgba(255,255,255,.05)',borderRadius:10,overflow:'hidden'}}>
+                      {/* Header da tabela */}
+                      <div style={{display:'grid',gridTemplateColumns:'44px 1fr 100px 100px 1fr',gap:8,padding:'8px 16px',borderBottom:'1px solid rgba(255,255,255,.06)',fontSize:9,fontWeight:600,letterSpacing:'.1em',textTransform:'uppercase',color:'rgba(232,234,237,.25)',fontFamily:"'JetBrains Mono',monospace"}}>
+                        <span>#</span><span>Vencimento</span><span style={{textAlign:'center'}}>Status</span><span style={{textAlign:'right'}}>Valor</span><span style={{textAlign:'right'}}>Ações</span>
+                      </div>
+                      {v.parcelas.map(p => {
+                        const vp = p.valor_pago||0;
+                        const parcial = !p.pago && vp > 0;
+                        const stBadge = p.pago?'b-green':parcial?'b-yellow':p.status==='vencido'?'b-red':'b-gray';
+                        const stLabel = p.pago?'✓ PAGO':parcial?'PARCIAL':p.status==='vencido'?'VENCIDO':'EM ABERTO';
+                        const pctP = p.valor>0?Math.min((vp/p.valor)*100,100):0;
+                        return (
+                          <div key={p.id}>
+                            <div style={{display:'grid',gridTemplateColumns:'44px 1fr 100px 100px 1fr',gap:8,padding:'11px 16px',borderBottom:'1px solid rgba(255,255,255,.03)',alignItems:'center'}}>
+                              <span style={{fontSize:12,fontFamily:"'JetBrains Mono',monospace",color:'rgba(232,234,237,.4)',textAlign:'center'}}>{p.numero===0?'ENT':`${p.numero}ª`}</span>
+                              <div>
+                                {!p.pago && !cancelada ? (
+                                  <input type="date" className="parc-venc-edit"
+                                    defaultValue={p.vencimento_raw||''}
+                                    onBlur={e=>{if(e.target.value)alterarVencParcela(p.id,e.target.value);}}
+                                    onClick={e=>e.stopPropagation()}
+                                    title="Clique para alterar vencimento"
+                                    style={{width:'100%'}}/>
+                                ) : (
+                                  <span style={{fontSize:12,fontFamily:"'JetBrains Mono',monospace",color:'rgba(232,234,237,.6)'}}>{p.vencimento||'—'}</span>
+                                )}
+                                {parcial && (
+                                  <div style={{marginTop:4,display:'flex',alignItems:'center',gap:6}}>
+                                    <div style={{flex:1,height:3,background:'rgba(255,255,255,.06)',borderRadius:2,overflow:'hidden'}}>
+                                      <div style={{height:'100%',width:`${pctP}%`,background:'#ffd32a',borderRadius:2}}/>
+                                    </div>
+                                    <span style={{fontSize:10,color:'#ffd32a',fontFamily:"'JetBrains Mono',monospace",whiteSpace:'nowrap'}}>Restam {fmtBRL(p.saldo_restante||0)}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{textAlign:'center'}}>
+                                <span className={`badge ${stBadge}`} style={{fontSize:9}}>{stLabel}</span>
+                              </div>
+                              <div style={{textAlign:'right',fontFamily:"'JetBrains Mono',monospace",fontSize:13,fontWeight:700}}>
+                                {parcial ? (
+                                  <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}>
+                                    <span style={{color:'#ffd32a',fontSize:12}}>{fmtBRL(vp)}</span>
+                                    <span style={{color:'rgba(232,234,237,.3)',fontSize:10}}>/ {fmtBRL(p.valor)}</span>
+                                  </div>
+                                ) : <span style={{color:p.pago?'#00d4aa':'#e8eaed'}}>{fmtBRL(p.valor)}</span>}
+                              </div>
+                              <div style={{display:'flex',gap:6,justifyContent:'flex-end'}}>
+                                {!p.pago && !cancelada ? (
+                                  <>
+                                    <button onClick={()=>pagarParcela(p.id)} disabled={pagando===p.id}
+                                      style={{padding:'5px 10px',borderRadius:7,border:'none',background:'rgba(0,212,170,.15)',color:'#00d4aa',cursor:pagando===p.id?'not-allowed':'pointer',fontSize:11,fontWeight:600,opacity:pagando===p.id?.5:1}}>
+                                      {pagando===p.id?'...':'✓ Pagar'}
+                                    </button>
+                                    <button onClick={()=>abrirAbat(v)} disabled={pagando===p.id}
+                                      style={{padding:'5px 10px',borderRadius:7,border:'none',background:'rgba(255,211,42,.1)',color:'#ffd32a',cursor:'pointer',fontSize:11,fontWeight:600}}>
+                                      ◑ Abater
+                                    </button>
+                                  </>
+                                ) : p.pago ? (
+                                  <span style={{fontSize:10,color:'rgba(232,234,237,.25)',fontFamily:"'JetBrains Mono',monospace"}}>{p.data_pago||''}</span>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              {!cancelada && (
+                <div style={{padding:'14px 24px',borderTop:'1px solid rgba(255,255,255,.06)',display:'flex',gap:10,justifyContent:'flex-end'}}>
+                  <button onClick={()=>{setModalDetalhe(null);abrirAbat(v);}}
+                    style={{padding:'9px 18px',borderRadius:9,border:'none',background:'rgba(255,211,42,.1)',color:'#ffd32a',cursor:'pointer',fontSize:13,fontWeight:700}}>
+                    ◑ Registrar Abatimento
+                  </button>
+                </div>
+              )}
+
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Modal edição de venda — 100% inline */}
       {modalVenda && (
         <div onClick={e=>{if(e.target===e.currentTarget)setModalVenda(null);}}
@@ -1322,220 +1519,41 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
             ) : dados.vendas.map(v => {
               const cancelada = v.status_pagamento === 'cancelado';
               return (
-              <div key={v.id} className="venda-block" style={{ marginBottom:10, opacity: cancelada ? 0.45 : 1, filter: cancelada ? 'grayscale(0.4)' : 'none', transition:'opacity .2s' }}>
-                <div className="venda-header" onClick={() => !cancelada && toggleVenda(v.id)} style={{cursor: cancelada ? 'default' : 'pointer'}}>
-                  <div style={{ flex:1, minWidth:0 }}>
+              <div key={v.id} className="venda-block"
+                style={{marginBottom:10,opacity:cancelada?.45:1,filter:cancelada?'grayscale(0.4)':'none',transition:'all .2s',cursor:cancelada?'default':'pointer'}}
+                onClick={()=>!cancelada&&setModalDetalhe(v)}>
+                <div className="venda-header" style={{cursor:'inherit'}}>
+                  <div style={{flex:1,minWidth:0}}>
                     <div className="venda-desc" style={{display:'flex',alignItems:'center',gap:6}}>
                       {v.descricao || `Venda #${v.id}`}
-                      {v.status_pagamento === 'cancelado' && <span className="badge b-red" style={{fontSize:9}}>CANCELADA</span>}
+                      {cancelada && <span className="badge b-red" style={{fontSize:9}}>CANCELADA</span>}
                     </div>
-                    <div style={{ fontSize:11, color:'rgba(232,234,237,.3)', fontFamily:'JetBrains Mono, monospace', marginTop:2, display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+                    <div style={{fontSize:11,color:'rgba(232,234,237,.3)',fontFamily:'JetBrains Mono,monospace',marginTop:3,display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
                       <span>{v.data_venda}</span>
                       <span>·</span>
                       <span>{v.modo_pagamento}</span>
                       {v.parcelado && <><span>·</span><span>{v.num_parcelas}x de {fmtBRL(v.valor_parcela)}</span></>}
-                      {(() => {
-                        const abertas = (v.parcelas||[]).filter(p=>!p.pago);
-                        const saldo = abertas.reduce((a,p)=>a+(p.saldo_restante??p.valor),0);
-                        if (saldo > 0 && v.status_pagamento !== 'cancelado') return (
-                          <><span>·</span><span style={{color:'#ff6b35',fontWeight:700}}>saldo: {fmtBRL(saldo)}</span></>
-                        );
-                        return null;
+                      {!cancelada && (() => {
+                        const saldo = (v.parcelas||[]).filter(p=>!p.pago).reduce((a,p)=>a+(p.saldo_restante??p.valor),0);
+                        return saldo>0 ? <><span>·</span><span style={{color:'#ff6b35',fontWeight:700}}>saldo: {fmtBRL(saldo)}</span></> : null;
                       })()}
                     </div>
                   </div>
-                  <div className="venda-total">{fmtBRL(v.valor_total)}</div>
-                  {v.status_pagamento !== 'cancelado' && (
-                    <div style={{display:'flex',gap:4,marginLeft:8}} onClick={e=>e.stopPropagation()}>
-                      <button className="parc-pay-btn" style={{padding:'3px 8px',fontSize:11,background:'rgba(0,153,255,.1)',color:'#0099ff'}}
-                        onClick={() => abrirEditVenda(v)}>✎ Editar</button>
-                      {confirmCancel === v.id ? (
-                        <div style={{display:'flex',gap:4,alignItems:'center'}} onClick={e=>e.stopPropagation()}>
-                          <span style={{fontSize:10,color:'rgba(232,234,237,.5)'}}>Confirmar?</span>
-                          <button className="parc-pay-btn" style={{padding:'3px 8px',fontSize:11,background:'rgba(255,71,87,.2)',color:'#ff4757'}}
-                            disabled={cancelando===v.id}
-                            onClick={()=>cancelarVenda(v.id)}>
-                            {cancelando===v.id?'...':'Sim'}
-                          </button>
-                          <button className="parc-pay-btn" style={{padding:'3px 8px',fontSize:11,background:'rgba(255,255,255,.06)',color:'rgba(232,234,237,.5)'}}
-                            onClick={()=>setConfirmCancel(null)}>Não</button>
-                        </div>
-                      ) : (
-                        <button className="parc-pay-btn" style={{padding:'3px 8px',fontSize:11,background:'rgba(255,71,87,.1)',color:'#ff4757'}}
-                          disabled={cancelando===v.id}
-                          onClick={()=>setConfirmCancel(v.id)}>
-                          ✕ Cancelar
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  <span style={{ fontSize:11, color:'rgba(232,234,237,.3)', marginLeft:4 }}>
-                    {vendaOpen[v.id] ? '▲' : '▼'}
-                  </span>
+                  {/* Status badge */}
+                  <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4}}>
+                    <div className="venda-total">{fmtBRL(v.valor_total)}</div>
+                    {!cancelada && (() => {
+                      const st = v.status_pagamento;
+                      const cls = st==='pago'?'b-green':st==='vencido'?'b-red':'b-yellow';
+                      const lbl = st==='pago'?'✓ PAGO':st==='vencido'?'VENCIDO':'EM ABERTO';
+                      return <span className={`badge ${cls}`} style={{fontSize:9}}>{lbl}</span>;
+                    })()}
+                  </div>
+                  {/* Seta */}
+                  {!cancelada && <span style={{fontSize:11,color:'rgba(232,234,237,.2)',marginLeft:6}}>›</span>}
                 </div>
 
-                {vendaOpen[v.id] && !cancelada && (
-                  <div className="venda-body">
-                    {/* Resumo financeiro da venda */}
-                    {(() => {
-                      const totalParcelas = (v.parcelas||[]).length;
-                      const pagas = (v.parcelas||[]).filter(p=>p.pago).length;
-                      const totalPago = (v.parcelas||[]).reduce((a,p)=>a+(p.valor_pago||0),0);
-                      const saldo = Math.max(v.valor_total - totalPago, 0);
-                      const pct = v.valor_total > 0 ? Math.min((totalPago/v.valor_total)*100,100) : 0;
-                      return (
-                        <div style={{background:'rgba(255,255,255,.02)',borderRadius:10,padding:'12px 14px',marginBottom:10,display:'flex',flexDirection:'column',gap:10}}>
-                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
-                            <div>
-                              <div style={{fontSize:9,color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace",marginBottom:3}}>TOTAL</div>
-                              <div style={{fontSize:14,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:'#e8eaed'}}>{fmtBRL(v.valor_total)}</div>
-                            </div>
-                            <div>
-                              <div style={{fontSize:9,color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace",marginBottom:3}}>PAGO</div>
-                              <div style={{fontSize:14,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:'#00d4aa'}}>{fmtBRL(totalPago)}</div>
-                            </div>
-                            <div>
-                              <div style={{fontSize:9,color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace",marginBottom:3}}>SALDO</div>
-                              <div style={{fontSize:14,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:saldo>0?'#ff6b35':'#00d4aa'}}>{fmtBRL(saldo)}</div>
-                            </div>
-                          </div>
-                          {totalParcelas > 0 && (
-                            <div style={{display:'flex',flexDirection:'column',gap:4}}>
-                              <div style={{height:6,background:'rgba(255,255,255,.06)',borderRadius:3,overflow:'hidden'}}>
-                                <div style={{height:'100%',width:`${pct}%`,background:'linear-gradient(90deg,#00d4aa,#0099ff)',borderRadius:3,transition:'width .5s'}}/>
-                              </div>
-                              <div style={{display:'flex',justifyContent:'space-between',fontSize:10,fontFamily:"'JetBrains Mono',monospace",color:'rgba(232,234,237,.3)'}}>
-                                <span>{pagas}/{totalParcelas} parcelas pagas</span>
-                                <span>{pct.toFixed(0)}% quitado</span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
 
-                    <div className="venda-info">
-                      <div>
-                        <div className="vi-lbl">Pagamento</div>
-                        <div className="vi-val">{v.modo_pagamento}</div>
-                      </div>
-                      <div>
-                        <div className="vi-lbl">Status Pgto.</div>
-                        <div className="vi-val">
-                          {v.status_pagamento === 'pago'      ? <span className="badge b-green">✓ PAGO</span>
-                          :v.status_pagamento === 'cancelado' ? <span className="badge b-red">CANCELADO</span>
-                          :v.status_pagamento === 'vencido'   ? <span className="badge b-red">VENCIDO</span>
-                          :v.status_pagamento === 'em_aberto' ? <span className="badge b-yellow">EM ABERTO</span>
-                          :                                     <span className="badge b-yellow">PENDENTE</span>}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="vi-lbl">Entrega</div>
-                        <div className="vi-val">
-                          {v.status_entrega === 'entregue'         ? <span className="badge b-green">ENTREGUE</span>
-                          :v.status_entrega === 'pendente_entrega' ? <span className="badge b-yellow">PENDENTE</span>
-                          :v.status_entrega === 'cancelado'        ? <span className="badge b-red">CANCELADO</span>
-                          :                                          <span className="badge b-gray">—</span>}
-                        </div>
-                      </div>
-                      {v.data_vencimento && (
-                        <div>
-                          <div className="vi-lbl">Vencimento</div>
-                          <div className="vi-val mono">{v.data_vencimento}</div>
-                        </div>
-                      )}
-                      {v.desconto > 0 && (
-                        <div>
-                          <div className="vi-lbl">Desconto</div>
-                          <div className="vi-val mono" style={{color:'#ff6b35'}}>- {fmtBRL(v.desconto)}</div>
-                        </div>
-                      )}
-                      {v.observacao && (
-                        <div style={{ gridColumn:'1/-1' }}>
-                          <div className="vi-lbl">Obs.</div>
-                          <div style={{fontSize:12,color:'rgba(232,234,237,.5)',background:'rgba(255,255,255,.03)',borderRadius:7,padding:'8px 10px',marginTop:2,lineHeight:1.5}}>{v.observacao}</div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Parcelas */}
-                    {v.parcelas?.length > 0 && (
-                      <div>
-                        {v.parcelas.map(p => {
-                          const pct = p.valor > 0 ? Math.min(((p.valor_pago||0)/p.valor)*100, 100) : 0;
-                          const parcial = !p.pago && (p.valor_pago||0) > 0;
-                          const stBadge = p.pago ? 'b-green' : parcial ? 'b-yellow' : p.status === 'vencido' ? 'b-red' : p.status === 'proximo' ? 'b-yellow' : 'b-gray';
-                          const stLabel = p.pago ? '✓ PAGO' : parcial ? '◑ PARCIAL' : p.status === 'vencido' ? 'VENCIDO' : p.status === 'proximo' ? 'EM BREVE' : 'EM ABERTO';
-                          return (
-                            <div key={p.id} style={{display:'flex',flexDirection:'column'}}>
-                              <div className="parcela-row">
-                                {/* col 1: número */}
-                                <span className="parc-num">{p.numero === 0 ? 'ENT' : `${p.numero}ª`}</span>
-
-                                {/* col 2: vencimento */}
-                                {!p.pago && v.status_pagamento !== 'cancelado' ? (
-                                  <input type="date" className="parc-venc-edit"
-                                    defaultValue={p.vencimento_raw || ''}
-                                    onBlur={e => { if(e.target.value) alterarVencParcela(p.id, e.target.value); }}
-                                    onClick={e=>e.stopPropagation()}
-                                    title="Clique para alterar vencimento"
-                                    style={{width:'100%'}}/>
-                                ) : (
-                                  <span className="parc-venc">{p.vencimento || '—'}</span>
-                                )}
-
-                                {/* col 3: status */}
-                                <span className={`badge ${stBadge}`} style={{justifySelf:'center',whiteSpace:'nowrap'}}>{stLabel}</span>
-
-                                {/* col 4: valor */}
-                                <span className="parc-val">
-                                  {parcial ? (
-                                    <span style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}>
-                                      <span style={{color:'#ffd32a',fontSize:11}}>{fmtBRL(p.valor_pago||0)}</span>
-                                      <span style={{color:'rgba(232,234,237,.3)',fontSize:10}}>/ {fmtBRL(p.valor)}</span>
-                                    </span>
-                                  ) : fmtBRL(p.valor)}
-                                </span>
-
-                                {/* col 5: ações */}
-                                <div style={{display:'flex',gap:4,justifyContent:'flex-end'}}>
-                                  {!p.pago ? (
-                                    <>
-                                      <button className="parc-pay-btn"
-                                        style={{background:'rgba(0,212,170,.15)',color:'#00d4aa',padding:'3px 6px',fontSize:9,whiteSpace:'nowrap'}}
-                                        disabled={pagando === p.id}
-                                        onClick={() => pagarParcela(p.id)}>
-                                        {pagando === p.id ? '...' : '✓ Pagar'}
-                                      </button>
-                                      <button className="parc-pay-btn"
-                                        style={{background:'rgba(255,211,42,.1)',color:'#ffd32a',padding:'3px 6px',fontSize:9,whiteSpace:'nowrap'}}
-                                        disabled={pagando === p.id}
-                                        onClick={() => abrirAbat(v)}>
-                                        ◑ Abater
-                                      </button>
-                                    </>
-                                  ) : (
-                                    <span style={{fontSize:10,color:'rgba(232,234,237,.25)',fontFamily:"'JetBrains Mono',monospace"}}>
-                                      {p.data_pago || ''}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              {parcial && (
-                                <div style={{padding:'0 14px 8px',display:'flex',alignItems:'center',gap:8}}>
-                                  <div style={{flex:1,height:3,background:'rgba(255,255,255,.06)',borderRadius:2,overflow:'hidden'}}>
-                                    <div style={{height:'100%',width:`${pct}%`,background:'#ffd32a',borderRadius:2}}/>
-                                  </div>
-                                  <span style={{fontSize:10,fontFamily:"'JetBrains Mono',monospace",color:'#ffd32a',whiteSpace:'nowrap'}}>Restam {fmtBRL(p.saldo_restante||0)}</span>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
               );
             })}
