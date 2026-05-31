@@ -9,12 +9,12 @@ const apig = url => fetch(BASE+url,{headers:h()}).then(r=>r.json());
 const fmtBRL = v => `R$ ${Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
 
 const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Plus Jakarta Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
 
   .topbar {
     height: 60px; border-bottom: 1px solid rgba(255,255,255,0.06);
     display: flex; align-items: center; padding: 0 24px; gap: 12px;
-    background: #0e1013; flex-shrink: 0; font-family: 'Syne', sans-serif;
+    background: #0e1013; flex-shrink: 0; font-family: 'Plus Jakarta Sans', sans-serif;
     position: relative; z-index: 100;
   }
   .tb-toggle {
@@ -36,7 +36,7 @@ const styles = `
   .tb-search.open { border-color: rgba(0,212,170,0.4); box-shadow: 0 0 0 3px rgba(0,212,170,0.08); }
   .tb-search input {
     background: none; border: none; outline: none;
-    font-size: 13px; color: #e8eaed; font-family: 'Syne', sans-serif; width: 200px;
+    font-size: 13px; color: #e8eaed; font-family: 'Plus Jakarta Sans', sans-serif; width: 200px;
   }
   .tb-search input::placeholder { color: rgba(232,234,237,0.28); }
 
@@ -87,7 +87,7 @@ const styles = `
   .tb-btn {
     display: flex; align-items: center; gap: 5px;
     padding: 7px 14px; border-radius: 7px; border: none;
-    font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 600;
+    font-family: 'Plus Jakarta Sans', sans-serif; font-size: 12px; font-weight: 600;
     cursor: pointer; transition: all 0.15s; white-space: nowrap;
     background: #00d4aa; color: #000;
   }
@@ -209,7 +209,7 @@ export default function Topbar({ title, onMenuToggle, onNewProduct }) {
                       <div className="gs-section-title">Clientes</div>
                       {results.clientes.map(c => (
                         <div key={c.id} className="gs-item" onClick={()=>ir('/clientes')}>
-                          <div className="gs-item-icon" style={{background:'rgba(0,153,255,.08)',color:'#0099ff',fontSize:13,fontWeight:700,fontFamily:'Syne,sans-serif'}}>
+                          <div className="gs-item-icon" style={{background:'rgba(0,153,255,.08)',color:'#0099ff',fontSize:13,fontWeight:700,fontFamily:'Plus Jakarta Sans,sans-serif'}}>
                             {c.nome?.[0]?.toUpperCase()}
                           </div>
                           <div className="gs-item-body">

@@ -28,7 +28,7 @@ const MODOS = ['Dinheiro','PIX','Cartão Crédito','Cartão Débito','Boleto','F
 
 // ── STYLES ────────────────────────────────────────────────────────────────────
 const S = `
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus Jakarta Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -37,7 +37,7 @@ const S = `
   display: flex;
   flex-direction: column;
   gap: 20px;
-  font-family: 'Syne', sans-serif;
+  font-family: 'Plus Jakarta Sans', sans-serif;
   color: #e8eaed;
   animation: clFadeIn .35s ease both;
 }
@@ -117,14 +117,14 @@ const S = `
 .cl-search:focus-within { border-color:rgba(0,212,170,.4); }
 .cl-search input {
   background:none;border:none;outline:none;
-  font-size:13px;color:#e8eaed;font-family:'Syne',sans-serif;width:100%;
+  font-size:13px;color:#e8eaed;font-family:'Plus Jakarta Sans',sans-serif;width:100%;
 }
 .cl-search input::placeholder { color:rgba(232,234,237,.25); }
 .cl-sel {
   background:#0e1013; border:1px solid rgba(255,255,255,.08);
   border-radius:8px; padding:9px 14px;
   font-size:13px;color:rgba(232,234,237,.7);
-  font-family:'Syne',sans-serif;outline:none;cursor:pointer;
+  font-family:'Plus Jakarta Sans',sans-serif;outline:none;cursor:pointer;
 }
 
 /* ── GRID CLIENTES ── */
@@ -350,7 +350,7 @@ const S = `
   background:#13161a;border:1px solid rgba(255,255,255,.08);
   border-radius:8px;padding:10px 14px;
   font-size:13px;color:#e8eaed;
-  font-family:'Syne',sans-serif;outline:none;
+  font-family:'Plus Jakarta Sans',sans-serif;outline:none;
   transition:border-color .2s,box-shadow .2s;width:100%;
 }
 .form-inp::placeholder { color:rgba(232,234,237,.2); }
@@ -387,7 +387,7 @@ const S = `
 .btn {
   display:flex;align-items:center;gap:6px;
   padding:9px 18px;border-radius:8px;border:none;
-  font-family:'Syne',sans-serif;font-size:13px;font-weight:600;
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:600;
   cursor:pointer;transition:all .15s;white-space:nowrap;
 }
 .btn-primary { background:#00d4aa;color:#000; }
@@ -1043,13 +1043,13 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
               <div style={{padding:'14px 20px',borderTop:'1px solid rgba(255,255,255,.06)',display:'flex',gap:10}}>
                 <button
                   onClick={() => setModalAbat(null)}
-                  style={{flex:1,padding:'10px',borderRadius:9,border:'1px solid rgba(255,255,255,.08)',background:'transparent',color:'rgba(232,234,237,.5)',cursor:'pointer',fontFamily:"'Syne',sans-serif",fontWeight:600,fontSize:13}}>
+                  style={{flex:1,padding:'10px',borderRadius:9,border:'1px solid rgba(255,255,255,.08)',background:'transparent',color:'rgba(232,234,237,.5)',cursor:'pointer',fontFamily:"'Plus Jakarta Sans',sans-serif",fontWeight:600,fontSize:13}}>
                   Cancelar
                 </button>
                 <button
                   disabled={!valido}
                   onClick={aplicarAbatimento}
-                  style={{flex:2,display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'11px 16px',borderRadius:9,border:'none',cursor:valido?'pointer':'not-allowed',fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13,transition:'all .2s',background:valido?'linear-gradient(135deg,#ffd32a,#ff9500)':'rgba(255,255,255,.05)',color:valido?'#0d1117':'rgba(232,234,237,.2)'}}>
+                  style={{flex:2,display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'11px 16px',borderRadius:9,border:'none',cursor:valido?'pointer':'not-allowed',fontFamily:"'Plus Jakarta Sans',sans-serif",fontWeight:700,fontSize:13,transition:'all .2s',background:valido?'linear-gradient(135deg,#ffd32a,#ff9500)':'rgba(255,255,255,.05)',color:valido?'#0d1117':'rgba(232,234,237,.2)'}}>
                   {aplicando ? (
                     <>
                       <span style={{width:14,height:14,border:'2px solid rgba(0,0,0,.3)',borderTopColor:'#0d1117',borderRadius:'50%',animation:'spin .7s linear infinite',display:'inline-block'}}/>
@@ -1092,7 +1092,7 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                   onChange={e=>setEditVenda(s=>({...s,descricao:e.target.value}))}
                   placeholder="Ex: Compra de produtos"
                   onClick={e=>e.stopPropagation()}
-                  style={{background:'#0e1013',border:'1px solid rgba(255,255,255,.08)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#e8eaed',fontFamily:"'Syne',sans-serif",outline:'none',width:'100%'}}
+                  style={{background:'#0e1013',border:'1px solid rgba(255,255,255,.08)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#e8eaed',fontFamily:"'Plus Jakarta Sans',sans-serif",outline:'none',width:'100%'}}
                 />
               </div>
 
@@ -1102,7 +1102,7 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                 <select
                   value={editVenda.modo_pagamento||''}
                   onChange={e=>setEditVenda(s=>({...s,modo_pagamento:e.target.value}))}
-                  style={{background:'#0e1013',border:'1px solid rgba(255,255,255,.08)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#e8eaed',fontFamily:"'Syne',sans-serif",outline:'none',cursor:'pointer',width:'100%'}}>
+                  style={{background:'#0e1013',border:'1px solid rgba(255,255,255,.08)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#e8eaed',fontFamily:"'Plus Jakarta Sans',sans-serif",outline:'none',cursor:'pointer',width:'100%'}}>
                   {['PIX','Dinheiro','Cartão de crédito','Cartão de débito','Fiado','Transferência','Boleto'].map(m=>(
                     <option key={m} value={m}>{m}</option>
                   ))}
@@ -1130,7 +1130,7 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                   onChange={e=>setEditVenda(s=>({...s,observacao:e.target.value}))}
                   placeholder="Observação opcional"
                   onClick={e=>e.stopPropagation()}
-                  style={{background:'#0e1013',border:'1px solid rgba(255,255,255,.08)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#e8eaed',fontFamily:"'Syne',sans-serif",outline:'none',width:'100%'}}
+                  style={{background:'#0e1013',border:'1px solid rgba(255,255,255,.08)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#e8eaed',fontFamily:"'Plus Jakarta Sans',sans-serif",outline:'none',width:'100%'}}
                 />
               </div>
 
@@ -1144,11 +1144,11 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
             {/* Footer */}
             <div style={{padding:'14px 20px',borderTop:'1px solid rgba(255,255,255,.06)',display:'flex',gap:10}}>
               <button onClick={()=>setModalVenda(null)}
-                style={{flex:1,padding:'10px',borderRadius:9,border:'1px solid rgba(255,255,255,.08)',background:'transparent',color:'rgba(232,234,237,.5)',cursor:'pointer',fontFamily:"'Syne',sans-serif",fontWeight:600,fontSize:13}}>
+                style={{flex:1,padding:'10px',borderRadius:9,border:'1px solid rgba(255,255,255,.08)',background:'transparent',color:'rgba(232,234,237,.5)',cursor:'pointer',fontFamily:"'Plus Jakarta Sans',sans-serif",fontWeight:600,fontSize:13}}>
                 Cancelar
               </button>
               <button onClick={salvarVenda} disabled={salvandoV===true}
-                style={{flex:2,display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'11px 16px',borderRadius:9,border:'none',cursor:salvandoV===true?'not-allowed':'pointer',fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13,background:salvandoV===true?'rgba(255,255,255,.06)':'linear-gradient(135deg,#0099ff,#0066cc)',color:salvandoV===true?'rgba(232,234,237,.3)':'#fff',transition:'all .2s'}}>
+                style={{flex:2,display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'11px 16px',borderRadius:9,border:'none',cursor:salvandoV===true?'not-allowed':'pointer',fontFamily:"'Plus Jakarta Sans',sans-serif",fontWeight:700,fontSize:13,background:salvandoV===true?'rgba(255,255,255,.06)':'linear-gradient(135deg,#0099ff,#0066cc)',color:salvandoV===true?'rgba(232,234,237,.3)':'#fff',transition:'all .2s'}}>
                 {salvandoV === true ? (
                   <><span style={{width:14,height:14,border:'2px solid rgba(255,255,255,.3)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .7s linear infinite',display:'inline-block'}}/> Salvando...</>
                 ) : '✓ Salvar alterações'}

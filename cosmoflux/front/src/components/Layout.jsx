@@ -27,7 +27,7 @@ const styles = `
     --accent4: #a855f7;
     --danger: #ff4757;
     --warn: #ffd32a;
-    --font: 'Syne', sans-serif;
+    --font: 'Plus Jakarta Sans', sans-serif;
     --mono: 'JetBrains Mono', monospace;
   }
 

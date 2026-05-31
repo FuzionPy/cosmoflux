@@ -19,9 +19,9 @@ const PAG_BADGE = {
 };
 
 const S = `
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus Jakarta Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;}
-.pg{padding:24px;display:flex;flex-direction:column;gap:20px;font-family:'Syne',sans-serif;color:#e8eaed;animation:pgIn .3s ease both;}
+.pg{padding:24px;display:flex;flex-direction:column;gap:20px;font-family:'Plus Jakarta Sans',sans-serif;color:#e8eaed;animation:pgIn .3s ease both;}
 @keyframes pgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .pg-hdr{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;}
 .pg-title{font-size:22px;font-weight:800;}
@@ -34,7 +34,7 @@ const S = `
 
 /* TABS */
 .tabs{display:flex;gap:4px;background:#0e1013;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:4px;}
-.tab{flex:1;padding:8px 16px;border-radius:7px;border:none;font-family:'Syne',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;color:rgba(232,234,237,.4);background:none;}
+.tab{flex:1;padding:8px 16px;border-radius:7px;border:none;font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;color:rgba(232,234,237,.4);background:none;}
 .tab.active{background:#13161a;color:#e8eaed;box-shadow:0 1px 4px rgba(0,0,0,.3);}
 .tab:hover:not(.active){color:rgba(232,234,237,.7);}
 
@@ -59,7 +59,7 @@ const S = `
 @keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
 .srch{display:flex;align-items:center;gap:8px;background:#0e1013;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px 14px;flex:1;min-width:200px;transition:border-color .2s;}
 .srch:focus-within{border-color:rgba(0,212,170,.4);}
-.srch input{background:none;border:none;outline:none;font-size:13px;color:#e8eaed;font-family:'Syne',sans-serif;width:100%;}
+.srch input{background:none;border:none;outline:none;font-size:13px;color:#e8eaed;font-family:'Plus Jakarta Sans',sans-serif;width:100%;}
 .srch input::placeholder{color:rgba(232,234,237,.25);}
 
 /* DETAIL PANEL */
@@ -99,7 +99,7 @@ const S = `
 .fr2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .ff{display:flex;flex-direction:column;gap:5px;}
 .fl{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(232,234,237,.35);font-family:'JetBrains Mono',monospace;}
-.fi,.fsel2{background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px 12px;font-size:13px;color:#e8eaed;font-family:'Syne',sans-serif;outline:none;transition:border-color .2s;width:100%;}
+.fi,.fsel2{background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px 12px;font-size:13px;color:#e8eaed;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:border-color .2s;width:100%;}
 .fi::placeholder{color:rgba(232,234,237,.2);}
 .fi:focus,.fsel2:focus{border-color:rgba(0,212,170,.4);box-shadow:0 0 0 3px rgba(0,212,170,.08);}
 .fsel2 option{background:#0e1013;}
@@ -113,11 +113,11 @@ const S = `
 .item-del{background:none;border:none;color:rgba(255,71,87,.5);cursor:pointer;font-size:16px;padding:2px 4px;transition:color .15s;}
 .item-del:hover{color:#ff4757;}
 .add-item-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;}
-.btn-add-item{background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.2);border-radius:8px;padding:9px 14px;font-size:12px;font-weight:600;color:#00d4aa;cursor:pointer;white-space:nowrap;transition:all .15s;font-family:'Syne',sans-serif;}
+.btn-add-item{background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.2);border-radius:8px;padding:9px 14px;font-size:12px;font-weight:600;color:#00d4aa;cursor:pointer;white-space:nowrap;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;}
 .btn-add-item:hover{background:rgba(0,212,170,.15);}
 .btn-add-item:disabled{opacity:.4;cursor:not-allowed;}
 .prod-search-wrap{position:relative;}
-.prod-search-input{background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px 12px;font-size:13px;color:#e8eaed;font-family:'Syne',sans-serif;outline:none;width:100%;transition:border-color .2s;}
+.prod-search-input{background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px 12px;font-size:13px;color:#e8eaed;font-family:'Plus Jakarta Sans',sans-serif;outline:none;width:100%;transition:border-color .2s;}
 .prod-search-input:focus{border-color:rgba(0,212,170,.4);}
 .prod-search-input::placeholder{color:rgba(232,234,237,.2);}
 .prod-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#13161a;border:1px solid rgba(255,255,255,.1);border-radius:8px;z-index:50;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);}
@@ -128,7 +128,7 @@ const S = `
 .prod-opt-sub{font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.35);margin-top:2px;}
 .prod-opt-empty{padding:14px;text-align:center;font-size:12px;color:rgba(232,234,237,.25);font-family:'JetBrains Mono',monospace;}
 .cli-search-wrap{position:relative;}
-.cli-search-input{background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px 12px;font-size:13px;color:#e8eaed;font-family:'Syne',sans-serif;outline:none;width:100%;transition:border-color .2s;}
+.cli-search-input{background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px 12px;font-size:13px;color:#e8eaed;font-family:'Plus Jakarta Sans',sans-serif;outline:none;width:100%;transition:border-color .2s;}
 .cli-search-input:focus{border-color:rgba(0,212,170,.4);}
 .cli-search-input::placeholder{color:rgba(232,234,237,.2);}
 .cli-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#13161a;border:1px solid rgba(255,255,255,.1);border-radius:8px;z-index:50;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);}
@@ -151,7 +151,7 @@ const S = `
 .total-val.green{color:#00d4aa;}
 .ferr{background:rgba(255,71,87,.1);border:1px solid rgba(255,71,87,.3);border-radius:8px;padding:10px 14px;font-size:12px;color:#ff4757;font-family:'JetBrains Mono',monospace;}
 .finfo{background:rgba(255,211,42,.07);border:1px solid rgba(255,211,42,.2);border-radius:8px;padding:8px 12px;font-size:11px;color:#ffd32a;font-family:'JetBrains Mono',monospace;}
-.btn{display:flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;border:none;font-family:'Syne',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.btn{display:flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;border:none;font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;}
 .btn-primary{background:#00d4aa;color:#000;}.btn-primary:hover{background:#00efc0;transform:translateY(-1px);}
 .btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none;}
 .btn-ghost{background:rgba(255,255,255,.05);color:rgba(232,234,237,.6);border:1px solid rgba(255,255,255,.08);}
@@ -415,7 +415,7 @@ export default function Vendas() {
                     {['pendente_entrega','entregue'].map(s=>(
                       <button key={s} onClick={()=>alterarEntrega(selected.id, s)}
                         style={{flex:1,padding:'8px 12px',borderRadius:8,border:'1px solid',cursor:'pointer',
-                          fontSize:12,fontWeight:600,fontFamily:'Syne,sans-serif',transition:'all .15s',
+                          fontSize:12,fontWeight:600,fontFamily:'Plus Jakarta Sans,sans-serif',transition:'all .15s',
                           background: selected.status===s ? (s==='entregue'?'rgba(0,212,170,.15)':'rgba(255,107,53,.15)') : 'rgba(255,255,255,.04)',
                           borderColor: selected.status===s ? (s==='entregue'?'rgba(0,212,170,.4)':'rgba(255,107,53,.4)') : 'rgba(255,255,255,.08)',
                           color: selected.status===s ? (s==='entregue'?'#00d4aa':'#ff6b35') : 'rgba(232,234,237,.5)',

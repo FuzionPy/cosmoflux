@@ -17,7 +17,7 @@ const getNome = () => {
 const getAvatar = () => localStorage.getItem('avatar') || sessionStorage.getItem('avatar') || '';
 
 const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Space+Mono:wght@400;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Plus Jakarta Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Space+Mono:wght@400;700&display=swap');
 
   /* OVERLAY — fundo escuro clicável no mobile */
   .sb-overlay {
@@ -36,7 +36,7 @@ const styles = `
     display: flex; flex-direction: column;
     height: 100vh; overflow: hidden;
     transition: transform 0.3s ease;
-    z-index: 100; font-family: 'Syne', sans-serif;
+    z-index: 100; font-family: 'Plus Jakarta Sans', sans-serif;
   }
   .sidebar-logo {
     padding: 20px 18px 20px 32px;

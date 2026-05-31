@@ -10,9 +10,9 @@ const MESES  = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov
 const COLORS  = ['#00d4aa','#0099ff','#a855f7','#ff6b35','#ffd32a','#ff4757','#00b3de','#7c3aed'];
 
 const S = `
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus Jakarta Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;}
-.dash{padding:24px;display:flex;flex-direction:column;gap:18px;font-family:'Syne',sans-serif;color:#e8eaed;}
+.dash{padding:24px;display:flex;flex-direction:column;gap:18px;font-family:'Plus Jakarta Sans',sans-serif;color:#e8eaed;}
 
 /* KPI GRID */
 .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
@@ -117,7 +117,7 @@ const S = `
 @keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
 .empty{padding:28px;text-align:center;color:rgba(232,234,237,.25);font-size:12px;font-family:'JetBrains Mono',monospace;}
 
-.btn-xs{display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.04);font-family:'Syne',sans-serif;font-size:11px;font-weight:600;cursor:pointer;color:rgba(232,234,237,.5);transition:all .15s;white-space:nowrap;}
+.btn-xs{display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.04);font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:600;cursor:pointer;color:rgba(232,234,237,.5);transition:all .15s;white-space:nowrap;}
 .btn-xs:hover{background:rgba(255,255,255,.08);color:#e8eaed;}
 
 @keyframes up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}

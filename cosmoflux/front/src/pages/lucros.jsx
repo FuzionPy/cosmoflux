@@ -10,15 +10,15 @@ const fmtPct  = v => `${Number(v||0).toFixed(1)}%`;
 const MESES   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
 const S = `
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus Jakarta Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;}
-.pg{padding:24px;display:flex;flex-direction:column;gap:22px;font-family:'Syne',sans-serif;color:#e8eaed;animation:pgIn .35s ease both;}
+.pg{padding:24px;display:flex;flex-direction:column;gap:22px;font-family:'Plus Jakarta Sans',sans-serif;color:#e8eaed;animation:pgIn .35s ease both;}
 @keyframes pgIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .pg-hdr{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;}
 .pg-title{font-size:22px;font-weight:800;}
 .pg-sub{font-size:12px;color:rgba(232,234,237,.35);font-family:'JetBrains Mono',monospace;margin-top:4px;}
 .period-tabs{display:flex;gap:6px;background:#0e1013;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:4px;}
-.ptab{padding:7px 16px;border-radius:7px;border:none;background:transparent;font-family:'Syne',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;color:rgba(232,234,237,.4);}
+.ptab{padding:7px 16px;border-radius:7px;border:none;background:transparent;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;color:rgba(232,234,237,.4);}
 .ptab.active{background:#1a1d22;color:#e8eaed;box-shadow:0 1px 4px rgba(0,0,0,.3);}
 .ptab:hover:not(.active){color:#e8eaed;}
 .kpis-periodo{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
@@ -273,7 +273,7 @@ export default function Lucros() {
               <div className="card-sub">{produtos.length} produto(s) com vendas</div>
             </div>
             <select
-              style={{background:'#13161a',border:'1px solid rgba(255,255,255,.08)',borderRadius:7,padding:'6px 12px',fontSize:12,color:'rgba(232,234,237,.7)',fontFamily:'Syne, sans-serif',outline:'none',cursor:'pointer'}}
+              style={{background:'#13161a',border:'1px solid rgba(255,255,255,.08)',borderRadius:7,padding:'6px 12px',fontSize:12,color:'rgba(232,234,237,.7)',fontFamily:'Plus Jakarta Sans, sans-serif',outline:'none',cursor:'pointer'}}
               value={sortBy} onChange={e=>setSortBy(e.target.value)}>
               <option value="lucro">Ordenar por lucro</option>
               <option value="receita">Ordenar por receita</option>
