@@ -19,7 +19,7 @@ const PAG_BADGE = {
 };
 
 const S = `
-@import url('https://fonts.googleapis.com/css2?family=Plus Jakarta Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;}
 .pg{padding:24px;display:flex;flex-direction:column;gap:20px;font-family:'Plus Jakarta Sans',sans-serif;color:#e8eaed;animation:pgIn .3s ease both;}
 @keyframes pgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
@@ -181,6 +181,9 @@ export default function Vendas() {
   const [itens,      setItens]      = useState([]);
   const [prodAdd,    setProdAdd]    = useState('');
   const [prodSearch, setProdSearch] = useState('');
+  const [modoLivre,  setModoLivre]  = useState(false);
+  const [valorLivre, setValorLivre] = useState('');
+  const [descLivre,  setDescLivre]  = useState('');
   const [showDrop,   setShowDrop]   = useState(false);
   const [cliSearch,  setCliSearch]  = useState('');
   const [showCliDrop,setShowCliDrop]= useState(false);
@@ -516,6 +519,31 @@ export default function Vendas() {
               </div>
 
               <div className="sec">
+                {/* Toggle modo */}
+                <div style={{display:'flex',gap:6,marginBottom:14,background:'rgba(255,255,255,.03)',borderRadius:9,padding:4}}>
+                  <button onClick={()=>setModoLivre(false)} style={{flex:1,padding:'7px',borderRadius:7,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,transition:'all .2s',background:!modoLivre?'rgba(0,212,170,.15)':'transparent',color:!modoLivre?'#00d4aa':'rgba(232,234,237,.4)'}}>
+                    📦 Produto do catálogo
+                  </button>
+                  <button onClick={()=>setModoLivre(true)} style={{flex:1,padding:'7px',borderRadius:7,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,transition:'all .2s',background:modoLivre?'rgba(255,211,42,.15)':'transparent',color:modoLivre?'#ffd32a':'rgba(232,234,237,.4)'}}>
+                    ✏ Valor livre
+                  </button>
+                </div>
+
+                {modoLivre ? (
+                  <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                    <div>
+                      <div className="fl" style={{marginBottom:4}}>Descrição da venda</div>
+                      <input className="form-inp" style={{width:'100%',background:'#13161a',border:'1px solid rgba(255,255,255,.08)',borderRadius:8,padding:'8px 12px',color:'#e8eaed',outline:'none',fontSize:13}} placeholder="Ex: Serviço, produto avulso..."
+                        value={descLivre} onChange={e=>setDescLivre(e.target.value)}/>
+                    </div>
+                    <div>
+                      <div className="fl" style={{marginBottom:4}}>Valor total (R$) *</div>
+                      <input type="number" min="0.01" step="0.01" style={{width:'100%',background:'#13161a',border:'1px solid rgba(255,211,42,.3)',borderRadius:8,padding:'10px 14px',color:'#e8eaed',outline:'none',fontSize:18,fontWeight:700,fontFamily:'JetBrains Mono,monospace'}} placeholder="0,00"
+                        value={valorLivre} onChange={e=>setValorLivre(e.target.value)} autoFocus/>
+                    </div>
+                  </div>
+                ) : (
+                <>
                 <div className="sec-title">Produtos</div>
                 <div className="add-item-row">
                   <div className="prod-search-wrap">
@@ -564,6 +592,8 @@ export default function Vendas() {
                   </div>
                 ) : (
                   <div style={{padding:'16px',textAlign:'center',color:'rgba(232,234,237,.2)',fontSize:12,fontFamily:'JetBrains Mono,monospace'}}>Nenhum produto adicionado</div>
+                )}
+                </>
                 )}
               </div>
 

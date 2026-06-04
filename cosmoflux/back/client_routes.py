@@ -59,7 +59,7 @@ class ItemVendaSchema(BaseModel):
     desconto_item: float = 0.0
 
 class VendaUnificadaSchema(BaseModel):
-    cliente_id: Optional[int] = None   # None = balcao
+    cliente_id: Optional[int] = None
     itens: list[ItemVendaSchema]
     modo_pagamento: str
     parcelado: bool = False
@@ -69,6 +69,8 @@ class VendaUnificadaSchema(BaseModel):
     observacao: Optional[str] = None
     valor_entrada: float = 0.0
     modo_pagamento_entrada: Optional[str] = None
+    valor_livre: Optional[float] = None       # venda sem produto
+    descricao_livre: Optional[str] = None
 
 class PagarParcelaSchema(BaseModel):
     data_pago:      Optional[str] = None
@@ -79,8 +81,8 @@ class PagarParcelaSchema(BaseModel):
 @client_router.post("/vendas/unificada")
 def criar_venda_unificada(dados: VendaUnificadaSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
     from models import Produto, Movimentacao, ItemPedido, Pedido
-    if not dados.itens:
-        raise HTTPException(400, "Venda deve ter ao menos 1 item")
+    if not dados.itens and not dados.valor_livre:
+        raise HTTPException(400, "Informe ao menos 1 produto ou um valor livre")
 
     # verifica cliente se informado
     cliente = None
@@ -93,18 +95,24 @@ def criar_venda_unificada(dados: VendaUnificadaSchema, ctx: dict = Depends(get_c
         raise HTTPException(400, "Venda fiado exige cliente cadastrado")
 
     # calcula total
-    subtotal = sum(it.quantidade * it.preco_unitario - it.desconto_item for it in dados.itens)
-    total = round(subtotal - dados.desconto_geral, 2)
+    if dados.valor_livre and dados.valor_livre > 0:
+        total = round(dados.valor_livre, 2)
+    else:
+        subtotal = sum(it.quantidade * it.preco_unitario - it.desconto_item for it in dados.itens)
+        total = round(subtotal - dados.desconto_geral, 2)
+
+    obs_final = dados.observacao or (dados.descricao_livre if dados.valor_livre else None)
 
     # cria pedido vinculado
     pedido = Pedido(
         cliente_id=dados.cliente_id, usuario_id=ctx["usuario_id"],
         status="concluido", total=total,
-        desconto=dados.desconto_geral, observacao=dados.observacao, tenant_id=tid(ctx),
+        desconto=dados.desconto_geral if not dados.valor_livre else 0,
+        observacao=obs_final, tenant_id=tid(ctx),
     )
     db.add(pedido); db.flush()
 
-    # itens + baixa estoque + movimentacao saida
+    # itens + baixa estoque + movimentacao saida (só se houver itens)
     for it in dados.itens:
         p = tf(db.query(Produto), Produto, ctx).filter(Produto.id == it.produto_id).first()
         if not p: raise HTTPException(404, f"Produto {it.produto_id} nao encontrado")
@@ -318,7 +326,7 @@ def criar_venda(dados: VendaSchema, ctx: dict = Depends(get_ctx), db: Session = 
         descricao=dados.descricao, valor_total=dados.valor_total,
         modo_pagamento=dados.modo_pagamento, parcelado=dados.parcelado,
         num_parcelas=dados.num_parcelas, data_vencimento=venc,
-        observacao=dados.observacao, tenant_id=tid(ctx),
+        observacao=obs_final, tenant_id=tid(ctx),
     )
     db.add(venda); db.flush()
 

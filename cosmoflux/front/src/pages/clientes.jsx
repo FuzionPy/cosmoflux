@@ -484,8 +484,9 @@ function AlertBanner({ items, type }) {
 const PAGAMENTOS = ['PIX','Dinheiro','Cartão de crédito','Cartão de débito','Fiado','Transferência','Boleto'];
 
 function ModalVenda({ clienteId, clienteNome, onClose, onSaved, showToast }) {
-  const [form, setForm]       = useState({ modo_pagamento:'PIX', parcelado:false, num_parcelas:2, data_vencimento:'', desconto_geral:'', observacao:'', valor_entrada:'', modo_pagamento_entrada:'' });
+  const [form, setForm]       = useState({ modo_pagamento:'PIX', parcelado:false, num_parcelas:2, data_vencimento:'', desconto_geral:'', observacao:'', valor_entrada:'', modo_pagamento_entrada:'', descricao_livre:'', valor_livre:'' });
   const [itens, setItens]     = useState([]);
+  const [modoLivre, setModoLivre] = useState(false);
   const [busca, setBusca]     = useState('');
   const [sugestoes, setSugestoes] = useState([]);
   const [saving, setSaving]   = useState(false);
@@ -516,19 +517,34 @@ function ModalVenda({ clienteId, clienteNome, onClose, onSaved, showToast }) {
   const updQtd  = (id,v) => setItens(its => its.map(i => i.produto_id===id ? {...i, quantidade:Math.max(1,parseInt(v)||1)} : i));
 
   const desconto   = parseFloat(form.desconto_geral)||0;
-  const subtotal   = itens.reduce((a,i) => a + i.preco*i.quantidade - (i.desconto_item||0), 0);
-  const total      = Math.max(subtotal - desconto, 0);
+  const subtotalProd = itens.reduce((a,i) => a + i.preco*i.quantidade - (i.desconto_item||0), 0);
+  const subtotal   = modoLivre ? (parseFloat(form.valor_livre)||0) : subtotalProd;
+  const total      = Math.max(subtotal - (modoLivre ? 0 : desconto), 0);
   const entrada    = Math.min(parseFloat(form.valor_entrada)||0, total);
   const restante   = Math.max(total - entrada, 0);
   const valParcela = form.parcelado && form.num_parcelas>1 && restante>0
     ? restante / parseInt(form.num_parcelas) : null;
 
   const save = async () => {
-    if (itens.length === 0) { setErr('Adicione pelo menos um produto.'); return; }
+    if (!modoLivre && itens.length === 0) { setErr('Adicione pelo menos um produto ou use "Valor livre".'); return; }
+    if (modoLivre && (!form.valor_livre || parseFloat(form.valor_livre)<=0)) { setErr('Informe o valor da venda.'); return; }
     if (!form.data_vencimento) { setErr('Data de vencimento é obrigatória.'); return; }
     setSaving(true); setErr('');
     try {
-      await api.post('/vendas/unificada', {
+      const payload = modoLivre ? {
+        cliente_id: clienteId,
+        itens: [],
+        valor_livre: parseFloat(form.valor_livre),
+        descricao_livre: form.descricao_livre || 'Venda avulsa',
+        modo_pagamento: form.modo_pagamento,
+        parcelado: form.parcelado,
+        num_parcelas: form.parcelado ? parseInt(form.num_parcelas) : 1,
+        data_vencimento: form.data_vencimento,
+        desconto_geral: 0,
+        observacao: form.observacao || null,
+        valor_entrada: entrada,
+        modo_pagamento_entrada: form.modo_pagamento_entrada || null,
+      } : {
         cliente_id: clienteId,
         itens: itens.map(i=>({ produto_id:i.produto_id, quantidade:i.quantidade, preco_unitario:i.preco, desconto_item:i.desconto_item||0 })),
         modo_pagamento: form.modo_pagamento,
@@ -539,7 +555,8 @@ function ModalVenda({ clienteId, clienteNome, onClose, onSaved, showToast }) {
         observacao: form.observacao || null,
         valor_entrada: entrada,
         modo_pagamento_entrada: form.modo_pagamento_entrada || null,
-      });
+      };
+      await api.post('/vendas/unificada', payload);
       showToast('Venda registrada!', '✓');
       onSaved();
     } catch(e) {
@@ -561,6 +578,31 @@ function ModalVenda({ clienteId, clienteNome, onClose, onSaved, showToast }) {
         <div className="modal-body" style={{overflowY:'auto',flex:1}}>
           {err && <div className="form-err">⚠ {err}</div>}
 
+          {/* TOGGLE MODO */}
+          <div style={{display:'flex',gap:6,marginBottom:14,background:'rgba(255,255,255,.03)',borderRadius:9,padding:4}}>
+            <button onClick={()=>setModoLivre(false)} style={{flex:1,padding:'7px',borderRadius:7,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,transition:'all .2s',background:!modoLivre?'rgba(0,212,170,.15)':'transparent',color:!modoLivre?'#00d4aa':'rgba(232,234,237,.4)'}}>
+              📦 Produto do catálogo
+            </button>
+            <button onClick={()=>setModoLivre(true)} style={{flex:1,padding:'7px',borderRadius:7,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,transition:'all .2s',background:modoLivre?'rgba(255,211,42,.15)':'transparent',color:modoLivre?'#ffd32a':'rgba(232,234,237,.4)'}}>
+              ✏ Valor livre
+            </button>
+          </div>
+
+          {modoLivre ? (
+            <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:12}}>
+              <div className="form-field">
+                <label className="form-lbl">Descrição da venda</label>
+                <input className="form-inp" placeholder="Ex: Serviço, produto avulso..."
+                  value={form.descricao_livre} onChange={e=>F('descricao_livre',e.target.value)}/>
+              </div>
+              <div className="form-field">
+                <label className="form-lbl">Valor total (R$) *</label>
+                <input className="form-inp" type="number" min="0.01" step="0.01" placeholder="0,00"
+                  value={form.valor_livre} onChange={e=>F('valor_livre',e.target.value)} autoFocus/>
+              </div>
+            </div>
+          ) : (
+          <>
           {/* PRODUTOS */}
           <div className="form-section-title">Produtos</div>
           <div style={{position:'relative',marginBottom:8}}>
@@ -608,6 +650,9 @@ function ModalVenda({ clienteId, clienteNome, onClose, onSaved, showToast }) {
                 </div>
               ))}
             </div>
+          )}
+
+          </>
           )}
 
           {/* PAGAMENTO */}
