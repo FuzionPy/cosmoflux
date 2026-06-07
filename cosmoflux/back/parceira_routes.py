@@ -44,7 +44,9 @@ class ClienteParceiraSchema(BaseModel):
 # ── PARCEIRAS CRUD ───────────────────────────────────────────────────
 @parceira_router.get("/parceiras")
 def listar_parceiras(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
-    parceiras = tf(db.query(Parceira), Parceira, ctx).filter(Parceira.ativa == True).order_by(Parceira.nome).all()
+    parceiras = tf(db.query(Parceira), Parceira, ctx).filter(
+        (Parceira.ativa == True) | (Parceira.ativa == None)
+    ).order_by(Parceira.nome).all()
     resultado = []
     for p in parceiras:
         total_compras   = sum(c.valor_total for c in p.compras)

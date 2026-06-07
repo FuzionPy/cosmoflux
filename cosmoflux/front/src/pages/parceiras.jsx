@@ -14,6 +14,7 @@ const fmtBRL = v => `R$ ${Number(v||0).toLocaleString('pt-BR',{minimumFractionDi
 const fmtTel = t => t ? t.replace(/\D/g,'').replace(/^(\d{2})(\d{5})(\d{4})$/,'($1) $2-$3') : '—';
 const COLORS = ['#00d4aa','#0099ff','#a855f7','#ff6b35','#ffd32a','#ff4757'];
 const avatarColor = n => COLORS[(n?.charCodeAt(0)||0) % COLORS.length];
+const PAGAMENTOS = ['PIX','Dinheiro','Cartão de crédito','Cartão de débito','Boleto','Fiado','A combinar'];
 
 const S = `
 @import url('https://fonts.googleapis.com/css2?family=Plus Jakarta Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
@@ -45,17 +46,19 @@ const S = `
 .card-name{font-size:15px;font-weight:700;color:#e8eaed;}
 .card-tel{font-size:12px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.4);margin-top:3px;}
 .card-mid{padding:12px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;border-bottom:1px solid rgba(255,255,255,.05);}
+.card-mid4{padding:12px 16px;display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;border-bottom:1px solid rgba(255,255,255,.05);}
 .mini-lbl{font-size:9px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.28);text-transform:uppercase;letter-spacing:.1em;margin-bottom:3px;}
 .mini-val{font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#e8eaed;}
 .mini-val.yellow{color:#ffd32a;}
 .mini-val.green{color:#00d4aa;}
+.mini-val.purple{color:#a855f7;}
 .card-bot{padding:10px 16px;display:flex;align-items:center;justify-content:flex-end;gap:6px;}
 .icon-btn{width:28px;height:28px;border-radius:6px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;background:rgba(255,255,255,.04);color:rgba(255,255,255,.4);}
 .icon-btn:hover{background:rgba(0,212,170,.1);color:#e8eaed;}
 .icon-btn.danger:hover{background:rgba(255,71,87,.15);color:#ff4757;}
 
 /* DETAIL PANEL */
-.dp{position:fixed;right:0;top:0;bottom:0;width:440px;background:#0e1013;border-left:1px solid rgba(255,255,255,.08);z-index:150;overflow-y:auto;display:flex;flex-direction:column;animation:slideIn .3s cubic-bezier(.22,1,.36,1) both;}
+.dp{position:fixed;right:0;top:0;bottom:0;width:460px;background:#0e1013;border-left:1px solid rgba(255,255,255,.08);z-index:150;overflow-y:auto;display:flex;flex-direction:column;animation:slideIn .3s cubic-bezier(.22,1,.36,1) both;}
 @keyframes slideIn{from{transform:translateX(100%)}to{transform:none}}
 .dp::-webkit-scrollbar{width:4px;}
 .dp::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:2px;}
@@ -68,11 +71,13 @@ const S = `
 .dp-sec-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;}
 .dp-sec-title{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(232,234,237,.28);font-family:'JetBrains Mono',monospace;}
 .dp-kpis{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+.dp-kpis4{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .dp-kpi{background:#13161a;border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 12px;}
 .dp-kpi-lbl{font-size:9px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.28);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px;}
 .dp-kpi-val{font-size:14px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#e8eaed;}
 .dp-kpi-val.yellow{color:#ffd32a;}
 .dp-kpi-val.green{color:#00d4aa;}
+.dp-kpi-val.purple{color:#a855f7;}
 
 /* Compras accordion */
 .compra-block{background:#13161a;border:1px solid rgba(255,255,255,.06);border-radius:10px;overflow:hidden;margin-bottom:8px;}
@@ -87,14 +92,22 @@ const S = `
 .repasse-row:last-child{border-bottom:none;}
 .repasse-data{font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.35);flex:1;}
 .repasse-val{font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#00d4aa;}
-.add-repasse-row{display:flex;gap:8px;align-items:center;margin-top:6px;}
 
-/* Clientes list */
-.cli-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.03);}
-.cli-item:last-child{border-bottom:none;}
-.cli-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#000;flex-shrink:0;}
+/* Clientes */
+.cli-block{background:#13161a;border:1px solid rgba(255,255,255,.06);border-radius:10px;overflow:hidden;margin-bottom:8px;}
+.cli-hdr{padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:background .15s;}
+.cli-hdr:hover{background:rgba(255,255,255,.03);}
+.cli-dot{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#000;flex-shrink:0;}
 .cli-nome{font-size:13px;font-weight:600;color:#e8eaed;flex:1;}
 .cli-tel{font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.35);}
+.cli-body{border-top:1px solid rgba(255,255,255,.06);padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
+.venda-row{background:#0e1013;border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:8px 10px;display:flex;align-items:center;gap:8px;}
+.venda-desc{font-size:12px;font-weight:600;color:#e8eaed;flex:1;}
+.venda-sub{font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.3);margin-top:2px;}
+.venda-val{font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#a855f7;white-space:nowrap;}
+.cli-stats{display:flex;gap:8px;padding:4px 0 6px;}
+.cli-stat-item{font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.35);}
+.cli-stat-item span{color:#a855f7;font-weight:700;}
 
 .dp-foot{padding:14px 24px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:8px;flex-shrink:0;}
 
@@ -104,6 +117,7 @@ const S = `
 .b-yellow{background:rgba(255,211,42,.12);color:#ffd32a;}
 .b-red{background:rgba(255,71,87,.12);color:#ff4757;}
 .b-gray{background:rgba(255,255,255,.07);color:rgba(232,234,237,.5);}
+.b-purple{background:rgba(168,85,247,.12);color:#a855f7;}
 
 .empty{padding:60px 20px;text-align:center;color:rgba(232,234,237,.25);}
 .empty-icon{font-size:36px;margin-bottom:12px;opacity:.4;}
@@ -154,6 +168,10 @@ const S = `
 .item-del{background:none;border:none;color:rgba(255,71,87,.5);cursor:pointer;font-size:16px;padding:2px 4px;}
 .item-del:hover{color:#ff4757;}
 
+/* modo toggle */
+.modo-toggle{display:flex;gap:4px;background:rgba(255,255,255,.03);border-radius:9px;padding:4px;margin-bottom:4px;}
+.modo-btn{flex:1;padding:7px;border-radius:7px;border:none;cursor:pointer;font-size:12px;font-weight:600;transition:all .2s;font-family:'Plus Jakarta Sans',sans-serif;}
+
 .btn{display:flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;border:none;font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;}
 .btn-primary{background:#00d4aa;color:#000;}.btn-primary:hover{background:#00efc0;transform:translateY(-1px);}
 .btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none;}
@@ -161,6 +179,8 @@ const S = `
 .btn-ghost:hover{background:rgba(255,255,255,.09);color:#e8eaed;}
 .btn-danger{background:rgba(255,71,87,.08);color:#ff4757;border:1px solid rgba(255,71,87,.2);}
 .btn-danger:hover{background:rgba(255,71,87,.18);}
+.btn-purple{background:rgba(168,85,247,.1);color:#a855f7;border:1px solid rgba(168,85,247,.25);}
+.btn-purple:hover{background:rgba(168,85,247,.18);}
 .btn-sm{padding:6px 12px;font-size:12px;}
 .toast{position:fixed;bottom:24px;right:24px;background:#0e1013;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:13px 18px;display:flex;align-items:center;gap:10px;font-size:13px;color:#e8eaed;z-index:300;animation:pgIn .3s ease both;box-shadow:0 8px 28px rgba(0,0,0,.4);min-width:220px;}
 @media(max-width:768px){.pg{padding:14px;gap:14px;}.grid{grid-template-columns:1fr;}.dp{width:100%;}.fr2{grid-template-columns:1fr;}.item-row{grid-template-columns:1fr auto auto auto;}}
@@ -178,15 +198,16 @@ export default function Parceiras() {
   const [detalhe,    setDetalhe]    = useState(null);
   const [loadingDet, setLoadingDet] = useState(false);
   const [compraOpen, setCompraOpen] = useState({});
+  const [cliOpen,    setCliOpen]    = useState({});
   const [toast,      setToast]      = useState(null);
 
   // Modais
-  const [modal, setModal] = useState(null); // 'parceira'|'compra'|'cliente'|'repasse'
+  const [modal, setModal] = useState(null); // 'parceira'|'compra'|'cliente'|'repasse'|'venda_cli'
   const [formPar,  setFormPar]  = useState(FORM_PAR_EMPTY);
   const [formCli,  setFormCli]  = useState(FORM_CLI_EMPTY);
   const [editando, setEditando] = useState(null);
 
-  // Compra
+  // Compra (parceira compra do estoque)
   const [itens,      setItens]      = useState([]);
   const [prodSearch, setProdSearch] = useState('');
   const [showDrop,   setShowDrop]   = useState(false);
@@ -200,6 +221,18 @@ export default function Parceiras() {
   const [repasseCompra, setRepasseCompra] = useState(null);
   const [repasseVal,    setRepasseVal]    = useState('');
   const [repasseObs,    setRepasseObs]    = useState('');
+
+  // Venda para cliente da parceira
+  const [vendaCli,      setVendaCli]      = useState(null); // {id, nome} do ClienteParceira
+  const [modoLivreVenda,setModoLivreVenda]= useState(false);
+  const [valorLivreVenda,setValorLivreVenda] = useState('');
+  const [descLivreVenda, setDescLivreVenda]  = useState('');
+  const [itensVenda,     setItensVenda]      = useState([]);
+  const [prodSearchV,    setProdSearchV]     = useState('');
+  const [showDropV,      setShowDropV]       = useState(false);
+  const [prodAddV,       setProdAddV]        = useState('');
+  const [modoPagVenda,   setModoPagVenda]    = useState('PIX');
+  const [obsVenda,       setObsVenda]        = useState('');
 
   const showToast = (msg, icon='✓') => { setToast({msg,icon}); setTimeout(()=>setToast(null),3500); };
 
@@ -231,7 +264,7 @@ export default function Parceiras() {
     (p.telefone||'').includes(search)
   );
 
-  // ── Itens da compra ────────────────────────────────────────────
+  // ── Itens da compra (parceira) ──────────────────────────────────
   const addItem = () => {
     const prod = produtos.find(p => p.id === parseInt(prodAdd));
     if (!prod) return;
@@ -247,6 +280,23 @@ export default function Parceiras() {
   const updItem = (id, field, val) => setItens(prev => prev.map(i => i.produto_id===id ? {...i,[field]:val} : i));
   const delItem = id => setItens(prev => prev.filter(i => i.produto_id!==id));
   const totalCompra = itens.reduce((a,i) => a + i.quantidade * parseFloat(i.preco_unitario||0), 0);
+
+  // ── Itens da venda (cliente da parceira) ────────────────────────
+  const addItemVenda = () => {
+    const prod = produtos.find(p => p.id === parseInt(prodAddV));
+    if (!prod) return;
+    if (itensVenda.find(i => i.produto_id === prod.id)) {
+      setItensVenda(prev => prev.map(i => i.produto_id===prod.id ? {...i,quantidade:i.quantidade+1} : i));
+    } else {
+      setItensVenda(prev => [...prev, { produto_id:prod.id, nome:prod.nome,
+        estoque:prod.estoque_atual, unidade:prod.unidade,
+        preco_unitario:prod.preco_venda, quantidade:1 }]);
+    }
+    setProdAddV(''); setProdSearchV('');
+  };
+  const updItemVenda = (id, field, val) => setItensVenda(prev => prev.map(i => i.produto_id===id ? {...i,[field]:val} : i));
+  const delItemVenda = id => setItensVenda(prev => prev.filter(i => i.produto_id!==id));
+  const totalVendaCli = itensVenda.reduce((a,i) => a + i.quantidade * parseFloat(i.preco_unitario||0), 0);
 
   // ── Salvar parceira ────────────────────────────────────────────
   const salvarParceira = async () => {
@@ -315,6 +365,32 @@ export default function Parceiras() {
     finally { setSaving(false); }
   };
 
+  // ── Salvar venda para cliente da parceira ──────────────────────
+  const salvarVendaCli = async () => {
+    if (!vendaCli || !selected) return;
+    if (modoLivreVenda) {
+      if (!valorLivreVenda || parseFloat(valorLivreVenda) <= 0) { setFormErr('Informe um valor válido'); return; }
+    } else {
+      if (itensVenda.length === 0) { setFormErr('Adicione ao menos 1 produto'); return; }
+      for (const it of itensVenda) {
+        if (it.quantidade < 1)          { setFormErr(`Quantidade inválida: ${it.nome}`); return; }
+        if (it.quantidade > it.estoque) { setFormErr(`Estoque insuficiente: ${it.nome}`); return; }
+      }
+    }
+    setSaving(true); setFormErr('');
+    try {
+      const body = modoLivreVenda
+        ? { modo:'livre', descricao:descLivreVenda||null, valor_livre:parseFloat(valorLivreVenda), modo_pagamento:modoPagVenda, observacao:obsVenda||null }
+        : { modo:'catalogo', itens:itensVenda.map(i=>({produto_id:i.produto_id,quantidade:i.quantidade,preco_unitario:parseFloat(i.preco_unitario)})), modo_pagamento:modoPagVenda, observacao:obsVenda||null };
+      const res = await api.post(`/parceiras/${selected.id}/clientes/${vendaCli.id}/vendas`, body);
+      showToast(`Venda registrada! Total: ${fmtBRL(res.total)}`);
+      setModal(null);
+      setItensVenda([]); setValorLivreVenda(''); setDescLivreVenda(''); setObsVenda(''); setModoPagVenda('PIX'); setModoLivreVenda(false);
+      load(); loadDetalhe(selected.id);
+    } catch(e) { setFormErr(e.message); }
+    finally { setSaving(false); }
+  };
+
   const deletarParceira = async (id) => {
     try {
       await api.del(`/parceiras/${id}`);
@@ -331,12 +407,21 @@ export default function Parceiras() {
     } catch(e) { showToast(e.message, '✕'); }
   };
 
-  const totalSaldo = parceiras.reduce((a,p) => a + p.saldo_em_aberto, 0);
+  const totalSaldo          = parceiras.reduce((a,p) => a + p.saldo_em_aberto, 0);
+  const totalVendasClientes = parceiras.reduce((a,p) => a + (p.total_vendas_clientes||0), 0);
 
   const statusBadge = s => {
     if (s==='pago')      return <span className="badge b-green">PAGO</span>;
     if (s==='parcelado') return <span className="badge b-yellow">PARCELADO</span>;
     return <span className="badge b-yellow">EM ABERTO</span>;
+  };
+
+  const abrirVendaCli = (cli) => {
+    setVendaCli(cli);
+    setItensVenda([]); setValorLivreVenda(''); setDescLivreVenda('');
+    setModoLivreVenda(false); setObsVenda(''); setModoPagVenda('PIX');
+    setProdAddV(''); setProdSearchV(''); setFormErr('');
+    setModal('venda_cli');
   };
 
   return (
@@ -356,9 +441,10 @@ export default function Parceiras() {
 
         <div className="stats">
           {[
-            { label:'Parceiras',    val: parceiras.length,       color:'#00d4aa' },
-            { label:'Saldo aberto', val: fmtBRL(totalSaldo),     color:'#ffd32a', small:true },
-            { label:'Com débito',   val: parceiras.filter(p=>p.saldo_em_aberto>0).length, color:'#ff6b35' },
+            { label:'Parceiras',        val: parceiras.length,            color:'#00d4aa' },
+            { label:'Saldo aberto',     val: fmtBRL(totalSaldo),          color:'#ffd32a', small:true },
+            { label:'Com débito',       val: parceiras.filter(p=>p.saldo_em_aberto>0).length, color:'#ff6b35' },
+            { label:'Vendas clientes',  val: fmtBRL(totalVendasClientes), color:'#a855f7', small:true },
           ].map(s=>(
             <div key={s.label} className="stat">
               <div className="st-dot" style={{background:s.color}}/>
@@ -404,10 +490,11 @@ export default function Parceiras() {
                   <div className="card-name">{p.nome}</div>
                   <div className="card-tel">{fmtTel(p.telefone)}</div>
                 </div>
-                <div className="card-mid">
+                <div className="card-mid4">
                   <div><div className="mini-lbl">Compras</div><div className="mini-val">{p.num_compras}</div></div>
                   <div><div className="mini-lbl">Em aberto</div><div className={`mini-val ${p.saldo_em_aberto>0?'yellow':'green'}`}>{p.saldo_em_aberto>0?fmtBRL(p.saldo_em_aberto):'—'}</div></div>
                   <div><div className="mini-lbl">Clientes</div><div className="mini-val">{p.num_clientes}</div></div>
+                  <div><div className="mini-lbl">Vendas clientes</div><div className={`mini-val ${p.total_vendas_clientes>0?'purple':''}`}>{p.total_vendas_clientes>0?fmtBRL(p.total_vendas_clientes):'—'}</div></div>
                 </div>
                 <div className="card-bot" onClick={e=>e.stopPropagation()}>
                   <button className="icon-btn" title="Editar" onClick={()=>{ setFormPar({nome:p.nome,telefone:p.telefone||'',email:p.email||'',observacao:p.observacao||''}); setEditando(p.id); setFormErr(''); setModal('parceira'); }}>
@@ -447,10 +534,11 @@ export default function Parceiras() {
               ) : detalhe && (
                 <>
                   {/* KPIs */}
-                  <div className="dp-kpis">
+                  <div className="dp-kpis4">
                     <div className="dp-kpi"><div className="dp-kpi-lbl">Total compras</div><div className="dp-kpi-val" style={{fontSize:12}}>{fmtBRL(detalhe.total_compras)}</div></div>
                     <div className="dp-kpi"><div className="dp-kpi-lbl">Repasses</div><div className="dp-kpi-val green" style={{fontSize:12}}>{fmtBRL(detalhe.total_repasses)}</div></div>
                     <div className="dp-kpi"><div className="dp-kpi-lbl">Em aberto</div><div className={`dp-kpi-val ${detalhe.saldo_em_aberto>0?'yellow':'green'}`} style={{fontSize:12}}>{fmtBRL(detalhe.saldo_em_aberto)}</div></div>
+                    <div className="dp-kpi"><div className="dp-kpi-lbl">Vendas clientes</div><div className="dp-kpi-val purple" style={{fontSize:12}}>{fmtBRL(detalhe.total_vendas_clientes||0)}</div></div>
                   </div>
 
                   {/* Compras */}
@@ -476,7 +564,6 @@ export default function Parceiras() {
                         </div>
                         {compraOpen[c.id] && (
                           <div className="compra-body">
-                            {/* Itens */}
                             <div>
                               <div style={{fontSize:10,fontFamily:'JetBrains Mono,monospace',color:'rgba(232,234,237,.28)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:8}}>Produtos</div>
                               {c.itens.map((it,i)=>(
@@ -487,7 +574,6 @@ export default function Parceiras() {
                                 </div>
                               ))}
                             </div>
-                            {/* Repasses */}
                             <div>
                               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
                                 <div style={{fontSize:10,fontFamily:'JetBrains Mono,monospace',color:'rgba(232,234,237,.28)',textTransform:'uppercase',letterSpacing:'.1em'}}>Repasses</div>
@@ -517,15 +603,45 @@ export default function Parceiras() {
                     {detalhe.clientes.length===0 ? (
                       <div style={{textAlign:'center',padding:'12px',color:'rgba(232,234,237,.25)',fontSize:12,fontFamily:'JetBrains Mono,monospace'}}>Nenhum cliente vinculado</div>
                     ) : detalhe.clientes.map(cl=>(
-                      <div key={cl.id} className="cli-item">
-                        <div className="cli-dot" style={{background:avatarColor(cl.nome)}}>{cl.nome[0]?.toUpperCase()}</div>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div className="cli-nome">{cl.nome}</div>
-                          <div className="cli-tel">{fmtTel(cl.telefone)}</div>
+                      <div key={cl.id} className="cli-block">
+                        <div className="cli-hdr" onClick={()=>setCliOpen(o=>({...o,[cl.id]:!o[cl.id]}))}>
+                          <div className="cli-dot" style={{background:avatarColor(cl.nome)}}>{cl.nome[0]?.toUpperCase()}</div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div className="cli-nome">{cl.nome}</div>
+                            <div className="cli-tel">{fmtTel(cl.telefone)}</div>
+                          </div>
+                          {cl.total_vendas > 0 && (
+                            <span className="badge b-purple" style={{marginRight:4}}>{fmtBRL(cl.total_vendas)}</span>
+                          )}
+                          <span style={{fontSize:11,color:'rgba(232,234,237,.3)',marginLeft:4}}>{cliOpen[cl.id]?'▲':'▼'}</span>
                         </div>
-                        <button className="icon-btn danger" onClick={()=>deletarCliente(selected.id,cl.id)}>
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
-                        </button>
+                        {cliOpen[cl.id] && (
+                          <div className="cli-body">
+                            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                              <div className="cli-stats">
+                                <span className="cli-stat-item"><span>{cl.vendas.length}</span> venda(s)</span>
+                                {cl.total_vendas>0 && <span className="cli-stat-item" style={{marginLeft:8}}>Total: <span>{fmtBRL(cl.total_vendas)}</span></span>}
+                              </div>
+                              <div style={{display:'flex',gap:6}}>
+                                <button className="btn btn-purple btn-sm" onClick={()=>abrirVendaCli(cl)}>+ Venda</button>
+                                <button className="icon-btn danger" onClick={()=>deletarCliente(selected.id,cl.id)}>
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                                </button>
+                              </div>
+                            </div>
+                            {cl.vendas.length===0 ? (
+                              <div style={{textAlign:'center',padding:'10px',color:'rgba(232,234,237,.2)',fontSize:11,fontFamily:'JetBrains Mono,monospace'}}>Nenhuma venda registrada</div>
+                            ) : cl.vendas.map(v=>(
+                              <div key={v.id} className="venda-row">
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div className="venda-desc">{v.descricao || (v.itens?.length>0 ? v.itens.map(i=>i.produto).join(', ') : 'Venda')}</div>
+                                  <div className="venda-sub">{v.criado_em}{v.modo_pagamento?` · ${v.modo_pagamento}`:''}</div>
+                                </div>
+                                <div className="venda-val">{fmtBRL(v.valor_total)}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -675,6 +791,119 @@ export default function Parceiras() {
             <div className="mfoot">
               <button className="btn btn-ghost" onClick={()=>setModal(null)}>Cancelar</button>
               <button className="btn btn-primary" onClick={salvarRepasse} disabled={saving}>{saving?'Registrando...':'Confirmar Repasse'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL VENDA CLIENTE PARCEIRA ── */}
+      {modal==='venda_cli' && vendaCli && selected && (
+        <div className="mbg" onClick={e=>e.target===e.currentTarget&&setModal(null)}>
+          <div className="modal">
+            <div className="mhd">
+              <div>
+                <div className="mtitle">Nova Venda</div>
+                <div className="msub">{vendaCli.nome} · {selected.nome}</div>
+              </div>
+              <button className="mclose" onClick={()=>setModal(null)}>×</button>
+            </div>
+            <div className="mbody">
+              {formErr && <div className="ferr">⚠ {formErr}</div>}
+
+              {/* Toggle modo */}
+              <div className="modo-toggle">
+                <button className="modo-btn" onClick={()=>setModoLivreVenda(false)}
+                  style={{background:!modoLivreVenda?'rgba(168,85,247,.15)':'transparent',color:!modoLivreVenda?'#a855f7':'rgba(232,234,237,.4)'}}>
+                  📦 Produto do catálogo
+                </button>
+                <button className="modo-btn" onClick={()=>setModoLivreVenda(true)}
+                  style={{background:modoLivreVenda?'rgba(255,211,42,.15)':'transparent',color:modoLivreVenda?'#ffd32a':'rgba(232,234,237,.4)'}}>
+                  ✏ Valor livre
+                </button>
+              </div>
+
+              {modoLivreVenda ? (
+                <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                  <div className="ff">
+                    <label className="fl">Descrição</label>
+                    <input className="fi" placeholder="Ex: serviço, produto avulso..." value={descLivreVenda} onChange={e=>setDescLivreVenda(e.target.value)}/>
+                  </div>
+                  <div className="ff">
+                    <label className="fl">Valor total (R$) *</label>
+                    <input className="fi" type="number" min="0.01" step="0.01" placeholder="0,00"
+                      style={{fontSize:18,fontWeight:700,fontFamily:'JetBrains Mono,monospace',borderColor:'rgba(168,85,247,.3)'}}
+                      value={valorLivreVenda} onChange={e=>setValorLivreVenda(e.target.value)} autoFocus/>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="sec-title">Produtos</div>
+                  <div className="prod-search-wrap">
+                    <input className="prod-search-input" placeholder="Buscar produto por nome ou SKU..."
+                      value={prodSearchV}
+                      onChange={e=>{ setProdSearchV(e.target.value); setShowDropV(true); setProdAddV(''); }}
+                      onFocus={()=>setShowDropV(true)}
+                      onBlur={()=>setTimeout(()=>setShowDropV(false),150)}
+                    />
+                    {showDropV && (
+                      <div className="prod-dropdown">
+                        {produtos.filter(p=>!itensVenda.find(i=>i.produto_id===p.id)&&(!prodSearchV||p.nome.toLowerCase().includes(prodSearchV.toLowerCase())||(p.sku||'').toLowerCase().includes(prodSearchV.toLowerCase()))).slice(0,20).map(p=>(
+                          <div key={p.id} className="prod-opt" onMouseDown={()=>{ setProdAddV(String(p.id)); setProdSearchV(p.nome); setShowDropV(false); }}>
+                            <div className="prod-opt-nome">{p.nome}</div>
+                            <div className="prod-opt-sub">{p.sku?`SKU: ${p.sku} · `:''}estoque: {p.estoque_atual} {p.unidade} · {fmtBRL(p.preco_venda)}</div>
+                          </div>
+                        ))}
+                        {produtos.filter(p=>!itensVenda.find(i=>i.produto_id===p.id)&&(!prodSearchV||p.nome.toLowerCase().includes(prodSearchV.toLowerCase())||(p.sku||'').toLowerCase().includes(prodSearchV.toLowerCase()))).length===0 && <div className="prod-opt-empty">Nenhum produto encontrado</div>}
+                      </div>
+                    )}
+                  </div>
+                  <button className="btn btn-ghost btn-sm" style={{alignSelf:'flex-start'}} onClick={addItemVenda} disabled={!prodAddV}>+ Adicionar</button>
+
+                  {itensVenda.length>0 && (
+                    <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                      {itensVenda.map(it=>(
+                        <div key={it.produto_id} className="item-row">
+                          <div><div style={{fontSize:13,fontWeight:600,color:'#e8eaed'}}>{it.nome}</div><div style={{fontSize:10,color:'rgba(232,234,237,.35)',fontFamily:'JetBrains Mono,monospace'}}>estoque: {it.estoque} {it.unidade}</div></div>
+                          <input className="item-input" type="number" min="1" max={it.estoque} value={it.quantidade} onChange={e=>updItemVenda(it.produto_id,'quantidade',parseInt(e.target.value)||1)} placeholder="Qtd"/>
+                          <input className="item-input" type="number" min="0" step="0.01" value={it.preco_unitario} onChange={e=>updItemVenda(it.produto_id,'preco_unitario',e.target.value)} placeholder="Preço"/>
+                          <button className="item-del" onClick={()=>delItemVenda(it.produto_id)}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div className="sec-title">Pagamento</div>
+              <div className="ff">
+                <label className="fl">Forma de pagamento</label>
+                <select className="fsel2" value={modoPagVenda} onChange={e=>setModoPagVenda(e.target.value)}>
+                  {PAGAMENTOS.map(p=><option key={p}>{p}</option>)}
+                </select>
+              </div>
+              <div className="ff">
+                <label className="fl">Observação</label>
+                <input className="fi" value={obsVenda} onChange={e=>setObsVenda(e.target.value)} placeholder="Opcional..."/>
+              </div>
+
+              {(!modoLivreVenda && itensVenda.length>0) && (
+                <div className="total-box">
+                  <span className="total-label">Total da venda</span>
+                  <span className="total-val">{fmtBRL(totalVendaCli)}</span>
+                </div>
+              )}
+              {(modoLivreVenda && parseFloat(valorLivreVenda)>0) && (
+                <div className="total-box" style={{background:'rgba(168,85,247,.05)',borderColor:'rgba(168,85,247,.12)'}}>
+                  <span className="total-label">Total da venda</span>
+                  <span className="total-val" style={{color:'#a855f7'}}>{fmtBRL(parseFloat(valorLivreVenda))}</span>
+                </div>
+              )}
+            </div>
+            <div className="mfoot">
+              <button className="btn btn-ghost" onClick={()=>setModal(null)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={salvarVendaCli} disabled={saving||(modoLivreVenda?!valorLivreVenda:itensVenda.length===0)}>
+                {saving?'Registrando...':'Confirmar Venda'}
+              </button>
             </div>
           </div>
         </div>
