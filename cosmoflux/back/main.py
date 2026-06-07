@@ -51,6 +51,7 @@ def auto_migrate():
             "ALTER TABLE parcelas ADD COLUMN IF NOT EXISTS valor_pago FLOAT DEFAULT 0",
             "ALTER TABLE parceiras ADD COLUMN IF NOT EXISTS ativa BOOLEAN DEFAULT TRUE",
             "UPDATE parceiras SET ativa = TRUE WHERE ativa IS NULL",
+            "ALTER TABLE clientes_parceira ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id)",
         ]
         with engine.connect() as conn:
             for sql in migrações:

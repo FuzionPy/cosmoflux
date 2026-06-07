@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 from models import (Parceira, CompraParceira, ItemCompraParceira,
-                    RepasseParceira, ClienteParceira, Produto,
+                    RepasseParceira, ClienteParceira, Cliente, Produto,
                     Movimentacao, get_db)
 from auth_routes import get_ctx
 
@@ -113,7 +113,9 @@ def detalhe_parceira(pid: int, ctx: dict = Depends(get_ctx), db: Session = Depen
             } for r in sorted(c.repasses, key=lambda x: x.data_repasse, reverse=True)],
         })
     clientes = [{
-        "id": cl.id, "nome": cl.nome, "telefone": cl.telefone, "observacao": cl.observacao,
+        "id": cl.id,
+        "cliente_id": cl.cliente_id,  # id na tabela clientes (para vendas)
+        "nome": cl.nome, "telefone": cl.telefone, "observacao": cl.observacao,
         "criado_em": cl.criado_em.strftime("%d/%m/%Y") if cl.criado_em else None,
     } for cl in sorted(p.clientes, key=lambda x: x.nome)]
     total_compras  = sum(c["valor_total"] for c in compras)

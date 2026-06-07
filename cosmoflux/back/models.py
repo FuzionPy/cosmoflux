@@ -187,7 +187,7 @@ class Parcela(Base):
     numero     = Column(Integer, nullable=False)
     valor      = Column(Float, nullable=False)
     valor_pago = Column(Float, default=0.0)
-    vencimento = Column(Date, nullable=True)
+    vencimento = Column(Date)
     pago       = Column(Boolean, default=False)
     data_pago  = Column(Date)
     observacao = Column(Text)
@@ -249,9 +249,8 @@ class Parceira(Base):
     ativa      = Column(Boolean, default=True)
     tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=True)
     criado_em  = Column(DateTime, default=datetime.utcnow)
-    compras          = relationship("CompraParceira",        back_populates="parceira_rel")
-    clientes         = relationship("ClienteParceira",       back_populates="parceira_rel")
-    vendas_clientes  = relationship("VendaClienteParceira",  back_populates="parceira_rel")
+    compras    = relationship("CompraParceira",  back_populates="parceira_rel")
+    clientes   = relationship("ClienteParceira", back_populates="parceira_rel")
 
 
 class CompraParceira(Base):
@@ -300,42 +299,13 @@ class ClienteParceira(Base):
     id          = Column(Integer, primary_key=True, autoincrement=True)
     parceira_id = Column(Integer, ForeignKey("parceiras.id"), nullable=False)
     tenant_id   = Column(Integer, ForeignKey("tenants.id"), nullable=True)
+    cliente_id  = Column(Integer, ForeignKey("clientes.id"), nullable=True)  # vínculo com cliente real
     nome        = Column(String, nullable=False)
     telefone    = Column(String, nullable=True)
     observacao  = Column(Text, nullable=True)
     criado_em   = Column(DateTime, default=datetime.utcnow)
     parceira_rel = relationship("Parceira", back_populates="clientes")
-    vendas       = relationship("VendaClienteParceira", back_populates="cliente_rel")
-
-
-class VendaClienteParceira(Base):
-    """Venda de produto/serviço para um cliente de parceira."""
-    __tablename__ = "vendas_cliente_parceira"
-    id                  = Column(Integer, primary_key=True, autoincrement=True)
-    cliente_parceira_id = Column(Integer, ForeignKey("clientes_parceira.id"), nullable=False)
-    parceira_id         = Column(Integer, ForeignKey("parceiras.id"), nullable=False)
-    tenant_id           = Column(Integer, ForeignKey("tenants.id"), nullable=True)
-    usuario_id          = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
-    descricao           = Column(String, nullable=True)
-    valor_total         = Column(Float, nullable=False)
-    modo_pagamento      = Column(String, nullable=True)
-    observacao          = Column(Text, nullable=True)
-    criado_em           = Column(DateTime, default=datetime.utcnow)
-    cliente_rel         = relationship("ClienteParceira",       back_populates="vendas")
-    parceira_rel        = relationship("Parceira",              back_populates="vendas_clientes")
-    itens               = relationship("ItemVendaClienteParceira", back_populates="venda_rel")
-
-
-class ItemVendaClienteParceira(Base):
-    __tablename__ = "itens_venda_cliente_parceira"
-    id             = Column(Integer, primary_key=True, autoincrement=True)
-    venda_id       = Column(Integer, ForeignKey("vendas_cliente_parceira.id"), nullable=False)
-    produto_id     = Column(Integer, ForeignKey("produtos.id"), nullable=False)
-    quantidade     = Column(Integer, nullable=False)
-    preco_unitario = Column(Float, nullable=False)
-    venda_rel      = relationship("VendaClienteParceira", back_populates="itens")
-    produto_rel    = relationship("Produto")
-
+    cliente_rel  = relationship("Cliente", foreign_keys=[cliente_id])
 
 Base.metadata.create_all(bind=db)
 SessionLocal = sessionmaker(bind=db)
