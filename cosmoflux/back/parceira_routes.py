@@ -12,6 +12,7 @@ parceira_router = APIRouter(prefix="/api", tags=["parceiras"])
 
 def tid(ctx): return ctx.get("tenant_id")
 def tf(q, M, ctx):
+    if ctx.get("admin"): return q  # admin vê tudo
     if ctx.get("tenant_id"): return q.filter(M.tenant_id == ctx["tenant_id"])
     return q
 
