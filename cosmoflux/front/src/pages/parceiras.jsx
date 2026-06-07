@@ -350,6 +350,39 @@ export default function Parceiras() {
     return <span className="badge b-yellow">EM ABERTO</span>;
   };
 
+  const salvarVendaCli = async () => {
+    if (!modalVendaCli) return;
+    if (vendaModo==='produto' && vendaItens.length===0) { setVendaErr('Adicione pelo menos um produto.'); return; }
+    if (vendaModo==='livre' && (!vendaForm.valor_livre || parseFloat(vendaForm.valor_livre)<=0)) { setVendaErr('Informe o valor.'); return; }
+    if (!vendaForm.data_vencimento) { setVendaErr('Data de vencimento obrigatória.'); return; }
+    setVendaSaving(true); setVendaErr('');
+    try {
+      const desc = parseFloat(vendaForm.desconto)||0;
+      const subtotal = vendaModo==='livre' ? parseFloat(vendaForm.valor_livre)||0 : vendaItens.reduce((a,i)=>a+i.preco*i.quantidade,0);
+      const total = Math.max(subtotal-(vendaModo==='livre'?0:desc),0);
+      const entrada = Math.min(parseFloat(vendaForm.valor_entrada)||0, total);
+      await api.post('/vendas/unificada', {
+        cliente_id: modalVendaCli.cliente_id,
+        itens: vendaModo==='produto' ? vendaItens.map(i=>({produto_id:i.produto_id,quantidade:i.quantidade,preco_unitario:i.preco,desconto_item:0})) : [],
+        modo_pagamento: vendaForm.modo_pagamento,
+        parcelado: vendaForm.parcelado,
+        num_parcelas: vendaForm.parcelado ? parseInt(vendaForm.num_parcelas) : 1,
+        data_vencimento: vendaForm.data_vencimento,
+        desconto_geral: vendaModo==='produto' ? desc : 0,
+        observacao: vendaForm.observacao||null,
+        valor_entrada: entrada,
+        ...(vendaModo==='livre' && { valor_livre: parseFloat(vendaForm.valor_livre), descricao_livre: vendaForm.descricao_livre||'Venda avulsa' }),
+      });
+      setModalVendaCli(null);
+      setVendaItens([]);
+      setVendaForm({modo_pagamento:'PIX',parcelado:false,num_parcelas:2,data_vencimento:'',desconto:'',valor_livre:'',descricao_livre:'',observacao:'',valor_entrada:''});
+      if (selected) loadDetalhe(selected.id);
+    } catch(e) {
+      setVendaErr(e.message||'Erro ao registrar venda.');
+    } finally { setVendaSaving(false); }
+  };
+
+
   return (
     <>
       <style>{S}</style>
