@@ -17,7 +17,7 @@ const getNome = () => {
 const getAvatar = () => localStorage.getItem('avatar') || sessionStorage.getItem('avatar') || '';
 
 const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=Plus Jakarta Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Space+Mono:wght@400;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Space+Mono:wght@400;700&display=swap');
 
   /* OVERLAY — fundo escuro clicável no mobile */
   .sb-overlay {
@@ -31,8 +31,8 @@ const styles = `
 
   .sidebar {
     width: 220px; flex-shrink: 0;
-    background: #0e1013;
-    border-right: 1px solid rgba(255,255,255,0.06);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
     display: flex; flex-direction: column;
     height: 100vh; overflow: hidden;
     transition: transform 0.3s ease;
@@ -40,7 +40,7 @@ const styles = `
   }
   .sidebar-logo {
     padding: 20px 18px 20px 32px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border);
     display: flex; align-items: center; gap: 16px; flex-shrink: 0;
   }
   /* Logo — órbitas animadas igual ao login */
@@ -67,7 +67,7 @@ const styles = `
   }
   .sb-logo-text {
     font-size: 12px; font-weight: 700; letter-spacing: 0.15em;
-    text-transform: uppercase; color: #e8eaed; white-space: nowrap;
+    text-transform: uppercase; color: var(--text); white-space: nowrap;
     font-family: 'Space Mono', monospace;
   }
 
@@ -77,17 +77,17 @@ const styles = `
 
   .sb-section {
     font-size: 9px; font-weight: 600; letter-spacing: 0.15em;
-    text-transform: uppercase; color: rgba(232,234,237,0.28);
+    text-transform: uppercase; color: var(--text-muted);
     padding: 14px 10px 5px; font-family: 'JetBrains Mono', monospace; white-space: nowrap;
   }
   .sb-item {
     display: flex; align-items: center; gap: 9px;
     padding: 9px 10px; border-radius: 7px; cursor: pointer;
-    font-size: 13px; font-weight: 500; color: rgba(232,234,237,0.5);
+    font-size: 13px; font-weight: 500; color: var(--text-dim);
     transition: all 0.15s; border: 1px solid transparent;
     user-select: none; white-space: nowrap; text-decoration: none;
   }
-  .sb-item:hover { background: rgba(255,255,255,0.04); color: #e8eaed; }
+  .sb-item:hover { background: var(--track); color: var(--text); }
   .sb-item.active {
     background: rgba(0,212,170,0.08);
     border-color: rgba(0,212,170,0.18);
@@ -101,12 +101,12 @@ const styles = `
   }
   .sb-badge.danger { background: rgba(255,71,87,0.15); color: #ff4757; }
 
-  .sb-footer { padding: 12px 8px; border-top: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; }
+  .sb-footer { padding: 12px 8px; border-top: 1px solid var(--border); flex-shrink: 0; }
   .sb-user {
     display: flex; align-items: center; gap: 9px;
     padding: 9px 10px; border-radius: 7px; cursor: pointer; transition: background 0.15s;
   }
-  .sb-user:hover { background: rgba(255,255,255,0.04); }
+  .sb-user:hover { background: var(--track); }
   .sb-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
   .sb-avatar {
     width: 30px; height: 30px; border-radius: 50%;
@@ -117,14 +117,14 @@ const styles = `
   .sb-avatar.admin-av { background: linear-gradient(135deg, #00d4aa, #0099ff); }
   .sb-user-info { flex: 1; min-width: 0; }
   .sb-user-name {
-    font-size: 12px; font-weight: 600; color: #e8eaed;
+    font-size: 12px; font-weight: 600; color: var(--text);
     overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
   }
-  .sb-user-role { font-size: 10px; color: rgba(232,234,237,0.28); font-family: 'JetBrains Mono', monospace; }
+  .sb-user-role { font-size: 10px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
   .sb-user-role.admin-role { color: #a855f7; }
   .sb-logout {
     background: none; border: none; cursor: pointer;
-    color: rgba(232,234,237,0.28); transition: color 0.15s; padding: 4px; flex-shrink: 0;
+    color: var(--text-muted); transition: color 0.15s; padding: 4px; flex-shrink: 0;
   }
   .sb-logout:hover { color: #ff4757; }
 

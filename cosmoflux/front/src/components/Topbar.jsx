@@ -9,47 +9,55 @@ const apig = url => fetch(BASE+url,{headers:h()}).then(r=>r.json());
 const fmtBRL = v => `R$ ${Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
 
 const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=Plus Jakarta Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
 
   .topbar {
-    height: 60px; border-bottom: 1px solid rgba(255,255,255,0.06);
+    height: 60px; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; padding: 0 24px; gap: 12px;
-    background: #0e1013; flex-shrink: 0; font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--surface); flex-shrink: 0; font-family: 'Plus Jakarta Sans', sans-serif;
     position: relative; z-index: 100;
   }
   .tb-toggle {
     display: none; background: none; border: none;
-    color: rgba(232,234,237,0.5); cursor: pointer; padding: 6px;
+    color: var(--text-dim); cursor: pointer; padding: 6px;
     border-radius: 6px; transition: background 0.15s; align-items: center;
   }
-  .tb-toggle:hover { background: rgba(255,255,255,0.06); }
+  .tb-toggle:hover { background: var(--track); }
+  .tb-theme-btn {
+    width: 36px; height: 36px; border-radius: 9px;
+    border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text-dim); cursor: pointer; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  .tb-theme-btn:hover { border-color: var(--border2); color: var(--text); }
   .tb-info { flex: 1; min-width: 0; }
-  .tb-title { font-size: 16px; font-weight: 700; color: #e8eaed; }
-  .tb-sub { font-size: 11px; color: rgba(232,234,237,0.28); font-family: 'JetBrains Mono', monospace; margin-top: 1px; }
+  .tb-title { font-size: 16px; font-weight: 700; color: var(--text); }
+  .tb-sub { font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; margin-top: 1px; }
 
   .tb-search-wrap { position: relative; }
   .tb-search {
     display: flex; align-items: center; gap: 7px;
-    background: #13161a; border: 1px solid rgba(255,255,255,0.06);
+    background: var(--surface2); border: 1px solid var(--border);
     border-radius: 7px; padding: 7px 12px; transition: border-color 0.2s;
   }
   .tb-search.open { border-color: rgba(0,212,170,0.4); box-shadow: 0 0 0 3px rgba(0,212,170,0.08); }
   .tb-search input {
     background: none; border: none; outline: none;
-    font-size: 13px; color: #e8eaed; font-family: 'Plus Jakarta Sans', sans-serif; width: 200px;
+    font-size: 13px; color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; width: 200px;
   }
-  .tb-search input::placeholder { color: rgba(232,234,237,0.28); }
+  .tb-search input::placeholder { color: var(--text-muted); }
 
   .tb-search-kbd {
-    font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.25);
-    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);
+    font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--text-muted);
+    background:var(--track);border:1px solid var(--border2);
     border-radius:4px;padding:1px 5px;white-space:nowrap;
   }
 
   /* Dropdown */
   .gs-drop {
     position: absolute; top: calc(100% + 8px); right: 0;
-    width: 400px; background: #0e1013;
+    width: 400px; background: var(--surface);
     border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
     box-shadow: 0 16px 48px rgba(0,0,0,0.5);
     overflow: hidden; animation: gsIn .2s cubic-bezier(.22,1,.36,1) both;
@@ -62,7 +70,7 @@ const styles = `
   .gs-section { padding: 8px 0; }
   .gs-section-title {
     padding: 6px 16px 4px; font-size:9px; font-weight:700; letter-spacing:.12em;
-    text-transform:uppercase; color:rgba(232,234,237,.28);
+    text-transform:uppercase; color:var(--text-muted);
     font-family:'JetBrains Mono',monospace;
   }
   .gs-item {
@@ -76,13 +84,13 @@ const styles = `
     align-items:center; justify-content:center; font-size:14px; flex-shrink:0;
   }
   .gs-item-body { flex:1; min-width:0; }
-  .gs-item-name { font-size:13px; font-weight:600; color:#e8eaed; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .gs-item-name { font-size:13px; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .gs-item-sub { font-size:11px; color:rgba(232,234,237,.35); font-family:'JetBrains Mono',monospace; margin-top:2px; }
   .gs-item-right { font-size:12px; font-weight:700; font-family:'JetBrains Mono',monospace; color:#00d4aa; white-space:nowrap; }
 
-  .gs-empty { padding: 32px 16px; text-align:center; color:rgba(232,234,237,.25); font-size:13px; }
-  .gs-loading { padding: 24px 16px; text-align:center; color:rgba(232,234,237,.25); font-size:12px; font-family:'JetBrains Mono',monospace; }
-  .gs-divider { height:1px; background:rgba(255,255,255,.05); margin:0 16px; }
+  .gs-empty { padding: 32px 16px; text-align:center; color:var(--text-muted); font-size:13px; }
+  .gs-loading { padding: 24px 16px; text-align:center; color:var(--text-muted); font-size:12px; font-family:'JetBrains Mono',monospace; }
+  .gs-divider { height:1px; background:var(--track); margin:0 16px; }
 
   .tb-btn {
     display: flex; align-items: center; gap: 5px;
@@ -98,7 +106,7 @@ const styles = `
   @media (max-width: 480px) { .tb-btn-label { display: none; } }
 `;
 
-export default function Topbar({ title, onMenuToggle, onNewProduct }) {
+export default function Topbar({ title, onMenuToggle, onNewProduct, theme = "dark", onToggleTheme }) {
   const navigate = useNavigate();
   const [query,    setQuery]    = useState('');
   const [open,     setOpen]     = useState(false);
@@ -246,6 +254,19 @@ export default function Topbar({ title, onMenuToggle, onNewProduct }) {
             </div>
           )}
         </div>
+
+        <button className="tb-theme-btn" onClick={onToggleTheme} title={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}>
+          {theme === 'dark' ? (
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="4"/>
+              <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+            </svg>
+          ) : (
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>
+            </svg>
+          )}
+        </button>
 
         <button className="tb-btn" onClick={onNewProduct}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

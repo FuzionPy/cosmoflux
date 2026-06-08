@@ -10,7 +10,11 @@ const fmtBRL = (v, dec = 2) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { 
 const fmtCompact = (v) => v >= 1000 ? 'R$\u00a0' + (v / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' mil' : fmtBRL(v, 0);
 const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const THEME_KEY = 'cf-theme';
-const getInitialTheme = () => { try { return localStorage.getItem(THEME_KEY) || 'dark'; } catch { return 'dark'; } };
+const getInitialTheme = () => {
+  const attr = typeof document !== 'undefined' ? document.documentElement.getAttribute('data-theme') : null;
+  if (attr) return attr;
+  try { return localStorage.getItem(THEME_KEY) || 'dark'; } catch { return 'dark'; }
+};
 
 const S = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
@@ -161,7 +165,7 @@ function Meter({ atual, minimo }) {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [theme, setTheme] = useState(getInitialTheme);
+  const [theme, setTheme] = useState(getDocTheme);
   const [kpis, setKpis] = useState(null);
   const [vendas, setVendas] = useState([]);
   const [produtos, setProdutos] = useState([]);
@@ -171,7 +175,14 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [hov, setHov] = useState(null);
 
-  useEffect(() => { try { localStorage.setItem(THEME_KEY, theme); } catch {} }, [theme]);
+  // sincroniza com o tema global (Layout) — observa mudanças no atributo data-theme
+  useEffect(() => {
+    const sync = () => setTheme(document.documentElement.getAttribute('data-theme') || 'dark');
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => obs.disconnect();
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -226,17 +237,6 @@ export default function Dashboard() {
   return (
     <div className="cf-dash-root" data-theme={theme}>
       <style>{S}</style>
-
-      <div className="cf-dh">
-        <div>
-          <div className="cf-dh-title">Dashboard</div>
-          <div className="cf-dh-sub">Visão geral do negócio</div>
-        </div>
-        <button className="cf-theme-btn" onClick={() => setTheme(t => t==='dark'?'light':'dark')}>
-          <Ic d={theme==='dark' ? ICONS.sun : ICONS.moon} size={15} />
-          {theme==='dark' ? 'Tema claro' : 'Tema escuro'}
-        </button>
-      </div>
 
       <div className="cf-kpi-grid">
         {[
