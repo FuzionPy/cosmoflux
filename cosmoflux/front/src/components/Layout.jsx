@@ -111,21 +111,33 @@ const getStoredPref = () => { try { return localStorage.getItem(THEME_KEY) || 's
 const systemTheme = () => (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
 const resolveTheme = (pref) => pref === 'system' ? systemTheme() : pref;
 
+// Ação principal do topbar por rota → label + destino
+const PAGE_ACTIONS = {
+  '/menu':         { label: 'Nova venda',      to: '/vendas' },
+  '/produtos':     { label: 'Novo produto',    to: '/produtos?novo=1' },
+  '/estoque':      { label: 'Nova entrada',    to: '/entradas?novo=1' },
+  '/entradas':     { label: 'Nova entrada',    to: '/entradas?novo=1' },
+  '/saidas':       { label: 'Nova saída',      to: '/saidas?novo=1' },
+  '/vendas':       { label: 'Nova venda',      to: '/vendas?novo=1' },
+  '/clientes':     { label: 'Novo cliente',    to: '/clientes?novo=1' },
+  '/parceiras':    { label: 'Nova parceira',   to: '/parceiras?novo=1' },
+  '/fornecedores': { label: 'Novo fornecedor', to: '/fornecedores?novo=1' },
+  '/usuarios':     { label: 'Novo usuário',    to: '/usuarios?novo=1' },
+};
+
 export default function Layout() {
   const [sideOpen, setSideOpen] = useState(false);
-  const [themePref, setThemePref] = useState(getStoredPref);  // 'light' | 'dark' | 'system'
+  const [themePref, setThemePref] = useState(getStoredPref);
   const location = useLocation();
   const navigate = useNavigate();
 
   const title = PAGE_TITLES[location.pathname] || 'Cosmo Flux';
+  const action = PAGE_ACTIONS[location.pathname] || null;
 
-  // aplica o tema resolvido no elemento raiz e persiste a preferência
   useEffect(() => {
     const apply = () => document.documentElement.setAttribute('data-theme', resolveTheme(themePref));
     apply();
     try { localStorage.setItem(THEME_KEY, themePref); } catch {}
-
-    // se for "system", escuta mudanças do SO
     if (themePref === 'system' && window.matchMedia) {
       const mq = window.matchMedia('(prefers-color-scheme: light)');
       mq.addEventListener('change', apply);
@@ -139,7 +151,6 @@ export default function Layout() {
     <>
       <style>{styles}</style>
 
-      {/* Overlay mobile */}
       <div
         className={`layout-overlay${sideOpen ? ' open' : ''}`}
         onClick={() => setSideOpen(false)}
@@ -151,11 +162,12 @@ export default function Layout() {
         <div className="layout-main">
           <Topbar
             title={title}
+            actionLabel={action?.label}
+            onAction={action ? () => navigate(action.to) : null}
             themePref={themePref}
             resolvedTheme={resolveTheme(themePref)}
             onSetTheme={setTheme}
             onMenuToggle={() => setSideOpen(o => !o)}
-            onNewProduct={() => navigate('/produtos')}
           />
           <div className="layout-content">
             <Outlet />

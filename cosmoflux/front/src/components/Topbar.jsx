@@ -155,7 +155,7 @@ const styles = `
   @media (max-width: 480px) { .tb-btn-label { display: none; } }
 `;
 
-export default function Topbar({ title, onMenuToggle, onNewProduct, themePref = "system", resolvedTheme = "dark", onSetTheme }) {
+export default function Topbar({ title, onMenuToggle, actionLabel, onAction, themePref = "system", resolvedTheme = "dark", onSetTheme }) {
   const [themeMenu, setThemeMenu] = useState(false);
   const navigate = useNavigate();
   const [query,    setQuery]    = useState('');
@@ -345,12 +345,14 @@ export default function Topbar({ title, onMenuToggle, onNewProduct, themePref = 
           )}
         </div>
 
-        <button className="tb-btn" onClick={onNewProduct}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          <span className="tb-btn-label">Novo Produto</span>
-        </button>
+        {actionLabel && onAction && (
+          <button className="tb-btn" onClick={onAction}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            <span className="tb-btn-label">{actionLabel}</span>
+          </button>
+        )}
       </header>
     </>
   );

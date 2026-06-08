@@ -207,12 +207,7 @@ export default function Sidebar({ open, onClose, badges = {} }) {
 
       <aside className={`sidebar${open ? ' open' : ''}`}>
 
-        <div className="sidebar-logo">
-          <div className="sb-logo-sphere" />
-          <span className="sb-logo-text">Cosmo Flux</span>
-        </div>
-
-        <nav className="sb-nav">
+        <nav className="sb-nav" style={{paddingTop:14}}>
           {allItems.map(item => (
             <div key={item.path}>
               {item.section && <div className="sb-section">{item.section}</div>}
