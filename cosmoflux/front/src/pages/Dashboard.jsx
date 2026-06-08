@@ -53,12 +53,14 @@ const S = `
 .cf-link-btn{background:none;border:none;color:var(--brand);font-family:var(--font-ui);font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap;}
 .cf-link-btn:hover{opacity:.75;}
 .cf-card-pad{padding:18px;}
-.cf-bars{display:flex;align-items:flex-end;gap:5px;padding:18px 18px 0;}
-.cf-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;cursor:pointer;height:100%;}
-.cf-bar-slot{width:100%;display:flex;align-items:flex-end;justify-content:center;position:relative;}
-.cf-bar{width:100%;max-width:34px;border-radius:6px 6px 0 0;background:var(--cat-2);transition:height .6s cubic-bezier(.22,1,.36,1),background .2s,box-shadow .2s;min-height:3px;}
+.cf-bars{position:relative;display:flex;align-items:flex-end;gap:5px;padding:18px 18px 0;}
+.cf-bars-grid{position:absolute;left:18px;right:18px;height:1px;background:var(--border);}
+.cf-bar-col{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;cursor:pointer;}
+.cf-bar-slot{position:relative;width:100%;flex:1;display:flex;align-items:flex-end;}
+.cf-bar{width:100%;border-radius:5px 5px 2px 2px;background:color-mix(in oklab,var(--text) 11%,transparent);transition:height .7s cubic-bezier(.22,1,.36,1),background .2s;}
 .cf-bar.accent{background:var(--brand);}
-.cf-bar.hot{filter:brightness(1.15);box-shadow:0 0 0 3px var(--brand-soft);}
+.cf-bar.hot{background:color-mix(in oklab,var(--brand) 55%,transparent);}
+.cf-bar-col:hover .cf-bar:not(.accent){background:color-mix(in oklab,var(--brand) 50%,transparent);}
 .cf-bar-tip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:var(--elevated);border:1px solid var(--border-strong);border-radius:8px;padding:6px 10px;display:flex;flex-direction:column;gap:1px;white-space:nowrap;z-index:5;box-shadow:var(--shadow);}
 .cf-bar-tip strong{font-size:13px;font-family:var(--font-mono);color:var(--text);}
 .cf-bar-tip span{font-size:10px;color:var(--text-muted);font-family:var(--font-mono);}
@@ -272,9 +274,11 @@ export default function Dashboard() {
           ) : (
             <>
               <div className="cf-bars" style={{ height:170 }}>
+                {[0.25, 0.5, 0.75].map(g => (
+                  <div key={g} className="cf-bars-grid" style={{ bottom:`calc(${g*100}% - 8px)` }} />
+                ))}
                 {barData.map((d, i) => {
-                  const MAX_PX = 124;
-                  const px = Math.max((d.total / maxBar) * MAX_PX, 3);
+                  const pct = (d.total / maxBar) * 100;
                   const on = hov === i;
                   const accent = melhorMes && d.mes === melhorMes.mes;
                   return (
@@ -286,7 +290,7 @@ export default function Dashboard() {
                             <span>{d.vendas} vendas · {d.mes}</span>
                           </div>
                         )}
-                        <div className={`cf-bar${accent?' accent':''}${on?' hot':''}`} style={{ height:`${px}px`, transitionDelay:`${i*.03}s` }} />
+                        <div className={`cf-bar${accent?' accent':''}${on?' hot':''}`} style={{ height:`${Math.max(pct,1.5)}%`, transitionDelay:`${i*.03}s` }} />
                       </div>
                       <div className={`cf-bar-lbl${accent?' on':''}`}>{d.mes}</div>
                     </div>
