@@ -27,11 +27,13 @@ const styles = `
   .tb-theme-btn {
     width: 36px; height: 36px; border-radius: 9px;
     border: 1px solid var(--border); background: var(--surface2);
-    color: var(--text-dim); cursor: pointer; flex-shrink: 0;
+    color: var(--text); cursor: pointer; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    transition: all 0.2s;
+    transition: all 0.2s; padding: 0;
   }
-  .tb-theme-btn:hover { border-color: var(--border2); color: var(--text); }
+  .tb-theme-btn svg { display: block; color: var(--text); stroke: currentColor; }
+  .tb-theme-btn:hover { border-color: var(--border2); background: var(--track); }
+  .tb-theme-btn:hover svg { color: #00d4aa; }
   .tb-theme-menu {
     position: absolute; top: calc(100% + 8px); right: 0;
     background: var(--surface); border: 1px solid var(--border2);
@@ -50,6 +52,34 @@ const styles = `
   .tb-theme-opt.active { background: rgba(0,212,170,.1); color: #00d4aa; }
   .tb-theme-opt .tb-opt-check { margin-left: auto; opacity: 0; }
   .tb-theme-opt.active .tb-opt-check { opacity: 1; }
+  .tb-logo {
+    display: flex; align-items: center; gap: 13px; flex-shrink: 0; padding-left: 6px;
+  }
+  .tb-logo-sphere {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #a070ff, #5e2cb4 70%);
+    position: relative; flex-shrink: 0;
+    box-shadow: 0 0 0 1px rgba(160,112,255,0.3), 0 0 14px rgba(160,112,255,0.3),
+                inset 0 2px 4px rgba(255,255,255,0.15);
+  }
+  .tb-logo-sphere::before {
+    content: ''; position: absolute; inset: -6px;
+    border: 1px solid rgba(160,112,255,0.25); border-radius: 50%;
+    animation: tb-orbit 6s linear infinite;
+  }
+  .tb-logo-sphere::after {
+    content: ''; position: absolute; inset: -12px;
+    border: 1px dashed rgba(160,112,255,0.12); border-radius: 50%;
+    animation: tb-orbit 18s linear infinite reverse;
+  }
+  @keyframes tb-orbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .tb-logo-name {
+    font-size: 13px; font-weight: 800; letter-spacing: 0.04em; color: var(--text);
+    white-space: nowrap;
+  }
+  .tb-logo-divider { width: 1px; height: 26px; background: var(--border2); flex-shrink: 0; margin: 0 4px; }
+  @media (max-width: 768px) { .tb-logo-name { display: none; } .tb-logo-divider { display: none; } }
+
   .tb-info { flex: 1; min-width: 0; }
   .tb-title { font-size: 16px; font-weight: 700; color: var(--text); }
   .tb-sub { font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; margin-top: 1px; }
@@ -185,6 +215,12 @@ export default function Topbar({ title, onMenuToggle, onNewProduct, themePref = 
             <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
           </svg>
         </button>
+
+        <div className="tb-logo">
+          <div className="tb-logo-sphere" />
+          <span className="tb-logo-name">CosmoFlux</span>
+        </div>
+        <div className="tb-logo-divider" />
 
         <div className="tb-info">
           <div className="tb-title">{title}</div>
