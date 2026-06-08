@@ -224,7 +224,7 @@ export default function Dashboard() {
   const barData = vendas.map(v => ({
     mes: mesLabel(v),
     total: v.total || 0,
-    vendas: v.vendas || v.qtd || 0,
+    vendas: v.vendas ?? v.qtd ?? v.count ?? 0,
   }));
   const maxBar = Math.max(...barData.map(d => d.total), 1);
   const totalAno = barData.reduce((a, d) => a + d.total, 0);
