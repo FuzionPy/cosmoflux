@@ -10,7 +10,7 @@ const fmtBRL = (v, dec = 2) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { 
 const fmtCompact = (v) => v >= 1000 ? 'R$\u00a0' + (v / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' mil' : fmtBRL(v, 0);
 const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const THEME_KEY = 'cf-theme';
-const getInitialTheme = () => {
+const getDocTheme = () => {
   const attr = typeof document !== 'undefined' ? document.documentElement.getAttribute('data-theme') : null;
   if (attr) return attr;
   try { return localStorage.getItem(THEME_KEY) || 'dark'; } catch { return 'dark'; }
