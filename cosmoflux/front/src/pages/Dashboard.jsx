@@ -64,7 +64,7 @@ const S = `
 .cf-bar-tip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:var(--elevated);border:1px solid var(--border-strong);border-radius:8px;padding:6px 10px;display:flex;flex-direction:column;gap:1px;white-space:nowrap;z-index:5;box-shadow:var(--shadow);}
 .cf-bar-tip strong{font-size:13px;font-family:var(--font-mono);color:var(--text);}
 .cf-bar-tip span{font-size:10px;color:var(--text-muted);font-family:var(--font-mono);}
-.cf-bar-lbl{font-size:9px;color:var(--text-muted);font-family:var(--font-mono);}
+.cf-bar-lbl{font-size:9px;color:var(--text-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.04em;}
 .cf-bar-lbl.on{color:var(--brand);font-weight:700;}
 .cf-card-foot-stats{display:flex;gap:24px;padding:14px 18px;border-top:1px solid var(--border);flex-wrap:wrap;}
 .cf-fs-l{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text-muted);font-family:var(--font-mono);display:block;margin-bottom:4px;}
@@ -204,8 +204,25 @@ export default function Dashboard() {
     })();
   }, []);
 
+  const mesLabel = (v) => {
+    // tenta vários formatos: número (1-12), "2026-05", "05", já-nome, campo mes_num
+    if (v.mes_num) return MESES[(v.mes_num - 1) % 12] || '';
+    const m = v.mes;
+    if (m == null) return '';
+    if (typeof m === 'number') return MESES[(m - 1) % 12] || '';
+    const s = String(m).trim();
+    // "2026-05" ou "2026/05"
+    const ym = s.match(/^\d{4}[-/](\d{1,2})$/);
+    if (ym) return MESES[(parseInt(ym[1]) - 1) % 12] || '';
+    // "05" ou "5"
+    if (/^\d{1,2}$/.test(s)) return MESES[(parseInt(s) - 1) % 12] || '';
+    // já é nome tipo "Mai"/"maio" → capitaliza 3 letras
+    const nome = s.slice(0, 3);
+    return nome.charAt(0).toUpperCase() + nome.slice(1).toLowerCase();
+  };
+
   const barData = vendas.map(v => ({
-    mes: v.mes || (v.mes_num ? MESES[v.mes_num-1] : ''),
+    mes: mesLabel(v),
     total: v.total || 0,
     vendas: v.vendas || v.qtd || 0,
   }));
