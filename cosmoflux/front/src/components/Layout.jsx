@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
@@ -13,14 +13,6 @@ const styles = `
   }
 
   :root {
-    --bg: #070809;
-    --surface: #0e1013;
-    --surface2: #13161a;
-    --border: rgba(255,255,255,0.06);
-    --border2: rgba(255,255,255,0.12);
-    --text: #e8eaed;
-    --text-dim: rgba(232,234,237,0.5);
-    --text-muted: rgba(232,234,237,0.28);
     --accent: #00d4aa;
     --accent2: #0099ff;
     --accent3: #ff6b35;
@@ -29,6 +21,34 @@ const styles = `
     --warn: #ffd32a;
     --font: 'Plus Jakarta Sans', sans-serif;
     --mono: 'JetBrains Mono', monospace;
+  }
+
+  /* TEMA ESCURO (padrão) */
+  [data-theme="dark"], :root {
+    --bg: #070809;
+    --surface: #0e1013;
+    --surface2: #13161a;
+    --border: rgba(255,255,255,0.06);
+    --border2: rgba(255,255,255,0.12);
+    --text: #e8eaed;
+    --text-dim: rgba(232,234,237,0.5);
+    --text-muted: rgba(232,234,237,0.28);
+    --track: rgba(255,255,255,0.08);
+    color-scheme: dark;
+  }
+
+  /* TEMA CLARO */
+  [data-theme="light"] {
+    --bg: #f3f1f5;
+    --surface: #ffffff;
+    --surface2: #f8f6fa;
+    --border: rgba(28,20,36,0.1);
+    --border2: rgba(28,20,36,0.2);
+    --text: #1b1722;
+    --text-dim: rgba(27,23,34,0.62);
+    --text-muted: rgba(27,23,34,0.42);
+    --track: rgba(28,20,36,0.08);
+    color-scheme: light;
   }
 
   .layout {
@@ -83,14 +103,37 @@ const PAGE_TITLES = {
   '/vendas':       'Vendas',
   '/configuracoes':'Configurações',
   '/usuarios':     'Usuários',
+  '/parceiras':    'Parceiras',
 };
+
+const THEME_KEY = 'cf-theme';
+const getStoredPref = () => { try { return localStorage.getItem(THEME_KEY) || 'system'; } catch { return 'system'; } };
+const systemTheme = () => (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+const resolveTheme = (pref) => pref === 'system' ? systemTheme() : pref;
 
 export default function Layout() {
   const [sideOpen, setSideOpen] = useState(false);
+  const [themePref, setThemePref] = useState(getStoredPref);  // 'light' | 'dark' | 'system'
   const location = useLocation();
   const navigate = useNavigate();
 
   const title = PAGE_TITLES[location.pathname] || 'Cosmo Flux';
+
+  // aplica o tema resolvido no elemento raiz e persiste a preferência
+  useEffect(() => {
+    const apply = () => document.documentElement.setAttribute('data-theme', resolveTheme(themePref));
+    apply();
+    try { localStorage.setItem(THEME_KEY, themePref); } catch {}
+
+    // se for "system", escuta mudanças do SO
+    if (themePref === 'system' && window.matchMedia) {
+      const mq = window.matchMedia('(prefers-color-scheme: light)');
+      mq.addEventListener('change', apply);
+      return () => mq.removeEventListener('change', apply);
+    }
+  }, [themePref]);
+
+  const setTheme = (pref) => setThemePref(pref);
 
   return (
     <>
@@ -108,6 +151,9 @@ export default function Layout() {
         <div className="layout-main">
           <Topbar
             title={title}
+            themePref={themePref}
+            resolvedTheme={resolveTheme(themePref)}
+            onSetTheme={setTheme}
             onMenuToggle={() => setSideOpen(o => !o)}
             onNewProduct={() => navigate('/produtos')}
           />

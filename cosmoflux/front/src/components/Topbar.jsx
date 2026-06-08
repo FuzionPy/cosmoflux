@@ -23,6 +23,7 @@ const styles = `
     border-radius: 6px; transition: background 0.15s; align-items: center;
   }
   .tb-toggle:hover { background: var(--track); }
+  .tb-theme-wrap { position: relative; flex-shrink: 0; }
   .tb-theme-btn {
     width: 36px; height: 36px; border-radius: 9px;
     border: 1px solid var(--border); background: var(--surface2);
@@ -31,6 +32,24 @@ const styles = `
     transition: all 0.2s;
   }
   .tb-theme-btn:hover { border-color: var(--border2); color: var(--text); }
+  .tb-theme-menu {
+    position: absolute; top: calc(100% + 8px); right: 0;
+    background: var(--surface); border: 1px solid var(--border2);
+    border-radius: 10px; padding: 5px; min-width: 168px; z-index: 200;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.4);
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .tb-theme-opt {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 11px; border-radius: 7px; cursor: pointer;
+    font-size: 13px; font-weight: 500; color: var(--text-dim);
+    background: none; border: none; width: 100%; text-align: left;
+    font-family: 'Plus Jakarta Sans', sans-serif; transition: all .15s;
+  }
+  .tb-theme-opt:hover { background: var(--track); color: var(--text); }
+  .tb-theme-opt.active { background: rgba(0,212,170,.1); color: #00d4aa; }
+  .tb-theme-opt .tb-opt-check { margin-left: auto; opacity: 0; }
+  .tb-theme-opt.active .tb-opt-check { opacity: 1; }
   .tb-info { flex: 1; min-width: 0; }
   .tb-title { font-size: 16px; font-weight: 700; color: var(--text); }
   .tb-sub { font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; margin-top: 1px; }
@@ -106,7 +125,8 @@ const styles = `
   @media (max-width: 480px) { .tb-btn-label { display: none; } }
 `;
 
-export default function Topbar({ title, onMenuToggle, onNewProduct, theme = "dark", onToggleTheme }) {
+export default function Topbar({ title, onMenuToggle, onNewProduct, themePref = "system", resolvedTheme = "dark", onSetTheme }) {
+  const [themeMenu, setThemeMenu] = useState(false);
   const navigate = useNavigate();
   const [query,    setQuery]    = useState('');
   const [open,     setOpen]     = useState(false);
@@ -255,18 +275,39 @@ export default function Topbar({ title, onMenuToggle, onNewProduct, theme = "dar
           )}
         </div>
 
-        <button className="tb-theme-btn" onClick={onToggleTheme} title={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}>
-          {theme === 'dark' ? (
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="4"/>
-              <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
-            </svg>
-          ) : (
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>
-            </svg>
+        <div className="tb-theme-wrap">
+          <button className="tb-theme-btn" onClick={() => setThemeMenu(o=>!o)} title="Tema">
+            {resolvedTheme === 'light' ? (
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="4"/>
+                <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+              </svg>
+            ) : (
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>
+              </svg>
+            )}
+          </button>
+          {themeMenu && (
+            <>
+              <div style={{position:'fixed',inset:0,zIndex:199}} onClick={()=>setThemeMenu(false)}/>
+              <div className="tb-theme-menu">
+                {[
+                  { k:'light',  label:'Claro',  ic:<><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></> },
+                  { k:'dark',   label:'Escuro', ic:<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/> },
+                  { k:'system', label:'Sistema', ic:<><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></> },
+                ].map(o=>(
+                  <button key={o.k} className={`tb-theme-opt${themePref===o.k?' active':''}`}
+                    onClick={()=>{ onSetTheme(o.k); setThemeMenu(false); }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{o.ic}</svg>
+                    {o.label}
+                    <svg className="tb-opt-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  </button>
+                ))}
+              </div>
+            </>
           )}
-        </button>
+        </div>
 
         <button className="tb-btn" onClick={onNewProduct}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
