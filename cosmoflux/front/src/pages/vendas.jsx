@@ -14,7 +14,12 @@ const api = {
 const fmtBRL = (v, dec=2) => 'R$ ' + Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:dec,maximumFractionDigits:dec});
 const PAGAMENTOS = ['Dinheiro','Cartão de crédito','Cartão de débito','PIX','Boleto','Fiado','Transferência'];
 const avatarColor = () => null;
-const inicial = nome => (nome||'?').trim()[0]?.toUpperCase() || '?';
+const inicial = nome => String(nome||'?').trim()[0]?.toUpperCase() || '?';
+const txt = (v) => {
+  if (v == null) return '';
+  if (typeof v === 'object') return v.nome || v.produto || v.label || JSON.stringify(v);
+  return v;
+};
 
 const S = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
@@ -462,14 +467,14 @@ export default function Vendas() {
                     {!p.cliente||p.cliente==='Balcão' ? '—' : inicial(p.cliente)}
                   </div>
                   <div className="cf-vd-cli-info">
-                    <div className="cf-vd-cli-nome">{p.cliente||'Balcão'}</div>
-                    <div className="cf-vd-cli-pay">{p.modo_pagamento||'—'}</div>
+                    <div className="cf-vd-cli-nome">{txt(p.cliente)||'Balcão'}</div>
+                    <div className="cf-vd-cli-pay">{txt(p.modo_pagamento)||'—'}</div>
                   </div>
                 </div>
                 <div className="cf-vd-itens">{p.num_itens ?? (p.itens?.length||0)} item(s)</div>
                 <div className="cf-vd-cell pay"><span className={`cf-pill ${PAG_CLS[sp]||'muted'}`}>{PAG_LABEL[sp]||sp}</span></div>
                 <div className="cf-vd-cell ent"><span className={`cf-pill ${ENT_CLS[p.status]||'muted'}`}>{ENT_LABEL[p.status]||p.status}</span></div>
-                <div className="cf-vd-data">{p.data||''}</div>
+                <div className="cf-vd-data">{txt(p.data)||''}</div>
                 <div className={`cf-vd-total r${canc?' canc':''}`}>{fmtBRL(p.total)}</div>
                 <div className="cf-vd-actions" onClick={e=>e.stopPropagation()}>
                   {podeEntregar
@@ -494,7 +499,7 @@ export default function Vendas() {
               <div className="cf-vd-panel-hd">
                 <div>
                   <div className="cf-vd-panel-title">Venda #{p.id}</div>
-                  <div className="cf-vd-panel-sub">{p.data} · {p.cliente||'Balcão'}</div>
+                  <div className="cf-vd-panel-sub">{txt(p.data)} · {txt(p.cliente)||'Balcão'}</div>
                 </div>
                 <button className="cf-mclose" onClick={()=>setSelected(null)}>×</button>
               </div>
@@ -516,7 +521,7 @@ export default function Vendas() {
                     {p.itens.map((it,idx)=>(
                       <div key={idx} className="cf-vd-prod-row">
                         <div>
-                          <div className="cf-vd-prod-nome">{it.produto||it.nome}</div>
+                          <div className="cf-vd-prod-nome">{txt(it.produto) || txt(it.nome) || "Item"}</div>
                           <div className="cf-vd-prod-sub">{it.quantidade}× {fmtBRL(it.preco_unitario||0)}</div>
                         </div>
                         <div className="cf-vd-prod-val">{fmtBRL((it.subtotal!=null?it.subtotal:(it.quantidade*(it.preco_unitario||0))))}</div>
@@ -538,7 +543,7 @@ export default function Vendas() {
                 {p.observacao && (
                   <div>
                     <div className="cf-vd-sec-t">Observação</div>
-                    <div className="cf-vd-note">{p.observacao}</div>
+                    <div className="cf-vd-note">{txt(p.observacao)}</div>
                   </div>
                 )}
               </div>
@@ -709,7 +714,7 @@ export default function Vendas() {
           <span className={`cf-toast-ic${toast.type==='err'?' err':''}`}>
             <Ic d={toast.type==='err'?ICONS.alert:ICONS.check} size={14}/>
           </span>
-          {toast.msg}
+          {txt(toast.msg)}
         </div>
       )}
     </div>
