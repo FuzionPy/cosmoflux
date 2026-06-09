@@ -425,7 +425,7 @@ export default function Dashboard() {
                     <div className="cf-ped-id">#{p.id}</div>
                     <div className="cf-main">
                       <div className="cf-name">{p.cliente || 'Balcão'}</div>
-                      <div className="cf-sub">{p.itens ?? p.num_itens ?? 0} {(p.itens ?? p.num_itens ?? 0) === 1 ? 'item' : 'itens'} · {p.data || p.criado_em || ''}</div>
+                      <div className="cf-sub">{(p.num_itens ?? (Array.isArray(p.itens) ? p.itens.length : p.itens) ?? 0)} {((p.num_itens ?? (Array.isArray(p.itens) ? p.itens.length : 0)) === 1) ? 'item' : 'itens'} · {p.data || p.criado_em || ''}</div>
                     </div>
                     <span className={`cf-pill ${st.cls}`}>{st.label}</span>
                     <div className="cf-ped-total">{fmtBRL(p.total, 0)}</div>
