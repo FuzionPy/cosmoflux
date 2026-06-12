@@ -133,7 +133,7 @@ const S = `
 .cf-vd-chip.on .cf-vd-chip-n{background:color-mix(in oklab,var(--brand) 18%,transparent);}
 
 .cf-vd-table{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
-.cf-vd-thead,.cf-vd-row{display:grid;grid-template-columns:52px minmax(190px,1.7fr) 0.6fr 0.95fr 0.95fr 1fr 0.8fr 116px;align-items:center;gap:12px;padding:0 18px;}
+.cf-vd-thead,.cf-vd-row{display:grid;grid-template-columns:48px minmax(170px,1.6fr) 0.55fr 0.85fr 0.85fr 0.95fr 0.75fr 168px;align-items:center;gap:12px;padding:0 18px;}
 .cf-vd-thead{height:42px;border-bottom:1px solid var(--border);}
 .cf-vd-th{font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
 .cf-vd-th.r,.cf-vd-cell.r{text-align:right;justify-self:end;}
@@ -158,11 +158,12 @@ const S = `
 .cf-pill.crit{background:color-mix(in oklab,var(--crit) 14%,transparent);color:var(--crit);}
 .cf-pill.info{background:var(--brand-soft);color:var(--brand);}
 .cf-pill.muted{background:var(--track);color:var(--text-muted);}
-.cf-vd-actions{display:flex;gap:6px;justify-content:flex-end;}
-.cf-vd-baixa{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:8px;cursor:pointer;background:color-mix(in oklab,var(--ok) 13%,transparent);border:1px solid color-mix(in oklab,var(--ok) 34%,transparent);color:var(--ok);font-family:var(--font-ui);font-size:11.5px;font-weight:700;white-space:nowrap;transition:all .15s;}
+.cf-vd-actions{display:flex;gap:5px;justify-content:flex-end;align-items:center;}
+.cf-vd-baixa{display:inline-flex;align-items:center;gap:4px;padding:6px 9px;border-radius:8px;cursor:pointer;background:color-mix(in oklab,var(--ok) 13%,transparent);border:1px solid color-mix(in oklab,var(--ok) 34%,transparent);color:var(--ok);font-family:var(--font-ui);font-size:11px;font-weight:700;white-space:nowrap;transition:all .15s;}
 .cf-vd-baixa:hover{background:color-mix(in oklab,var(--ok) 22%,transparent);}
 .cf-vd-baixa:disabled{opacity:.5;cursor:not-allowed;}
-.cf-vd-act-wpp{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;cursor:pointer;background:color-mix(in oklab,#25d366 16%,transparent);border:1px solid color-mix(in oklab,#25d366 34%,transparent);color:#25d366;transition:all .15s;flex-shrink:0;}
+.cf-vd-act-wpp{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;cursor:pointer;background:color-mix(in oklab,#25d366 16%,transparent);border:1px solid color-mix(in oklab,#25d366 34%,transparent);color:#25d366;transition:all .15s;flex-shrink:0;padding:0;}
+.cf-vd-act-wpp svg{display:block;stroke:currentColor;}
 .cf-vd-act-wpp:hover{background:color-mix(in oklab,#25d366 28%,transparent);}
 .cf-vd-empty{padding:60px 20px;text-align:center;color:var(--text-muted);}
 .cf-vd-empty-ic{width:44px;height:44px;margin:0 auto 14px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--surface-2);color:var(--text-muted);}
@@ -277,7 +278,7 @@ const ICONS = {
   plus:    <><path d="M12 5v14M5 12h14"/></>,
   trash:   <><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></>,
   truck:   <><rect x="2" y="6" width="12" height="9" rx="1"/><path d="M14 9h4l3 3v3h-7Z"/><circle cx="6" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/></>,
-  whats:   <><path d="M12 2a9.7 9.7 0 0 0-8.3 14.7L2 22l5.5-1.6A9.7 9.7 0 1 0 12 2Z"/><path d="M8.5 8.2c.2-.5.4-.5.6-.5h.5c.2 0 .4 0 .6.4l.7 1.6c0 .2 0 .4-.1.5l-.4.5c-.1.1-.2.3-.1.5a5 5 0 0 0 2.5 2.2c.2.1.4 0 .5-.1l.5-.6c.1-.2.3-.2.5-.1l1.5.7c.2.1.3.3.3.5s0 .9-.4 1.3c-.4.4-1.1.7-1.6.7a7 7 0 0 1-5.8-5.6c0-.6.2-1.3.5-1.6Z"/></>,
+  whats:   <><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/></>,
 };
 
 const PAG_LABEL = { pago:'Pago', em_aberto:'Em aberto', vencido:'Vencido', cancelado:'Cancelado' };
