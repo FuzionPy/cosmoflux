@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 const BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000') + '/api';
@@ -44,6 +45,12 @@ const S = `
   --text-muted:rgba(27,23,34,.42);--shadow:0 1px 2px rgba(28,20,36,.04),0 10px 30px rgba(28,20,36,.07);--brand-ink:#fff;
 }
 .cf-vd-root{--brand-soft:color-mix(in oklab,var(--brand) 14%,transparent);--brand-line:color-mix(in oklab,var(--brand) 32%,transparent);color:var(--text);}
+.cf-vd-portal{--font-ui:'Plus Jakarta Sans',system-ui,sans-serif;--font-mono:'JetBrains Mono',monospace;--brand:#9166d8;--radius:15px;--radius-sm:10px;--gap:16px;--ok:#21a06d;--warn:#e08a2a;--crit:#e2514f;font-family:var(--font-ui);}
+.cf-vd-portal[data-theme="dark"],.cf-vd-portal:not([data-theme]){--bg:#0a0b0f;--surface:#111319;--surface-2:#171a21;--elevated:#1a1e26;--border:rgba(255,255,255,.075);--border-strong:rgba(255,255,255,.15);--track:rgba(255,255,255,.08);--text:#edeef3;--text-dim:rgba(237,238,243,.6);--text-muted:rgba(237,238,243,.34);--shadow:0 8px 28px rgba(0,0,0,.32);--brand-ink:#fff;}
+.cf-vd-portal[data-theme="light"]{--bg:#f3f1f5;--surface:#fff;--surface-2:#f8f6fa;--elevated:#fff;--border:rgba(28,20,36,.1);--border-strong:rgba(28,20,36,.2);--track:rgba(28,20,36,.08);--text:#1b1722;--text-dim:rgba(27,23,34,.62);--text-muted:rgba(27,23,34,.42);--shadow:0 10px 30px rgba(28,20,36,.07);--brand-ink:#fff;}
+.cf-vd-portal{--brand-soft:color-mix(in oklab,var(--brand) 14%,transparent);--brand-line:color-mix(in oklab,var(--brand) 32%,transparent);color:var(--text);}
+.cf-vd-portal *,.cf-vd-portal *::before,.cf-vd-portal *::after{box-sizing:border-box;}
+
 
 .cf-vendas{display:flex;flex-direction:column;gap:var(--gap);max-width:1480px;margin:0 auto;}
 .cf-vd-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;}
@@ -182,8 +189,8 @@ const S = `
 .cf-totais{background:color-mix(in oklab,var(--brand) 5%,var(--surface-2));border:1px solid var(--brand-line);border-radius:11px;padding:14px 16px;display:flex;flex-direction:column;gap:7px;}
 .cf-tot-row{display:flex;justify-content:space-between;font-size:13px;}
 .cf-err{font-size:12.5px;color:var(--crit);background:color-mix(in oklab,var(--crit) 9%,transparent);border:1px solid color-mix(in oklab,var(--crit) 25%,transparent);border-radius:9px;padding:9px 12px;}
-.cf-vd-dov{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:170;display:flex;align-items:center;justify-content:center;padding:16px;animation:vdFade .2s ease both;}
-.cf-vd-dmodal{background:var(--surface);border:1px solid var(--border-strong);border-radius:18px;width:100%;max-width:660px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.55);}
+.cf-vd-dov{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;animation:vdFade .2s ease both;}
+.cf-vd-dmodal{position:relative;z-index:1001;background:var(--surface,#111319);border:1px solid var(--border-strong,rgba(255,255,255,.15));border-radius:18px;width:100%;max-width:660px;max-height:90vh;min-height:120px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.55);}
 .cf-vd-dhd{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
 .cf-vd-dtitle{font-size:17px;font-weight:800;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .cf-vd-dsub{font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;}
@@ -238,6 +245,19 @@ const PAG_CLS   = { pago:'ok', em_aberto:'warn', vencido:'crit', cancelado:'mute
 const ENT_LABEL = { entregue:'Entregue', pendente_entrega:'A entregar', cancelado:'Cancelado' };
 const ENT_CLS   = { entregue:'ok', pendente_entrega:'info', cancelado:'muted' };
 
+// Portal: renderiza no body (escapa de ancestrais com animation/transform que quebram position:fixed)
+function Portal({ children, theme }) {
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+  return createPortal(
+    <div className="cf-vd-portal" data-theme={theme}>{children}</div>,
+    document.body
+  );
+}
+
 const getDocTheme = () => { try { return document.documentElement.getAttribute('data-theme') || 'dark'; } catch { return 'dark'; } };
 
 export default function Vendas() {
@@ -275,7 +295,9 @@ export default function Vendas() {
   useEffect(() => {
     const obs = new MutationObserver(()=>setTheme(getDocTheme()));
     obs.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
-    return ()=>obs.disconnect();
+    const onKey = (e) => { if (e.key === 'Escape') { setAbatModal(null); setShowModal(false); setSelected(null); } };
+    window.addEventListener('keydown', onKey);
+    return ()=>{ obs.disconnect(); window.removeEventListener('keydown', onKey); };
   }, []);
 
   const load = useCallback(async () => {
@@ -562,6 +584,7 @@ export default function Vendas() {
         const pagasN = parcelas.filter(pc=>pc.pago).length;
         const pct = p.total>0 ? Math.min((totalPago/p.total)*100,100) : 0;
         return (
+          <Portal theme={theme}>
           <div className="cf-vd-dov" onClick={e=>{if(e.target===e.currentTarget)setSelected(null);}}>
             <div className="cf-vd-dmodal">
               <div className="cf-vd-dhd">
@@ -681,6 +704,7 @@ export default function Vendas() {
               )}
             </div>
           </div>
+          </Portal>
         );
       })()}
 
@@ -691,7 +715,8 @@ export default function Vendas() {
         const v = parseFloat(abatValor)||0;
         const valido = v>0 && v<=saldoTotal;
         return (
-          <div className="cf-vd-dov" style={{zIndex:180}} onClick={e=>{if(e.target===e.currentTarget)setAbatModal(null);}}>
+          <Portal theme={theme}>
+          <div className="cf-vd-dov" style={{zIndex:1010}} onClick={e=>{if(e.target===e.currentTarget)setAbatModal(null);}}>
             <div className="cf-vd-dmodal" style={{maxWidth:440}}>
               <div className="cf-vd-dhd">
                 <div>
@@ -726,12 +751,14 @@ export default function Vendas() {
               </div>
             </div>
           </div>
+          </Portal>
         );
       })()}
 
 
       {/* Modal nova venda */}
       {showModal && (
+        <Portal theme={theme}>
         <div className="cf-vd-modal-ov" onClick={e=>{if(e.target===e.currentTarget)setShowModal(false);}}>
           <div className="cf-vd-modal">
             <div className="cf-vd-modal-hd">
@@ -876,6 +903,7 @@ export default function Vendas() {
             </div>
           </div>
         </div>
+        </Portal>
       )}
 
       {/* Toast */}
