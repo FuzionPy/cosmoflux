@@ -182,6 +182,31 @@ const S = `
 .cf-totais{background:color-mix(in oklab,var(--brand) 5%,var(--surface-2));border:1px solid var(--brand-line);border-radius:11px;padding:14px 16px;display:flex;flex-direction:column;gap:7px;}
 .cf-tot-row{display:flex;justify-content:space-between;font-size:13px;}
 .cf-err{font-size:12.5px;color:var(--crit);background:color-mix(in oklab,var(--crit) 9%,transparent);border:1px solid color-mix(in oklab,var(--crit) 25%,transparent);border-radius:9px;padding:9px 12px;}
+.cf-vd-dov{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:170;display:flex;align-items:center;justify-content:center;padding:16px;animation:vdFade .2s ease both;}
+.cf-vd-dmodal{background:var(--surface);border:1px solid var(--border-strong);border-radius:18px;width:100%;max-width:660px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.55);}
+.cf-vd-dhd{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+.cf-vd-dtitle{font-size:17px;font-weight:800;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.cf-vd-dsub{font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;}
+.cf-vd-dbody{overflow-y:auto;flex:1;padding:20px 22px;display:flex;flex-direction:column;gap:18px;}
+.cf-vd-kpis3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.cf-vd-kbox{background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:13px 15px;}
+.cf-vd-kbox-l{font-size:9px;font-weight:700;letter-spacing:.12em;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:6px;}
+.cf-vd-kbox-v{font-size:18px;font-weight:800;font-family:var(--font-mono);}
+.cf-vd-prog{height:6px;background:var(--track);border-radius:3px;overflow:hidden;}
+.cf-vd-prog>div{height:100%;background:linear-gradient(90deg,var(--ok),var(--brand));border-radius:3px;transition:width .6s;}
+.cf-parc-tbl{background:var(--surface-2);border:1px solid var(--border);border-radius:11px;overflow:hidden;}
+.cf-parc-h,.cf-parc-r{display:grid;grid-template-columns:44px 1fr 96px 96px auto;gap:8px;align-items:center;padding:9px 14px;}
+.cf-parc-h{border-bottom:1px solid var(--border);font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
+.cf-parc-r{border-bottom:1px solid var(--border);}
+.cf-parc-r:last-child{border-bottom:none;}
+.cf-parc-num{font-size:12px;font-family:var(--font-mono);color:var(--text-muted);text-align:center;}
+.cf-parc-venc{font-size:11px;font-family:var(--font-mono);color:var(--text-dim);}
+.cf-parc-val{font-size:12px;font-weight:700;font-family:var(--font-mono);text-align:right;}
+.cf-parc-pay{padding:5px 10px;border-radius:7px;border:none;cursor:pointer;font-size:11px;font-weight:700;white-space:nowrap;}
+.cf-parc-pay.ok{background:color-mix(in oklab,var(--ok) 15%,transparent);color:var(--ok);}
+.cf-parc-pay.warn{background:color-mix(in oklab,var(--warn) 12%,transparent);color:var(--warn);}
+.cf-vd-dfoot{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;}
+
 
 @media(max-width:1100px){
   .cf-vd-kpis{grid-template-columns:repeat(2,1fr);}
@@ -227,6 +252,10 @@ export default function Vendas() {
   const [filtro, setFiltro] = useState('todos'); // todos|em_aberto|vencido|pago|cancelado
   const [selected, setSelected] = useState(null);
   const [toast, setToast] = useState(null);
+  const [pagandoP, setPagandoP] = useState(null);
+  const [abatModal, setAbatModal] = useState(null); // venda p/ abater
+  const [abatValor, setAbatValor] = useState('');
+  const [aplicandoAbat, setAplicandoAbat] = useState(false);
 
   // modal nova venda
   const [showModal, setShowModal] = useState(false);
@@ -349,6 +378,41 @@ export default function Vendas() {
       setShowModal(false); load();
     } catch(e) { setFormErr(e.message); }
     finally { setSaving(false); }
+  };
+
+  // recarrega o pedido selecionado após mudança em parcelas
+  const reloadSelected = async (pedidoId) => {
+    try {
+      const lista = await api.get('/pedidos?limite=200');
+      setPedidos(Array.isArray(lista)?lista:[]);
+      const novo = (Array.isArray(lista)?lista:[]).find(x=>x.id===pedidoId);
+      if (novo) setSelected(novo);
+    } catch {}
+  };
+
+  const pagarParcelaTotal = async (parcelaId, pedidoId) => {
+    setPagandoP(parcelaId);
+    try { await api.patch(`/parcelas/${parcelaId}/pagar`, {}); showToast('Parcela paga'); await reloadSelected(pedidoId); }
+    catch(e){ showToast(e.message,'err'); }
+    finally { setPagandoP(null); }
+  };
+
+  const aplicarAbatimento = async () => {
+    if (!abatModal) return;
+    const v = parseFloat(abatValor)||0;
+    if (v <= 0) { showToast('Informe um valor','err'); return; }
+    const abertas = (abatModal.parcelas||[]).filter(p=>!p.pago);
+    if (abertas.length === 0) { showToast('Sem parcelas em aberto','err'); return; }
+    setAplicandoAbat(true);
+    try {
+      // abate na primeira parcela aberta; backend distribui se exceder
+      await api.patch(`/parcelas/${abertas[0].id}/pagar`, { valor_abatido: v });
+      showToast(`Abatido ${fmtBRL(v)}`);
+      const pid = abatModal.id;
+      setAbatModal(null); setAbatValor('');
+      await reloadSelected(pid);
+    } catch(e){ showToast(e.message,'err'); }
+    finally { setAplicandoAbat(false); }
   };
 
   const baixar = async (p, e) => {
@@ -487,49 +551,105 @@ export default function Vendas() {
         </div>
       </div>
 
-      {/* Painel lateral de detalhe */}
+      {/* Modal central de detalhe */}
       {selected && (() => {
         const p = selected;
         const canc = p.status==='cancelado';
         const sp = canc ? 'cancelado' : (p.status_pagamento||'pago');
+        const parcelas = p.parcelas || [];
+        const totalPago = parcelas.reduce((a,pc)=>a+(pc.valor_pago||0),0);
+        const saldo = Math.max(p.total - totalPago, 0);
+        const pagasN = parcelas.filter(pc=>pc.pago).length;
+        const pct = p.total>0 ? Math.min((totalPago/p.total)*100,100) : 0;
         return (
-          <>
-            <div className="cf-vd-overlay" onClick={()=>setSelected(null)}/>
-            <div className="cf-vd-panel">
-              <div className="cf-vd-panel-hd">
-                <div>
-                  <div className="cf-vd-panel-title">Venda #{p.id}</div>
-                  <div className="cf-vd-panel-sub">{txt(p.data)} · {txt(p.cliente)||'Balcão'}</div>
+          <div className="cf-vd-dov" onClick={e=>{if(e.target===e.currentTarget)setSelected(null);}}>
+            <div className="cf-vd-dmodal">
+              <div className="cf-vd-dhd">
+                <div style={{flex:1,minWidth:0}}>
+                  <div className="cf-vd-dtitle">
+                    {txt(p.descricao)||`Venda #${p.id}`}
+                    {canc && <span className="cf-pill muted">CANCELADA</span>}
+                  </div>
+                  <div className="cf-vd-dsub">
+                    <span>{txt(p.data)}</span><span>·</span>
+                    <span>{txt(p.cliente)||'Balcão'}</span><span>·</span>
+                    <span>{txt(p.modo_pagamento)||'—'}</span>
+                    {p.parcelado && <><span>·</span><span>{p.num_parcelas}x</span></>}
+                  </div>
                 </div>
                 <button className="cf-mclose" onClick={()=>setSelected(null)}>×</button>
               </div>
 
-              <div className="cf-vd-panel-body">
-                <div>
-                  <div className="cf-vd-sec-t">Resumo</div>
-                  <div className="cf-vd-summary">
-                    <div><div className="cf-vd-sm-l">TOTAL</div><div className="cf-vd-sm-v">{fmtBRL(p.total)}</div></div>
-                    <div><div className="cf-vd-sm-l">PAGAMENTO</div><div className="cf-vd-sm-v"><span className={`cf-pill ${PAG_CLS[sp]||'muted'}`}>{PAG_LABEL[sp]||sp}</span></div></div>
-                    <div><div className="cf-vd-sm-l">FORMA</div><div className="cf-vd-sm-v" style={{fontSize:13}}>{p.modo_pagamento||'—'}</div></div>
-                    <div><div className="cf-vd-sm-l">DESCONTO</div><div className="cf-vd-sm-v" style={{fontSize:13}}>{fmtBRL(p.desconto||0)}</div></div>
-                  </div>
+              <div className="cf-vd-dbody">
+                {/* KPIs financeiros */}
+                <div className="cf-vd-kpis3">
+                  <div className="cf-vd-kbox"><div className="cf-vd-kbox-l">TOTAL</div><div className="cf-vd-kbox-v">{fmtBRL(p.total)}</div></div>
+                  <div className="cf-vd-kbox"><div className="cf-vd-kbox-l">PAGO</div><div className="cf-vd-kbox-v" style={{color:'var(--ok)'}}>{fmtBRL(totalPago)}</div></div>
+                  <div className="cf-vd-kbox"><div className="cf-vd-kbox-l">SALDO</div><div className="cf-vd-kbox-v" style={{color:saldo>0?'var(--warn)':'var(--ok)'}}>{fmtBRL(saldo)}</div></div>
                 </div>
+                {parcelas.length>0 && (
+                  <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                    <div className="cf-vd-prog"><div style={{width:`${pct}%`}}/></div>
+                    <div style={{display:'flex',justifyContent:'space-between',fontSize:10,fontFamily:'var(--font-mono)',color:'var(--text-muted)'}}>
+                      <span>{pagasN}/{parcelas.length} parcelas pagas</span><span>{pct.toFixed(0)}% quitado</span>
+                    </div>
+                  </div>
+                )}
 
+                {/* Produtos */}
                 {p.itens?.length>0 && (
                   <div>
                     <div className="cf-vd-sec-t">Produtos ({p.itens.length})</div>
                     {p.itens.map((it,idx)=>(
                       <div key={idx} className="cf-vd-prod-row">
                         <div>
-                          <div className="cf-vd-prod-nome">{txt(it.produto) || txt(it.nome) || "Item"}</div>
+                          <div className="cf-vd-prod-nome">{txt(it.produto)||txt(it.nome)||'Item'}</div>
                           <div className="cf-vd-prod-sub">{it.quantidade}× {fmtBRL(it.preco_unitario||0)}</div>
                         </div>
-                        <div className="cf-vd-prod-val">{fmtBRL((it.subtotal!=null?it.subtotal:(it.quantidade*(it.preco_unitario||0))))}</div>
+                        <div className="cf-vd-prod-val">{fmtBRL(it.subtotal!=null?it.subtotal:(it.quantidade*(it.preco_unitario||0)))}</div>
                       </div>
                     ))}
                   </div>
                 )}
 
+                {/* Parcelas */}
+                {parcelas.length>0 && (
+                  <div>
+                    <div className="cf-vd-sec-t">Parcelas</div>
+                    <div className="cf-parc-tbl">
+                      <div className="cf-parc-h">
+                        <span>#</span><span>Vencimento</span><span style={{textAlign:'center'}}>Status</span><span style={{textAlign:'right'}}>Valor</span><span style={{textAlign:'right'}}>Ações</span>
+                      </div>
+                      {parcelas.map(pc=>{
+                        const vp = pc.valor_pago||0;
+                        const parcial = !pc.pago && vp>0;
+                        const cls = pc.pago?'ok':parcial?'warn':pc.status==='vencido'?'crit':'muted';
+                        const lbl = pc.pago?'PAGO':parcial?'PARCIAL':pc.status==='vencido'?'VENCIDO':'ABERTO';
+                        return (
+                          <div key={pc.id} className="cf-parc-r">
+                            <span className="cf-parc-num">{pc.numero===0?'ENT':`${pc.numero}ª`}</span>
+                            <span className="cf-parc-venc">{pc.vencimento||'—'}</span>
+                            <span style={{textAlign:'center'}}><span className={`cf-pill ${cls}`} style={{fontSize:9}}>{lbl}</span></span>
+                            <span className="cf-parc-val">
+                              {parcial
+                                ? <span style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}><span style={{color:'var(--warn)',fontSize:11}}>{fmtBRL(vp)}</span><span style={{color:'var(--text-muted)',fontSize:9}}>/ {fmtBRL(pc.valor)}</span></span>
+                                : <span style={{color:pc.pago?'var(--ok)':'var(--text)'}}>{fmtBRL(pc.valor)}</span>}
+                            </span>
+                            <span style={{display:'flex',gap:5,justifyContent:'flex-end'}}>
+                              {!pc.pago && !canc && (
+                                <button className="cf-parc-pay ok" disabled={pagandoP===pc.id} onClick={()=>pagarParcelaTotal(pc.id,p.id)}>
+                                  {pagandoP===pc.id?'...':'✓ Pagar'}
+                                </button>
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Entrega */}
                 {!canc && (
                   <div>
                     <div className="cf-vd-sec-t">Status de entrega</div>
@@ -549,16 +669,66 @@ export default function Vendas() {
               </div>
 
               {!canc && (
-                <div className="cf-vd-panel-foot">
-                  <button className="cf-btn cf-btn-danger" style={{flex:1,justifyContent:'center'}} onClick={()=>cancelar(p.id)}>
+                <div className="cf-vd-dfoot">
+                  {parcelas.filter(pc=>!pc.pago).length>0 ? (
+                    <button className="cf-btn" style={{background:'color-mix(in oklab,var(--warn) 12%,transparent)',color:'var(--warn)',borderColor:'color-mix(in oklab,var(--warn) 30%,transparent)'}}
+                      onClick={()=>{setAbatModal(p);setAbatValor('');}}>◑ Registrar abatimento</button>
+                  ) : <span/>}
+                  <button className="cf-btn cf-btn-danger" onClick={()=>cancelar(p.id)}>
                     <Ic d={ICONS.trash} size={14}/> Cancelar venda
                   </button>
                 </div>
               )}
             </div>
-          </>
+          </div>
         );
       })()}
+
+      {/* Modal de abatimento */}
+      {abatModal && (() => {
+        const abertas = (abatModal.parcelas||[]).filter(p=>!p.pago);
+        const saldoTotal = abertas.reduce((a,p)=>a+(p.saldo_restante??p.valor),0);
+        const v = parseFloat(abatValor)||0;
+        const valido = v>0 && v<=saldoTotal;
+        return (
+          <div className="cf-vd-dov" style={{zIndex:180}} onClick={e=>{if(e.target===e.currentTarget)setAbatModal(null);}}>
+            <div className="cf-vd-dmodal" style={{maxWidth:440}}>
+              <div className="cf-vd-dhd">
+                <div>
+                  <div className="cf-vd-dtitle">Registrar abatimento</div>
+                  <div className="cf-vd-dsub">Saldo devedor: {fmtBRL(saldoTotal)}</div>
+                </div>
+                <button className="cf-mclose" onClick={()=>setAbatModal(null)}>×</button>
+              </div>
+              <div className="cf-vd-dbody">
+                <div className="cf-fld">
+                  <label className="cf-fld-lbl">Valor a abater (R$)</label>
+                  <input className="cf-inp" type="number" min="0.01" step="0.01" max={saldoTotal} autoFocus
+                    placeholder="0,00" value={abatValor} onChange={e=>setAbatValor(e.target.value)}
+                    style={{fontSize:20,fontWeight:700,fontFamily:'var(--font-mono)'}}/>
+                  {v>saldoTotal && <span style={{fontSize:11,color:'var(--crit)'}}>Valor excede o saldo devedor</span>}
+                </div>
+                <div style={{fontSize:11,color:'var(--text-muted)',fontFamily:'var(--font-mono)',lineHeight:1.5}}>
+                  O valor será distribuído automaticamente entre as parcelas em aberto, em ordem.
+                </div>
+                {valido && (
+                  <div className="cf-totais">
+                    <div className="cf-tot-row"><span style={{color:'var(--text-muted)'}}>Abatimento</span><span style={{fontFamily:'var(--font-mono)',color:'var(--warn)'}}>{fmtBRL(v)}</span></div>
+                    <div className="cf-tot-row" style={{fontWeight:700}}><span>Saldo após</span><span style={{fontFamily:'var(--font-mono)',color:'var(--ok)'}}>{fmtBRL(saldoTotal-v)}</span></div>
+                  </div>
+                )}
+              </div>
+              <div className="cf-vd-dfoot" style={{justifyContent:'flex-end'}}>
+                <button className="cf-btn cf-btn-ghost" onClick={()=>setAbatModal(null)}>Cancelar</button>
+                <button className="cf-btn cf-btn-primary" disabled={!valido||aplicandoAbat} onClick={aplicarAbatimento}>
+                  {aplicandoAbat?'Aplicando...':'Aplicar abatimento'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
 
       {/* Modal nova venda */}
       {showModal && (

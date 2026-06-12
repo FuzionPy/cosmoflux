@@ -271,17 +271,42 @@ def listar_pedidos(
     for p in pedidos:
         venda = db.query(Venda).filter(Venda.descricao == f"Pedido #{p.id}").first()
         spag = calc_status_pagamento(venda, hoje)
+
+        # parcelas da venda (para o modal de detalhe / abatimento)
+        parcelas_out = []
+        if venda:
+            for pc in sorted(venda.parcelas, key=lambda x: x.numero):
+                vpago = getattr(pc, "valor_pago", None) or 0
+                venc = pc.vencimento
+                venc_str = venc.strftime("%d/%m/%Y") if venc else None
+                venc_raw = venc.isoformat() if venc else None
+                st = "pago" if pc.pago else ("vencido" if (venc and venc < hoje) else "em_aberto")
+                parcelas_out.append({
+                    "id": pc.id, "numero": pc.numero, "valor": pc.valor,
+                    "valor_pago": vpago, "saldo_restante": round(pc.valor - vpago, 2),
+                    "pago": pc.pago, "status": st,
+                    "vencimento": venc_str, "vencimento_raw": venc_raw,
+                    "data_pago": pc.data_pago.strftime("%d/%m/%Y") if getattr(pc, "data_pago", None) else None,
+                })
+
         resultado.append({
             "id": p.id,
+            "venda_id":         venda.id if venda else None,
             "cliente":          p.cliente_rel.nome if p.cliente_rel else "Balcão",
             "cliente_id":       p.cliente_id,
             "status":           p.status,
             "status_pagamento": spag,
             "modo_pagamento":   venda.modo_pagamento if venda else None,
+            "parcelado":        (len(parcelas_out) > 1) if venda else False,
+            "num_parcelas":     len(parcelas_out),
+            "data_vencimento":  (sorted(venda.parcelas, key=lambda x: x.numero)[0].vencimento.strftime("%d/%m/%Y") if venda and venda.parcelas and sorted(venda.parcelas, key=lambda x: x.numero)[0].vencimento else None),
             "total": p.total, "desconto": p.desconto, "observacao": p.observacao,
+            "descricao": venda.descricao if venda else f"Pedido #{p.id}",
             "data":     p.criado_em.strftime("%d/%m/%Y %H:%M") if p.criado_em else None,
+            "data_venda": p.criado_em.strftime("%d/%m/%Y") if p.criado_em else None,
             "data_raw": p.criado_em.isoformat() if p.criado_em else None,
             "num_itens": len(p.itens),
+            "parcelas": parcelas_out,
             "itens": [{"produto_id": it.produto_id,
                        "produto":    it.produto_rel.nome if it.produto_rel else None,
                        "quantidade": it.quantidade,
