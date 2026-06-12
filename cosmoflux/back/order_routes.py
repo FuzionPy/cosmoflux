@@ -281,10 +281,11 @@ def listar_pedidos(
                 venc_str = venc.strftime("%d/%m/%Y") if venc else None
                 venc_raw = venc.isoformat() if venc else None
                 st = "pago" if pc.pago else ("vencido" if (venc and venc < hoje) else "em_aberto")
+                dias_atraso = (hoje - venc).days if (venc and venc < hoje and not pc.pago) else 0
                 parcelas_out.append({
                     "id": pc.id, "numero": pc.numero, "valor": pc.valor,
                     "valor_pago": vpago, "saldo_restante": round(pc.valor - vpago, 2),
-                    "pago": pc.pago, "status": st,
+                    "pago": pc.pago, "status": st, "dias_atraso": dias_atraso,
                     "vencimento": venc_str, "vencimento_raw": venc_raw,
                     "data_pago": pc.data_pago.strftime("%d/%m/%Y") if getattr(pc, "data_pago", None) else None,
                 })
@@ -294,6 +295,7 @@ def listar_pedidos(
             "venda_id":         venda.id if venda else None,
             "cliente":          p.cliente_rel.nome if p.cliente_rel else "Balcão",
             "cliente_id":       p.cliente_id,
+            "cliente_telefone": p.cliente_rel.telefone if p.cliente_rel else None,
             "status":           p.status,
             "status_pagamento": spag,
             "modo_pagamento":   venda.modo_pagamento if venda else None,
