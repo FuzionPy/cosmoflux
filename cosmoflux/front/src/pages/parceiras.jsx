@@ -51,9 +51,11 @@ const S = `
 .mini-val.yellow{color:#ffd32a;}
 .mini-val.green{color:#00d4aa;}
 .card-bot{padding:10px 16px;display:flex;align-items:center;justify-content:flex-end;gap:6px;}
-.icon-btn{width:28px;height:28px;border-radius:6px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;background:rgba(255,255,255,.04);color:rgba(255,255,255,.4);}
-.icon-btn:hover{background:rgba(0,212,170,.1);color:#e8eaed;}
-.icon-btn.danger:hover{background:rgba(255,71,87,.15);color:#ff4757;}
+.icon-btn{width:30px;height:30px;border-radius:7px;border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;background:rgba(255,255,255,.04);color:rgba(232,234,237,.7);padding:0;}
+.icon-btn svg{display:block;stroke:currentColor;}
+.icon-btn:hover{background:rgba(0,153,255,.12);color:#0099ff;border-color:rgba(0,153,255,.25);}
+.icon-btn.danger{color:#ff4757;border-color:rgba(255,71,87,.2);background:rgba(255,71,87,.08);}
+.icon-btn.danger:hover{background:rgba(255,71,87,.18);color:#ff6b7a;border-color:rgba(255,71,87,.35);}
 
 /* DETAIL PANEL */
 .dp{position:fixed;right:0;top:0;bottom:0;width:440px;background:#0e1013;border-left:1px solid rgba(255,255,255,.08);z-index:150;overflow-y:auto;display:flex;flex-direction:column;animation:slideIn .3s cubic-bezier(.22,1,.36,1) both;}
@@ -377,7 +379,9 @@ export default function Parceiras() {
       setModalVendaCli(null);
       setVendaItens([]);
       setVendaForm({modo_pagamento:'PIX',parcelado:false,num_parcelas:2,data_vencimento:'',desconto:'',valor_livre:'',descricao_livre:'',observacao:'',valor_entrada:''});
+      showToast('Venda registrada com sucesso!', '✓');
       if (selected) loadDetalhe(selected.id);
+      load();
     } catch(e) {
       setVendaErr(e.message||'Erro ao registrar venda.');
     } finally { setVendaSaving(false); }
@@ -456,10 +460,10 @@ export default function Parceiras() {
                 </div>
                 <div className="card-bot" onClick={e=>e.stopPropagation()}>
                   <button className="icon-btn" title="Editar" onClick={()=>{ setFormPar({nome:p.nome,telefone:p.telefone||'',email:p.email||'',observacao:p.observacao||''}); setEditando(p.id); setFormErr(''); setModal('parceira'); }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
                   </button>
                   <button className="icon-btn danger" title="Remover" onClick={()=>deletarParceira(p.id)}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                   </button>
                 </div>
               </div>
@@ -622,23 +626,38 @@ export default function Parceiras() {
                     {detalhe.clientes.length===0 ? (
                       <div style={{textAlign:'center',padding:'12px',color:'rgba(232,234,237,.25)',fontSize:12,fontFamily:'JetBrains Mono,monospace'}}>Nenhum cliente vinculado</div>
                     ) : detalhe.clientes.map(cl=>(
-                      <div key={cl.id} className="cli-item" style={{alignItems:'flex-start',gap:10}}>
+                      <div key={cl.id} className="cli-item" style={{alignItems:'center',gap:10}}>
                         <div className="cli-dot" style={{background:avatarColor(cl.nome),flexShrink:0}}>{cl.nome[0]?.toUpperCase()}</div>
                         <div style={{flex:1,minWidth:0}}>
                           <div className="cli-nome">{cl.nome}</div>
                           <div className="cli-tel">{fmtTel(cl.telefone)}</div>
                         </div>
                         <div style={{display:'flex',gap:6,flexShrink:0}}>
+                          {/* Nova venda — ícone cifrão */}
                           <button
                             onClick={()=>{ setModalVendaCli({cliente_id:cl.cliente_id||cl.id, nome:cl.nome}); setVendaModo('produto'); setVendaItens([]); setVendaErr(''); setVendaForm({modo_pagamento:'PIX',parcelado:false,num_parcelas:2,data_vencimento:'',desconto:'',valor_livre:'',descricao_livre:'',observacao:'',valor_entrada:''}); }}
-                            title="Nova venda"
-                            style={{width:28,height:28,borderRadius:6,border:'1px solid rgba(0,212,170,.2)',background:'rgba(0,212,170,.1)',color:'#00d4aa',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700}}
-                            onMouseEnter={e=>{e.currentTarget.style.background='rgba(0,212,170,.2)';}}
-                            onMouseLeave={e=>{e.currentTarget.style.background='rgba(0,212,170,.1)';}}>
-                            +$
+                            title="Nova venda para este cliente"
+                            style={{width:32,height:32,borderRadius:8,border:'1px solid rgba(0,212,170,.25)',background:'rgba(0,212,170,.12)',color:'#00d4aa',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',padding:0,transition:'all .15s'}}
+                            onMouseEnter={e=>{e.currentTarget.style.background='rgba(0,212,170,.22)';}}
+                            onMouseLeave={e=>{e.currentTarget.style.background='rgba(0,212,170,.12)';}}>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{display:'block'}}>
+                              <line x1="12" y1="1" x2="12" y2="23"/>
+                              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                            </svg>
                           </button>
-                          <button className="icon-btn danger" onClick={()=>deletarCliente(selected.id,cl.id)}>
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                          {/* Remover cliente — ícone lixeira */}
+                          <button
+                            onClick={()=>deletarCliente(selected.id,cl.id)}
+                            title="Remover cliente"
+                            style={{width:32,height:32,borderRadius:8,border:'1px solid rgba(255,71,87,.25)',background:'rgba(255,71,87,.1)',color:'#ff4757',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',padding:0,transition:'all .15s'}}
+                            onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,71,87,.2)';}}
+                            onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,71,87,.1)';}}>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{display:'block'}}>
+                              <polyline points="3 6 5 6 21 6"/>
+                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                              <path d="M10 11v6M14 11v6"/>
+                              <path d="M9 6V4h6v2"/>
+                            </svg>
                           </button>
                         </div>
                       </div>
