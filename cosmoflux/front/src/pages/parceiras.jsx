@@ -498,6 +498,66 @@ export default function Parceiras() {
                     <div className="dp-kpi"><div className="dp-kpi-lbl">Em aberto</div><div className={`dp-kpi-val ${detalhe.saldo_em_aberto>0?'yellow':'green'}`} style={{fontSize:12}}>{fmtBRL(detalhe.saldo_em_aberto)}</div></div>
                   </div>
 
+                  {/* Mini-dashboard de VENDAS aos clientes da parceira */}
+                  {detalhe.vendas_resumo && detalhe.vendas_resumo.num_vendas > 0 && (
+                    <div style={{background:'linear-gradient(135deg,rgba(0,212,170,.06),rgba(145,102,216,.04))',border:'1px solid rgba(0,212,170,.15)',borderRadius:14,padding:'16px 18px',display:'flex',flexDirection:'column',gap:14}}>
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                        <div style={{fontSize:11,fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase',color:'#00d4aa',fontFamily:'JetBrains Mono,monospace'}}>
+                          💰 Vendas da carteira
+                        </div>
+                        <span style={{fontSize:10,color:'rgba(232,234,237,.4)',fontFamily:'JetBrains Mono,monospace'}}>{detalhe.vendas_resumo.num_vendas} venda(s)</span>
+                      </div>
+                      {/* 3 KPIs de venda */}
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+                        <div>
+                          <div style={{fontSize:9,color:'rgba(232,234,237,.35)',fontFamily:'JetBrains Mono,monospace',marginBottom:4}}>VENDIDO</div>
+                          <div style={{fontSize:16,fontWeight:800,fontFamily:'JetBrains Mono,monospace',color:'#e8eaed'}}>{fmtBRL(detalhe.vendas_resumo.total_vendido)}</div>
+                        </div>
+                        <div>
+                          <div style={{fontSize:9,color:'rgba(232,234,237,.35)',fontFamily:'JetBrains Mono,monospace',marginBottom:4}}>RECEBIDO</div>
+                          <div style={{fontSize:16,fontWeight:800,fontFamily:'JetBrains Mono,monospace',color:'#00d4aa'}}>{fmtBRL(detalhe.vendas_resumo.total_recebido)}</div>
+                        </div>
+                        <div>
+                          <div style={{fontSize:9,color:'rgba(232,234,237,.35)',fontFamily:'JetBrains Mono,monospace',marginBottom:4}}>A RECEBER</div>
+                          <div style={{fontSize:16,fontWeight:800,fontFamily:'JetBrains Mono,monospace',color:detalhe.vendas_resumo.saldo_receber>0?'#ffd32a':'#00d4aa'}}>{fmtBRL(detalhe.vendas_resumo.saldo_receber)}</div>
+                        </div>
+                      </div>
+                      {/* barra de progresso recebido/vendido */}
+                      {detalhe.vendas_resumo.total_vendido > 0 && (
+                        <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                          <div style={{height:5,background:'rgba(255,255,255,.06)',borderRadius:3,overflow:'hidden'}}>
+                            <div style={{height:'100%',width:`${Math.min((detalhe.vendas_resumo.total_recebido/detalhe.vendas_resumo.total_vendido)*100,100)}%`,background:'linear-gradient(90deg,#00d4aa,#9166d8)',borderRadius:3,transition:'width .6s'}}/>
+                          </div>
+                          <div style={{display:'flex',justifyContent:'space-between',fontSize:9,fontFamily:'JetBrains Mono,monospace',color:'rgba(232,234,237,.35)'}}>
+                            <span>{((detalhe.vendas_resumo.total_recebido/detalhe.vendas_resumo.total_vendido)*100).toFixed(0)}% recebido</span>
+                            {detalhe.vendas_resumo.num_vencidas>0 && <span style={{color:'#ff4757'}}>{detalhe.vendas_resumo.num_vencidas} vencida(s)</span>}
+                          </div>
+                        </div>
+                      )}
+                      {/* lista compacta das últimas vendas */}
+                      {detalhe.vendas?.length > 0 && (
+                        <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:2}}>
+                          {detalhe.vendas.slice(0,4).map(v=>{
+                            const cls = v.status_pagamento==='pago'?'#00d4aa':v.status_pagamento==='vencido'?'#ff4757':'#ffd32a';
+                            const lbl = v.status_pagamento==='pago'?'PAGO':v.status_pagamento==='vencido'?'VENCIDO':'ABERTO';
+                            return (
+                              <div key={v.id} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',background:'rgba(255,255,255,.02)',borderRadius:8,fontSize:12}}>
+                                <span style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'#e8eaed'}}>{v.cliente}</span>
+                                <span style={{fontSize:9,fontWeight:700,color:cls,fontFamily:'JetBrains Mono,monospace'}}>{lbl}</span>
+                                <span style={{fontFamily:'JetBrains Mono,monospace',fontWeight:700,color:'#e8eaed',minWidth:72,textAlign:'right'}}>{fmtBRL(v.valor_total)}</span>
+                              </div>
+                            );
+                          })}
+                          {detalhe.vendas.length > 4 && (
+                            <div style={{textAlign:'center',fontSize:10,color:'rgba(232,234,237,.3)',fontFamily:'JetBrains Mono,monospace',paddingTop:2}}>
+                              + {detalhe.vendas.length - 4} venda(s) — ver em Vendas/Relatórios
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Compras */}
                   <div className="dp-sec">
                     <div className="dp-sec-hdr">

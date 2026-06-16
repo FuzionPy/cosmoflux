@@ -5,8 +5,9 @@ from typing import Optional, List
 from datetime import datetime
 from models import (Parceira, CompraParceira, ItemCompraParceira,
                     RepasseParceira, ClienteParceira, Cliente, Produto,
-                    Movimentacao, get_db)
+                    Movimentacao, Venda, Pedido, Parcela, get_db)
 from auth_routes import get_ctx
+from datetime import date
 
 parceira_router = APIRouter(prefix="/api", tags=["parceiras"])
 
@@ -118,6 +119,40 @@ def detalhe_parceira(pid: int, ctx: dict = Depends(get_ctx), db: Session = Depen
         "nome": cl.nome, "telefone": cl.telefone, "observacao": cl.observacao,
         "criado_em": cl.criado_em.strftime("%d/%m/%Y") if cl.criado_em else None,
     } for cl in sorted(p.clientes, key=lambda x: x.nome)]
+
+    # ── Resumo de VENDAS feitas aos clientes desta parceira ──
+    cliente_ids = [cl.cliente_id for cl in p.clientes if cl.cliente_id]
+    vendas_resumo = {
+        "total_vendido": 0.0, "total_recebido": 0.0, "saldo_receber": 0.0,
+        "num_vendas": 0, "num_em_aberto": 0, "num_vencidas": 0,
+    }
+    vendas_lista = []
+    if cliente_ids:
+        hoje = date.today()
+        vendas_q = db.query(Venda).filter(Venda.cliente_id.in_(cliente_ids)).order_by(Venda.criado_em.desc()).all()
+        # mapa cliente_id -> nome do cliente da parceira
+        nome_por_cid = {cl.cliente_id: cl.nome for cl in p.clientes if cl.cliente_id}
+        for v in vendas_q:
+            pago = sum((getattr(pc, "valor_pago", None) or 0) for pc in v.parcelas)
+            saldo = round(v.valor_total - pago, 2)
+            tem_vencida = any((not pc.pago and pc.vencimento and pc.vencimento < hoje) for pc in v.parcelas)
+            status = "pago" if saldo <= 0.01 else ("vencido" if tem_vencida else "em_aberto")
+            vendas_resumo["total_vendido"] += v.valor_total
+            vendas_resumo["total_recebido"] += pago
+            vendas_resumo["num_vendas"] += 1
+            if status == "em_aberto": vendas_resumo["num_em_aberto"] += 1
+            if status == "vencido":   vendas_resumo["num_vencidas"] += 1
+            vendas_lista.append({
+                "id": v.id, "cliente": nome_por_cid.get(v.cliente_id, "—"),
+                "descricao": v.descricao, "valor_total": v.valor_total,
+                "pago": round(pago, 2), "saldo": saldo, "status_pagamento": status,
+                "modo_pagamento": v.modo_pagamento,
+                "data": v.criado_em.strftime("%d/%m/%Y") if v.criado_em else None,
+            })
+        vendas_resumo["total_vendido"] = round(vendas_resumo["total_vendido"], 2)
+        vendas_resumo["total_recebido"] = round(vendas_resumo["total_recebido"], 2)
+        vendas_resumo["saldo_receber"] = round(vendas_resumo["total_vendido"] - vendas_resumo["total_recebido"], 2)
+
     total_compras  = sum(c["valor_total"] for c in compras)
     total_repasses = sum(r["valor"] for c in compras for r in c["repasses"])
     return {
@@ -127,6 +162,7 @@ def detalhe_parceira(pid: int, ctx: dict = Depends(get_ctx), db: Session = Depen
         "total_repasses": round(total_repasses, 2),
         "saldo_em_aberto": round(total_compras - total_repasses, 2),
         "compras": compras, "clientes": clientes,
+        "vendas_resumo": vendas_resumo, "vendas": vendas_lista,
     }
 
 # ── COMPRAS ──────────────────────────────────────────────────────────
