@@ -49,21 +49,60 @@ def listar_parceiras(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)
     parceiras = tf(db.query(Parceira), Parceira, ctx).filter(
         (Parceira.ativa == True) | (Parceira.ativa == None)
     ).order_by(Parceira.nome).all()
+    hoje = date.today()
     resultado = []
     for p in parceiras:
         total_compras   = sum(c.valor_total for c in p.compras)
         total_repasses  = sum(r.valor for c in p.compras for r in c.repasses)
         saldo_em_aberto = round(total_compras - total_repasses, 2)
+        # status: atrasada (compra vencida c/ saldo) / aberto (deve no prazo) / dia (quitada)
+        tem_vencida = False
+        for c in p.compras:
+            pago_c = sum(r.valor for r in c.repasses)
+            saldo_c = c.valor_total - pago_c
+            venc = (c.criado_em.date() if c.criado_em else hoje)
+            # vencimento ~ 30 dias após a compra
+            from datetime import timedelta
+            venc30 = venc + timedelta(days=30)
+            if saldo_c > 0.01 and venc30 < hoje:
+                tem_vencida = True
+        status = "dia" if saldo_em_aberto <= 0.01 else ("atrasada" if tem_vencida else "aberto")
+
+        # resumo de vendas aos clientes da parceira
+        cliente_ids = [cl.cliente_id for cl in p.clientes if cl.cliente_id]
+        total_vendido = total_recebido = 0.0
+        num_vencidas = 0
+        if cliente_ids:
+            vendas_q = db.query(Venda).filter(Venda.cliente_id.in_(cliente_ids)).all()
+            for v in vendas_q:
+                pago = sum((getattr(pc, "valor_pago", None) or 0) for pc in v.parcelas)
+                total_vendido += v.valor_total
+                total_recebido += pago
+                if any((not pc.pago and pc.vencimento and pc.vencimento < hoje) for pc in v.parcelas):
+                    num_vencidas += 1
+        vendas_resumo = {
+            "total_vendido": round(total_vendido, 2),
+            "total_recebido": round(total_recebido, 2),
+            "saldo_receber": round(total_vendido - total_recebido, 2),
+            "num_vendas": len(cliente_ids), "num_vencidas": num_vencidas,
+        }
+        # mini avatares dos clientes (nome só)
+        clientes_mini = [{"id": cl.id, "nome": cl.nome} for cl in sorted(p.clientes, key=lambda x: x.nome)]
+
         resultado.append({
             "id": p.id, "nome": p.nome, "telefone": p.telefone,
             "email": p.email, "observacao": p.observacao,
+            "cidade": getattr(p, "cidade", None),
             "criado_em": p.criado_em.strftime("%d/%m/%Y") if p.criado_em else None,
             "total_compras":   round(total_compras, 2),
             "total_repasses":  round(total_repasses, 2),
             "saldo_em_aberto": saldo_em_aberto,
             "num_compras":     len(p.compras),
             "num_clientes":    len(p.clientes),
-            "alerta": saldo_em_aberto > 0,
+            "status": status,
+            "alerta": tem_vencida,
+            "vendas_resumo": vendas_resumo,
+            "clientes_mini": clientes_mini,
         })
     return resultado
 
@@ -86,6 +125,27 @@ def atualizar_parceira(pid: int, dados: ParceiraSchema, ctx: dict = Depends(get_
 def deletar_parceira(pid: int, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
     p = tf(db.query(Parceira), Parceira, ctx).filter(Parceira.id == pid).first()
     if not p: raise HTTPException(404, "Parceira não encontrada")
+
+    # Restrição 1: saldo de compras em aberto (a parceira ainda te deve)
+    saldo_compras = 0.0
+    for c in p.compras:
+        pago = sum(r.valor for r in c.repasses)
+        saldo_compras += max(c.valor_total - pago, 0)
+    if saldo_compras > 0.01:
+        raise HTTPException(400, f"Esta parceira tem {saldo_compras:.2f} em compras a quitar. Registre os repasses antes de excluir.")
+
+    # Restrição 2: vendas a receber na carteira (clientes dela ainda devem)
+    hoje = date.today()
+    cliente_ids = [cl.cliente_id for cl in p.clientes if cl.cliente_id]
+    if cliente_ids:
+        vendas = db.query(Venda).filter(Venda.cliente_id.in_(cliente_ids)).all()
+        saldo_receber = 0.0
+        for v in vendas:
+            pago = sum((getattr(pc, "valor_pago", None) or 0) for pc in v.parcelas)
+            saldo_receber += max(v.valor_total - pago, 0)
+        if saldo_receber > 0.01:
+            raise HTTPException(400, f"A carteira desta parceira tem {saldo_receber:.2f} a receber. Quite as vendas das clientes antes de excluir.")
+
     p.ativa = False; db.commit()
     return {"mensagem": "Parceira removida"}
 
@@ -226,10 +286,15 @@ def add_cliente_parceira(pid: int, dados: ClienteParceiraSchema,
                          ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
     p = tf(db.query(Parceira), Parceira, ctx).filter(Parceira.id == pid).first()
     if not p: raise HTTPException(404, "Parceira não encontrada")
+    # cria também um Cliente real (tabela clientes) para que vendas funcionem
+    cliente_real = Cliente(nome=dados.nome, telefone=dados.telefone,
+                           observacao=f"Cliente da parceira {p.nome}", tenant_id=tid(ctx))
+    db.add(cliente_real); db.flush()  # gera o id sem fechar a transação
     cl = ClienteParceira(parceira_id=pid, tenant_id=tid(ctx),
-                         nome=dados.nome, telefone=dados.telefone, observacao=dados.observacao)
+                         nome=dados.nome, telefone=dados.telefone, observacao=dados.observacao,
+                         cliente_id=cliente_real.id)
     db.add(cl); db.commit(); db.refresh(cl)
-    return {"id": cl.id, "mensagem": "Cliente adicionado"}
+    return {"id": cl.id, "cliente_id": cliente_real.id, "mensagem": "Cliente adicionado"}
 
 @parceira_router.delete("/parceiras/{pid}/clientes/{cid}")
 def del_cliente_parceira(pid: int, cid: int, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
@@ -237,3 +302,19 @@ def del_cliente_parceira(pid: int, cid: int, ctx: dict = Depends(get_ctx), db: S
     if not cl: raise HTTPException(404, "Cliente não encontrado")
     db.delete(cl); db.commit()
     return {"mensagem": "Cliente removido"}
+
+@parceira_router.post("/parceiras/{pid}/clientes/{cid}/vincular")
+def vincular_cliente_parceira(pid: int, cid: int, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    """Cria um Cliente real e vincula a uma ClienteParceira que ainda não tem cliente_id.
+    Usado para 'consertar' clientes cadastrados antes do vínculo automático."""
+    cl = db.query(ClienteParceira).filter(ClienteParceira.id == cid, ClienteParceira.parceira_id == pid).first()
+    if not cl: raise HTTPException(404, "Cliente não encontrado")
+    if cl.cliente_id:
+        return {"cliente_id": cl.cliente_id, "mensagem": "Já vinculado"}
+    p = db.query(Parceira).filter(Parceira.id == pid).first()
+    cliente_real = Cliente(nome=cl.nome, telefone=cl.telefone,
+                           observacao=f"Cliente da parceira {p.nome if p else ''}", tenant_id=tid(ctx))
+    db.add(cliente_real); db.flush()
+    cl.cliente_id = cliente_real.id
+    db.commit()
+    return {"cliente_id": cliente_real.id, "mensagem": "Vínculo criado"}

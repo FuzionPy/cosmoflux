@@ -580,7 +580,7 @@ function ListView({parceiras, onOpen, onRepasse, sort, setSort}) {
 }
 
 /* ── PartnerModal (central, via Portal) ──────────────────────────────── */
-function PartnerModal({parceira, detalhe, loadingDetalhe, onClose, onRepasse, onVendaCli, onNovaCompra, onDeletarCli, onAdicionarCli, theme}) {
+function PartnerModal({parceira, detalhe, loadingDetalhe, onClose, onRepasse, onVendaCli, onNovaCompra, onDeletarCli, onAdicionarCli, onDeletarParceira, theme}) {
   const [aba, setAba] = useState('geral');
   const [openCompra, setOpenCompra] = useState({});
   const [addCli, setAddCli] = useState(false);
@@ -588,6 +588,7 @@ function PartnerModal({parceira, detalhe, loadingDetalhe, onClose, onRepasse, on
   const [novoTel, setNovoTel] = useState('');
   const [addErr, setAddErr] = useState('');
   const [addSaving, setAddSaving] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
   const toggle = id => setOpenCompra(s=>({...s,[id]:!s[id]}));
   const meta = PK_SEG[parceira.status]||PK_SEG.dia;
   const d = detalhe||{compras:[],clientes:[],total_compras:0,total_repasses:0,saldo_em_aberto:0,vendas_resumo:{},vendas:[]};
@@ -861,15 +862,25 @@ function PartnerModal({parceira, detalhe, loadingDetalhe, onClose, onRepasse, on
 
           {/* Footer */}
           <div className="pk-det-foot">
-            {parceira.saldo_em_aberto>0 ? (
-              <button className="cf-btn cf-btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>onRepasse(parceira,null)}>
-                <Ic d={ICONS.arrowIn} size={14}/> Registrar repasse
-              </button>
+            {confirmDel ? (
+              <>
+                <span style={{flex:1,display:'flex',alignItems:'center',fontSize:12,color:'var(--crit)',fontWeight:600}}>Excluir {parceira.nome}?</span>
+                <button className="cf-btn cf-btn-ghost" onClick={()=>setConfirmDel(false)}>Cancelar</button>
+                <button className="cf-btn cf-btn-danger" onClick={async()=>{await onDeletarParceira(parceira.id);setConfirmDel(false);}}>Confirmar exclusão</button>
+              </>
             ) : (
-              <span style={{flex:1,display:'flex',alignItems:'center',fontSize:12,color:'var(--ok)',fontFamily:'var(--font-mono)'}}>✓ Conta em dia</span>
+              <>
+                {parceira.saldo_em_aberto>0 ? (
+                  <button className="cf-btn cf-btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>onRepasse(parceira,null)}>
+                    <Ic d={ICONS.arrowIn} size={14}/> Registrar repasse
+                  </button>
+                ) : (
+                  <span style={{flex:1,display:'flex',alignItems:'center',fontSize:12,color:'var(--ok)',fontFamily:'var(--font-mono)'}}>✓ Conta em dia</span>
+                )}
+                <button className="cf-btn cf-btn-ghost" onClick={onNovaCompra}><Ic d={ICONS.plus} size={13}/> Nova compra</button>
+                <button className="cf-icon-btn danger" title="Excluir parceira" onClick={()=>setConfirmDel(true)}><Ic d={ICONS.trash} size={14}/></button>
+              </>
             )}
-            <button className="cf-btn cf-btn-ghost" onClick={onNovaCompra}><Ic d={ICONS.plus} size={13}/> Nova compra</button>
-            <button className="cf-btn" onClick={onClose}>Fechar</button>
           </div>
         </div>
       </div>
@@ -984,11 +995,16 @@ function VendaClienteModal({parceira, cliente, produtos, onClose, onSaved, theme
   const salvar=async()=>{
     if(modo==='produto'&&itens.length===0){setErr('Adicione ao menos 1 produto.');return;}
     if(modo==='livre'&&(!valorLivre||parseFloat(valorLivre)<=0)){setErr('Informe o valor.');return;}
-    if(!cliente.cliente_id){setErr('Esta cliente não tem vínculo com um cliente real. Recadastre-a para criar o vínculo.');return;}
     setSaving(true); setErr('');
     try{
+      // se a cliente não tem vínculo com cliente real, cria automaticamente
+      let cid = cliente.cliente_id;
+      if(!cid){
+        const vinc = await api.post(`/parceiras/${parceira.id}/clientes/${cliente.id}/vincular`, {});
+        cid = vinc.cliente_id;
+      }
       const payload={
-        cliente_id:cliente.cliente_id,
+        cliente_id:cid,
         itens:modo==='produto'?itens.map(i=>({produto_id:i.produto_id,quantidade:i.quantidade,preco_unitario:i.preco,desconto_item:0})):[],
         modo_pagamento:pagamento, parcelado, num_parcelas:parseInt(numParc)||1,
         data_vencimento:vencimento||null, valor_entrada:ent,
@@ -1294,6 +1310,7 @@ export default function Parceiras() {
           onNovaCompra={()=>setModalCompra({parceira:selected})}
           onDeletarCli={handleDeletarCli}
           onAdicionarCli={handleAdicionarCli}
+          onDeletarParceira={handleDeletarParceira}
         />
       )}
 
