@@ -287,6 +287,24 @@ const S = `
 
 @media(max-width:1100px){.pk-kpi-strip{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:560px){.pk-kpi-strip{grid-template-columns:1fr;}.pk-row2{grid-template-columns:1fr;}}
+/* modal central parceira */
+.pk-det-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:160;display:flex;align-items:center;justify-content:center;padding:16px;animation:pkFade .2s ease both;}
+.pk-det-modal{background:var(--surface);border:1px solid var(--border-strong);border-radius:18px;width:100%;max-width:700px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.5);}
+.pk-det-hd{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:14px;flex-shrink:0;}
+.pk-det-av{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#fff;flex-shrink:0;}
+.pk-det-name{font-size:18px;font-weight:800;line-height:1.2;}
+.pk-det-meta{font-size:11px;font-family:var(--font-mono);color:var(--text-muted);margin-top:3px;}
+.pk-det-tabs{display:flex;gap:2px;padding:0 22px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;}
+.pk-det-tab{padding:11px 16px;font-size:12.5px;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--text-muted);font-family:var(--font-ui);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s;white-space:nowrap;}
+.pk-det-tab.on{color:var(--brand);border-bottom-color:var(--brand);}
+.pk-det-tab:hover:not(.on){color:var(--text);}
+.pk-det-body{overflow-y:auto;flex:1;padding:20px 22px;display:flex;flex-direction:column;gap:18px;}
+.pk-det-body::-webkit-scrollbar{width:5px;}.pk-det-body::-webkit-scrollbar-thumb{background:var(--track);border-radius:3px;}
+.pk-det-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:9px;flex-shrink:0;}
+.pk-cli-add-row{display:flex;gap:9px;padding:13px;background:var(--surface-2);border:1px dashed var(--border-strong);border-radius:var(--radius-sm);margin-bottom:10px;}
+.pk-cli-add-row input{flex:1;min-width:0;background:none;border:none;outline:none;font-family:var(--font-ui);font-size:13px;color:var(--text);padding:4px 0;}
+.pk-cli-add-row input::placeholder{color:var(--text-muted);}
+
 `;
 
 /* ── ícones ───────────────────────────────────────────────────────────── */
@@ -561,150 +579,253 @@ function ListView({parceiras, onOpen, onRepasse, sort, setSort}) {
   );
 }
 
-/* ── PartnerDrawer ────────────────────────────────────────────────────── */
-function PartnerDrawer({parceira, detalhe, loadingDetalhe, onClose, onRepasse, onVendaCli, onNovaCompra, onDeletarCli, theme}) {
+/* ── PartnerModal (central, via Portal) ──────────────────────────────── */
+function PartnerModal({parceira, detalhe, loadingDetalhe, onClose, onRepasse, onVendaCli, onNovaCompra, onDeletarCli, onAdicionarCli, theme}) {
+  const [aba, setAba] = useState('geral');
   const [openCompra, setOpenCompra] = useState({});
+  const [addCli, setAddCli] = useState(false);
+  const [novoNome, setNovoNome] = useState('');
+  const [novoTel, setNovoTel] = useState('');
+  const [addErr, setAddErr] = useState('');
+  const [addSaving, setAddSaving] = useState(false);
   const toggle = id => setOpenCompra(s=>({...s,[id]:!s[id]}));
   const meta = PK_SEG[parceira.status]||PK_SEG.dia;
   const d = detalhe||{compras:[],clientes:[],total_compras:0,total_repasses:0,saldo_em_aberto:0,vendas_resumo:{},vendas:[]};
   const vr = d.vendas_resumo||{};
   const pct = (vr.total_vendido||0)>0?Math.min(((vr.total_recebido||0)/(vr.total_vendido||1))*100,100):0;
   const cobrarMsg = `Oi ${parceira.nome.split(' ')[0]}! Sobre o saldo de ${pkBRL(parceira.saldo_em_aberto)} das compras 💜`;
+
+  const salvarCli = async() => {
+    if(!novoNome.trim()){setAddErr('Nome é obrigatório.');return;}
+    setAddSaving(true); setAddErr('');
+    try{ await onAdicionarCli(parceira.id, {nome:novoNome.trim(),telefone:novoTel}); setNovoNome(''); setNovoTel(''); setAddCli(false); }
+    catch(e){setAddErr(e.message);}
+    finally{setAddSaving(false);}
+  };
+
   return (
-    <>
-      <div className="pk-overlay" onClick={onClose}/>
-      <div className="pk-drawer">
-        <div className="pk-dh">
-          <div style={{display:'flex',gap:13,alignItems:'flex-start',flex:1,minWidth:0}}>
-            <div className="pk-dh-av" style={{background:cor(parceira.nome)}}>{pkInit(parceira.nome)}</div>
+    <Portal theme={theme}>
+      <div className="pk-det-ov" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+        <div className="pk-det-modal">
+
+          {/* Header */}
+          <div className="pk-det-hd">
+            <div className="pk-det-av" style={{background:cor(parceira.nome)}}>{pkInit(parceira.nome)}</div>
             <div style={{flex:1,minWidth:0}}>
-              <div className="pk-dh-name">{parceira.nome}</div>
-              <div className="pk-dh-meta">{pkTel(parceira.telefone)} · {parceira.cidade||'—'}</div>
-              <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
+              <div className="pk-det-name">{parceira.nome}</div>
+              <div className="pk-det-meta">{pkTel(parceira.telefone)} · {parceira.cidade||'—'} · {parceira.email||''}</div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:6}}>
                 <span className={`cf-pill ${meta.pill}`}>{meta.label}</span>
                 {parceira.saldo_em_aberto>0&&<span className="cf-pill crit">{pkBRL(parceira.saldo_em_aberto)} em aberto</span>}
+                {(vr.saldo_receber||0)>0&&<span className="cf-pill warn">carteira: {pkBRL(vr.saldo_receber)}</span>}
               </div>
             </div>
+            <div style={{display:'flex',gap:6,flexShrink:0}}>
+              <a className="cf-icon-btn" href={pkWa(parceira.telefone,cobrarMsg)} target="_blank" rel="noreferrer" title="WhatsApp" style={{textDecoration:'none',color:'inherit'}}>
+                <IcoWa size={15}/>
+              </a>
+              <button className="cf-icon-btn" onClick={onClose}><Ic d={ICONS.x} size={15}/></button>
+            </div>
           </div>
-          <button className="cf-icon-btn" onClick={onClose}><Ic d={ICONS.x} size={15}/></button>
-        </div>
 
-        <div className="pk-dbody">
-          {loadingDetalhe ? (
-            <div style={{display:'flex',flexDirection:'column',gap:8}}>{[1,2,3].map(i=><div key={i} className="pk-skel" style={{height:52}}/>)}</div>
-          ) : (
-            <>
-              {/* KPIs compras */}
-              <div>
-                <div className="pk-dsec-t">Conta da parceira (compras)</div>
-                <div className="pk-kpis3">
-                  <div className="pk-kc"><div className="pk-kc-l">Comprou</div><div className="pk-kc-v">{pkBRL(d.total_compras)}</div></div>
-                  <div className="pk-kc"><div className="pk-kc-l">Repassou</div><div className="pk-kc-v" style={{color:'var(--ok)'}}>{pkBRL(d.total_repasses)}</div></div>
-                  <div className="pk-kc"><div className="pk-kc-l">Em aberto</div><div className="pk-kc-v" style={{color:d.saldo_em_aberto>0?'var(--crit)':'var(--ok)'}}>{pkBRL(d.saldo_em_aberto)}</div></div>
-                </div>
-              </div>
+          {/* Abas */}
+          <div className="pk-det-tabs">
+            {[
+              {k:'geral',  lbl:'Visão geral'},
+              {k:'compras',lbl:`Compras (${d.compras.length})`},
+              {k:'clientes',lbl:`Clientes (${(d.clientes||[]).length})`},
+            ].map(t=>(
+              <button key={t.k} className={`pk-det-tab${aba===t.k?' on':''}`} onClick={()=>setAba(t.k)}>{t.lbl}</button>
+            ))}
+          </div>
 
-              {/* Mini-dashboard vendas da carteira */}
-              {(vr.num_vendas||0)>0&&(
-                <div className="pk-vendas-box">
-                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                    <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase',color:'var(--brand)',fontFamily:'var(--font-mono)'}}>Vendas da carteira dela</div>
-                    <span style={{fontSize:10,color:'var(--text-muted)',fontFamily:'var(--font-mono)'}}>{d.clientes?.length||0} clientes</span>
-                  </div>
-                  <div className="pk-vb-grid">
-                    <div><div className="pk-vb-l">Vendido</div><div className="pk-vb-v">{pkBRL(vr.total_vendido||0)}</div></div>
-                    <div><div className="pk-vb-l">Recebido</div><div className="pk-vb-v" style={{color:'var(--ok)'}}>{pkBRL(vr.total_recebido||0)}</div></div>
-                    <div><div className="pk-vb-l">A receber</div><div className="pk-vb-v" style={{color:(vr.saldo_receber||0)>0?'var(--warn)':'var(--ok)'}}>{pkBRL(vr.saldo_receber||0)}</div></div>
-                  </div>
+          {/* Corpo */}
+          <div className="pk-det-body">
+            {loadingDetalhe ? (
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>{[1,2,3].map(i=><div key={i} className="pk-skel" style={{height:52}}/>)}</div>
+            ) : (
+
+              /* ── ABA GERAL ── */
+              aba==='geral' ? (
+                <>
+                  {/* KPIs conta da parceira */}
                   <div>
-                    <div className="pk-vb-prog"><span style={{width:`${pct}%`}}/></div>
-                    <div style={{display:'flex',justifyContent:'space-between',fontSize:9.5,fontFamily:'var(--font-mono)',color:'var(--text-muted)',marginTop:5}}>
-                      <span>{pct.toFixed(0)}% recebido</span>
-                      {(vr.num_vencidas||0)>0&&<span style={{color:'var(--crit)'}}>{vr.num_vencidas} atrasada(s)</span>}
+                    <div className="pk-dsec-t">Conta da parceira (compras de mim)</div>
+                    <div className="pk-kpis3">
+                      <div className="pk-kc"><div className="pk-kc-l">Comprou</div><div className="pk-kc-v">{pkBRL(d.total_compras)}</div></div>
+                      <div className="pk-kc"><div className="pk-kc-l">Repassou</div><div className="pk-kc-v" style={{color:'var(--ok)'}}>{pkBRL(d.total_repasses)}</div></div>
+                      <div className="pk-kc"><div className="pk-kc-l">Em aberto</div><div className="pk-kc-v" style={{color:d.saldo_em_aberto>0?'var(--crit)':'var(--ok)'}}>{pkBRL(d.saldo_em_aberto)}</div></div>
                     </div>
                   </div>
-                  {(d.vendas||[]).length>0&&(
-                    <div className="pk-vendas-lista">
-                      {d.vendas.slice(0,4).map(v=>{
-                        const cls=v.status_pagamento==='pago'?'var(--ok)':v.status_pagamento==='vencido'?'var(--crit)':'var(--warn)';
-                        const lbl=v.status_pagamento==='pago'?'PAGO':v.status_pagamento==='vencido'?'VENCIDO':'ABERTO';
+
+                  {/* Mini-dashboard vendas da carteira */}
+                  {(vr.num_vendas||0)>0 && (
+                    <div className="pk-vendas-box">
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                        <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase',color:'var(--brand)',fontFamily:'var(--font-mono)'}}>💰 Vendas da carteira dela</div>
+                        <span style={{fontSize:10,color:'var(--text-muted)',fontFamily:'var(--font-mono)'}}>{(d.clientes||[]).length} clientes · {(d.vendas||[]).length} vendas</span>
+                      </div>
+                      <div className="pk-vb-grid">
+                        <div><div className="pk-vb-l">Vendido</div><div className="pk-vb-v">{pkBRL(vr.total_vendido||0)}</div></div>
+                        <div><div className="pk-vb-l">Recebido</div><div className="pk-vb-v" style={{color:'var(--ok)'}}>{pkBRL(vr.total_recebido||0)}</div></div>
+                        <div><div className="pk-vb-l">A receber</div><div className="pk-vb-v" style={{color:(vr.saldo_receber||0)>0?'var(--warn)':'var(--ok)'}}>{pkBRL(vr.saldo_receber||0)}</div></div>
+                      </div>
+                      <div>
+                        <div className="pk-vb-prog"><span style={{width:`${pct}%`}}/></div>
+                        <div style={{display:'flex',justifyContent:'space-between',fontSize:9.5,fontFamily:'var(--font-mono)',color:'var(--text-muted)',marginTop:5}}>
+                          <span>{pct.toFixed(0)}% recebido</span>
+                          {(vr.num_vencidas||0)>0&&<span style={{color:'var(--crit)'}}>{vr.num_vencidas} atrasada(s)</span>}
+                        </div>
+                      </div>
+                      {(d.vendas||[]).length>0&&(
+                        <div className="pk-vendas-lista">
+                          {(d.vendas||[]).slice(0,4).map(v=>{
+                            const cls=v.status_pagamento==='pago'?'var(--ok)':v.status_pagamento==='vencido'?'var(--crit)':'var(--warn)';
+                            const lbl=v.status_pagamento==='pago'?'PAGO':v.status_pagamento==='vencido'?'VENCIDO':'ABERTO';
+                            return (
+                              <div key={v.id} className="pk-venda-row">
+                                <span style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{txt(v.cliente)}</span>
+                                <span style={{fontSize:9,fontWeight:700,color:cls,fontFamily:'var(--font-mono)'}}>{lbl}</span>
+                                <span style={{fontFamily:'var(--font-mono)',fontWeight:700,minWidth:72,textAlign:'right'}}>{pkBRL(v.valor_total)}</span>
+                              </div>
+                            );
+                          })}
+                          {(d.vendas||[]).length>4&&<div style={{textAlign:'center',fontSize:10,color:'var(--text-muted)',fontFamily:'var(--font-mono)',paddingTop:4}}>+{d.vendas.length-4} — ver em Vendas / Relatórios</div>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Resumo compras na visão geral */}
+                  {d.compras.length>0&&(
+                    <div>
+                      <div className="pk-dsec-t">Última(s) compra(s)</div>
+                      {d.compras.slice(0,2).map(c=>{
+                        const pillCls=c.status_pag==='pago'?'ok':c.vencido?'crit':'warn';
+                        const pillLbl=c.status_pag==='pago'?'✓ PAGO':c.vencido?'VENCIDO':c.status_pag==='parcelado'?'PARCELADO':'EM ABERTO';
                         return (
-                          <div key={v.id} className="pk-venda-row">
-                            <span style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{txt(v.cliente)}</span>
-                            <span style={{fontSize:9,fontWeight:700,color:cls,fontFamily:'var(--font-mono)'}}>{lbl}</span>
-                            <span style={{fontFamily:'var(--font-mono)',fontWeight:700,minWidth:72,textAlign:'right'}}>{pkBRL(v.valor_total)}</span>
+                          <div key={c.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:'var(--surface-2)',border:'1px solid var(--border)',borderRadius:10,marginBottom:7}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:3}}>
+                                <span className={`cf-pill ${pillCls}`} style={{fontSize:9}}>{pillLbl}</span>
+                                {c.saldo>0&&<span style={{fontSize:10.5,fontFamily:'var(--font-mono)',color:'var(--warn)'}}>falta {pkBRL(c.saldo)}</span>}
+                              </div>
+                              <div style={{fontSize:10,fontFamily:'var(--font-mono)',color:'var(--text-muted)'}}>{c.criado_em} · vence {c.vencimento}</div>
+                            </div>
+                            <div style={{fontFamily:'var(--font-mono)',fontWeight:700,fontSize:14}}>{pkBRL(c.valor_total)}</div>
+                            {c.saldo>0&&<button className="cf-btn" style={{padding:'5px 10px',fontSize:11,borderRadius:8}} onClick={()=>onRepasse(parceira,c)}>+ Repasse</button>}
                           </div>
                         );
                       })}
-                      {(d.vendas||[]).length>4&&<div style={{textAlign:'center',fontSize:10,color:'var(--text-muted)',fontFamily:'var(--font-mono)',paddingTop:4}}>+{d.vendas.length-4} — ver em Vendas/Relatórios</div>}
+                      {d.compras.length>2&&<button className="cf-btn cf-btn-ghost" style={{width:'100%',justifyContent:'center',fontSize:12}} onClick={()=>setAba('compras')}>Ver todas as {d.compras.length} compras →</button>}
                     </div>
                   )}
-                </div>
-              )}
 
-              {/* Compras */}
-              <div>
-                <div className="pk-dsec-t" style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:11}}>
-                  <span>Compras ({d.compras.length})</span>
-                  <button className="cf-btn" style={{padding:'5px 10px',fontSize:11,borderRadius:8}} onClick={onNovaCompra}>+ Nova compra</button>
-                </div>
-                {d.compras.length===0
-                  ?<div style={{fontSize:11,fontFamily:'var(--font-mono)',color:'var(--text-muted)',padding:'8px 0'}}>Nenhuma compra registrada</div>
-                  :d.compras.map(c=>{
-                    const pillCls=c.status_pag==='pago'?'ok':c.vencido?'crit':'warn';
-                    const pillLbl=c.status_pag==='pago'?'✓ PAGO':c.vencido?'VENCIDO':c.status_pag==='parcelado'?'PARCELADO':'EM ABERTO';
-                    return (
-                      <div className="pk-compra" key={c.id}>
-                        <div className="pk-compra-h" onClick={()=>toggle(c.id)}>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{display:'flex',alignItems:'center',gap:7}}>
-                              <span className={`cf-pill ${pillCls}`} style={{fontSize:9}}>{pillLbl}</span>
-                              {c.saldo>0&&<span style={{fontSize:10.5,fontFamily:'var(--font-mono)',color:'var(--warn)'}}>falta {pkBRL(c.saldo)}</span>}
-                            </div>
-                            <div style={{fontSize:10,fontFamily:'var(--font-mono)',color:'var(--text-muted)',marginTop:4}}>{c.criado_em} · vence {c.vencimento}</div>
+                  {/* Resumo clientes na visão geral */}
+                  {(d.clientes||[]).length>0&&(
+                    <div>
+                      <div className="pk-dsec-t">Clientes ({(d.clientes||[]).length})</div>
+                      <div style={{display:'flex',flexWrap:'wrap',gap:7}}>
+                        {(d.clientes||[]).slice(0,6).map(c=>(
+                          <div key={c.id} style={{display:'flex',alignItems:'center',gap:7,padding:'6px 10px',background:'var(--surface-2)',border:'1px solid var(--border)',borderRadius:8}}>
+                            <div className="pk-cli-av" style={{background:cor(c.nome),width:24,height:24,fontSize:10}}>{pkInit(c.nome)}</div>
+                            <span style={{fontSize:12,fontWeight:600}}>{c.nome.split(' ')[0]}</span>
+                            {(c.saldo_em_aberto||0)>0&&<span className="cf-pill warn" style={{fontSize:8}}>{pkBRL(c.saldo_em_aberto)}</span>}
                           </div>
-                          <div className="pk-compra-total">{pkBRL(c.valor_total)}</div>
-                          <span className={`pk-compra-chev${openCompra[c.id]?' open':''}`}>▼</span>
-                        </div>
-                        {openCompra[c.id]&&(
-                          <div className="pk-compra-body">
-                            <div>
-                              <div className="pk-subhead">Produtos</div>
-                              {(c.itens||[]).map((it,i)=>(
-                                <div className="pk-item" key={i}>
-                                  <span className="pk-item-n">{txt(it.produto)}</span>
-                                  <span style={{color:'var(--text-muted)',fontFamily:'var(--font-mono)',fontSize:11}}>{it.quantidade}× {pkBRL(it.preco_unitario)}</span>
-                                  <span style={{fontFamily:'var(--font-mono)',fontWeight:700}}>{pkBRL(it.subtotal)}</span>
-                                </div>
-                              ))}
-                            </div>
-                            <div>
-                              <div className="pk-subhead">
-                                Repasses
-                                {c.saldo>0&&<button className="cf-btn" style={{padding:'4px 10px',fontSize:11,borderRadius:7}} onClick={()=>onRepasse(parceira,c)}>+ Repasse</button>}
+                        ))}
+                        {(d.clientes||[]).length>6&&<button className="cf-btn cf-btn-ghost" style={{padding:'6px 10px',fontSize:11,borderRadius:8}} onClick={()=>setAba('clientes')}>+{d.clientes.length-6} →</button>}
+                      </div>
+                    </div>
+                  )}
+                </>
+
+              /* ── ABA COMPRAS ── */
+              ) : aba==='compras' ? (
+                <>
+                  <div style={{display:'flex',justifyContent:'flex-end'}}>
+                    <button className="cf-btn cf-btn-primary" style={{fontSize:12}} onClick={onNovaCompra}><Ic d={ICONS.plus} size={13}/> Nova compra</button>
+                  </div>
+                  {d.compras.length===0
+                    ?<div style={{textAlign:'center',padding:'40px 0',color:'var(--text-muted)',fontSize:13}}>Nenhuma compra registrada</div>
+                    :d.compras.map(c=>{
+                      const pillCls=c.status_pag==='pago'?'ok':c.vencido?'crit':'warn';
+                      const pillLbl=c.status_pag==='pago'?'✓ PAGO':c.vencido?'VENCIDO':c.status_pag==='parcelado'?'PARCELADO':'EM ABERTO';
+                      return (
+                        <div className="pk-compra" key={c.id}>
+                          <div className="pk-compra-h" onClick={()=>toggle(c.id)}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{display:'flex',alignItems:'center',gap:7}}>
+                                <span className={`cf-pill ${pillCls}`} style={{fontSize:9}}>{pillLbl}</span>
+                                {c.saldo>0&&<span style={{fontSize:10.5,fontFamily:'var(--font-mono)',color:'var(--warn)'}}>falta {pkBRL(c.saldo)}</span>}
                               </div>
-                              {(c.repasses||[]).length===0
-                                ?<div style={{fontSize:11,fontFamily:'var(--font-mono)',color:'var(--text-muted)'}}>Nenhum repasse</div>
-                                :(c.repasses||[]).map(r=>(
-                                  <div className="pk-repasse" key={r.id}>
-                                    <span className="pk-repasse-d">{r.data}{r.observacao?` · ${r.observacao}`:''}</span>
-                                    <span className="pk-repasse-v">{pkBRL(r.valor)}</span>
+                              <div style={{fontSize:10,fontFamily:'var(--font-mono)',color:'var(--text-muted)',marginTop:4}}>{c.criado_em} · vence {c.vencimento}</div>
+                            </div>
+                            <div className="pk-compra-total">{pkBRL(c.valor_total)}</div>
+                            <span className={`pk-compra-chev${openCompra[c.id]?' open':''}`}>▼</span>
+                          </div>
+                          {openCompra[c.id]&&(
+                            <div className="pk-compra-body">
+                              <div>
+                                <div className="pk-subhead">Produtos</div>
+                                {(c.itens||[]).map((it,i)=>(
+                                  <div className="pk-item" key={i}>
+                                    <span className="pk-item-n">{txt(it.produto)}</span>
+                                    <span style={{color:'var(--text-muted)',fontFamily:'var(--font-mono)',fontSize:11}}>{it.quantidade}× {pkBRL(it.preco_unitario)}</span>
+                                    <span style={{fontFamily:'var(--font-mono)',fontWeight:700}}>{pkBRL(it.subtotal)}</span>
                                   </div>
                                 ))}
+                              </div>
+                              <div>
+                                <div className="pk-subhead">
+                                  Repasses
+                                  {c.saldo>0&&<button className="cf-btn" style={{padding:'4px 10px',fontSize:11,borderRadius:7}} onClick={()=>onRepasse(parceira,c)}>+ Repasse</button>}
+                                </div>
+                                {(c.repasses||[]).length===0
+                                  ?<div style={{fontSize:11,fontFamily:'var(--font-mono)',color:'var(--text-muted)'}}>Nenhum repasse</div>
+                                  :(c.repasses||[]).map(r=>(
+                                    <div className="pk-repasse" key={r.id}>
+                                      <span className="pk-repasse-d">{r.data}{r.observacao?` · ${r.observacao}`:''}</span>
+                                      <span className="pk-repasse-v">{pkBRL(r.valor)}</span>
+                                    </div>
+                                  ))}
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </>
 
-              {/* Clientes */}
-              <div>
-                <div className="pk-dsec-t">Clientes da parceira ({(d.clientes||[]).length})</div>
-                {(d.clientes||[]).length===0
-                  ?<div style={{fontSize:11,fontFamily:'var(--font-mono)',color:'var(--text-muted)'}}>Nenhuma cliente vinculada</div>
-                  :(d.clientes||[]).map(c=>(
+              /* ── ABA CLIENTES ── */
+              ) : (
+                <>
+                  {/* Botão adicionar cliente */}
+                  {!addCli ? (
+                    <button className="cf-btn cf-btn-primary" style={{alignSelf:'flex-start'}} onClick={()=>{setAddCli(true);setAddErr('');}}>
+                      <Ic d={ICONS.plus} size={14}/> Adicionar cliente
+                    </button>
+                  ) : (
+                    <div style={{background:'var(--surface-2)',border:'1px solid var(--brand-line)',borderRadius:12,padding:14,display:'flex',flexDirection:'column',gap:10}}>
+                      <div style={{fontSize:11,fontWeight:700,color:'var(--brand)',fontFamily:'var(--font-mono)',letterSpacing:'.08em'}}>NOVA CLIENTE</div>
+                      {addErr&&<div className="pk-err">⚠ {addErr}</div>}
+                      <div className="pk-row2">
+                        <div className="pk-fld"><label className="pk-fld-l">Nome *</label><input className="pk-inp" autoFocus placeholder="Nome completo" value={novoNome} onChange={e=>setNovoNome(e.target.value)}/></div>
+                        <div className="pk-fld"><label className="pk-fld-l">Telefone</label><input className="pk-inp" placeholder="(11) 99999-9999" value={novoTel} onChange={e=>setNovoTel(e.target.value)}/></div>
+                      </div>
+                      <div style={{display:'flex',gap:8}}>
+                        <button className="cf-btn cf-btn-ghost" style={{flex:1,justifyContent:'center'}} onClick={()=>{setAddCli(false);setAddErr('');}}>Cancelar</button>
+                        <button className="cf-btn cf-btn-primary" style={{flex:2,justifyContent:'center'}} disabled={addSaving} onClick={salvarCli}>{addSaving?'Salvando...':'Confirmar'}</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Lista de clientes */}
+                  {(d.clientes||[]).length===0 ? (
+                    <div style={{textAlign:'center',padding:'40px 0',color:'var(--text-muted)',fontSize:13}}>
+                      Nenhuma cliente vinculada ainda.<br/>
+                      <span style={{fontSize:11,fontFamily:'var(--font-mono)'}}>Adicione a primeira cliente acima.</span>
+                    </div>
+                  ) : (d.clientes||[]).map(c=>(
                     <div className="pk-cli-row" key={c.id}>
                       <div className="pk-cli-av" style={{background:cor(c.nome)}}>{pkInit(c.nome)}</div>
                       <div style={{flex:1,minWidth:0}}>
@@ -714,37 +835,48 @@ function PartnerDrawer({parceira, detalhe, loadingDetalhe, onClose, onRepasse, o
                       {(c.saldo_em_aberto||0)>0
                         ?<span className="cf-pill warn" style={{fontSize:9}}>{pkBRL(c.saldo_em_aberto)}</span>
                         :<span className="cf-pill ok" style={{fontSize:9}}>em dia</span>}
-                      <button className="cf-icon-btn" title="Nova venda para esta cliente" onClick={()=>onVendaCli(parceira,c)}
-                        style={{width:30,height:30,background:'color-mix(in oklab,var(--ok) 12%,transparent)',color:'var(--ok)',borderColor:'color-mix(in oklab,var(--ok) 25%,transparent)'}}>
+                      {/* Botão nova venda */}
+                      <button className="cf-icon-btn" title="Nova venda para esta cliente"
+                        style={{width:30,height:30,background:'color-mix(in oklab,var(--ok) 12%,transparent)',color:'var(--ok)',borderColor:'color-mix(in oklab,var(--ok) 25%,transparent)'}}
+                        onClick={()=>onVendaCli(parceira,c)}>
                         <Ic d={ICONS.dollar} size={14}/>
                       </button>
-                      <button className="cf-icon-btn danger" title="Remover cliente" onClick={()=>onDeletarCli(parceira.id,c.id)}
-                        style={{width:30,height:30}}>
+                      {/* WhatsApp */}
+                      {c.telefone&&(
+                        <a className="cf-icon-btn" href={pkWa(c.telefone)} target="_blank" rel="noreferrer" title="WhatsApp"
+                          style={{textDecoration:'none',width:30,height:30,background:'color-mix(in oklab,#25d366 10%,transparent)',color:'#25d366',borderColor:'color-mix(in oklab,#25d366 22%,transparent)'}}>
+                          <IcoWa size={13}/>
+                        </a>
+                      )}
+                      {/* Remover */}
+                      <button className="cf-icon-btn danger" title="Remover cliente" style={{width:30,height:30}} onClick={()=>onDeletarCli(parceira.id,c.id)}>
                         <Ic d={ICONS.trash} size={14}/>
                       </button>
                     </div>
                   ))}
-              </div>
-            </>
-          )}
-        </div>
+                </>
+              )
+            )}
+          </div>
 
-        <div className="pk-dfoot">
-          {parceira.saldo_em_aberto>0
-            ?<button className="cf-btn cf-btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>onRepasse(parceira,null)}>
-               <Ic d={ICONS.arrowIn} size={14}/> Registrar repasse
-             </button>
-            :<a className="cf-btn cf-btn-ghost" style={{flex:1,justifyContent:'center',textDecoration:'none'}} href={pkWa(parceira.telefone)} target="_blank" rel="noreferrer">
-               <IcoWa size={14}/> WhatsApp
-             </a>}
-          <a className="cf-icon-btn" href={pkWa(parceira.telefone,cobrarMsg)} target="_blank" rel="noreferrer" title="Cobrar no WhatsApp" style={{textDecoration:'none'}}>
-            <IcoWa size={14}/>
-          </a>
+          {/* Footer */}
+          <div className="pk-det-foot">
+            {parceira.saldo_em_aberto>0 ? (
+              <button className="cf-btn cf-btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>onRepasse(parceira,null)}>
+                <Ic d={ICONS.arrowIn} size={14}/> Registrar repasse
+              </button>
+            ) : (
+              <span style={{flex:1,display:'flex',alignItems:'center',fontSize:12,color:'var(--ok)',fontFamily:'var(--font-mono)'}}>✓ Conta em dia</span>
+            )}
+            <button className="cf-btn cf-btn-ghost" onClick={onNovaCompra}><Ic d={ICONS.plus} size={13}/> Nova compra</button>
+            <button className="cf-btn" onClick={onClose}>Fechar</button>
+          </div>
         </div>
       </div>
-    </>
+    </Portal>
   );
 }
+
 
 /* ── Modal base ───────────────────────────────────────────────────────── */
 function ModalBase({title, subtitle, ic, onClose, children, footer, theme, wide}) {
@@ -1074,6 +1206,14 @@ export default function Parceiras() {
     try{ await api.del(`/parceiras/${pid}/clientes/${cid}`); showToast('Cliente removida'); await loadDetalhe(pid); }
     catch(e){ showToast(e.message,'err'); }
   };
+  const handleAdicionarCli = async(pid, dados) => {
+    const r = await api.post(`/parceiras/${pid}/clientes`, dados);
+    await loadDetalhe(pid);
+    await load();
+    showToast(`${dados.nome} adicionada!`);
+    return r;
+  };
+
   const handleDeletarParceira = async(pid)=>{
     try{ await api.del(`/parceiras/${pid}`); showToast('Parceira removida','err'); setSelected(null); await load(); }
     catch(e){ showToast(e.message,'err'); }
@@ -1146,13 +1286,14 @@ export default function Parceiras() {
 
       {/* Drawer de detalhe */}
       {selected&&(
-        <PartnerDrawer
+        <PartnerModal
           parceira={selected} detalhe={detalhe} loadingDetalhe={loadingDet} theme={theme}
           onClose={()=>setSelected(null)}
           onRepasse={(p,c)=>setModalRepasse({parceira:p,compra:c})}
           onVendaCli={(p,c)=>setModalVenda({parceira:p,cliente:c})}
           onNovaCompra={()=>setModalCompra({parceira:selected})}
           onDeletarCli={handleDeletarCli}
+          onAdicionarCli={handleAdicionarCli}
         />
       )}
 
