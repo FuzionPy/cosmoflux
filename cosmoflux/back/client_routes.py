@@ -12,6 +12,9 @@ client_router = APIRouter(prefix="/api", tags=["clientes"])
 def calc_status_pag_cli(venda, hoje):
     """Calcula status de pagamento em tempo real."""
     if not venda: return "pago"
+    # cancelado tem prioridade máxima — nunca é sobrescrito pelo cálculo de parcelas
+    if venda.status_pagamento == "cancelado":
+        return "cancelado"
     parcelas = venda.parcelas
     if not parcelas:
         if venda.data_vencimento and venda.data_vencimento < hoje:
@@ -425,16 +428,39 @@ class EditarVendaSchema(BaseModel):
 
 @client_router.patch("/vendas/{venda_id}/cancelar")
 def cancelar_venda_alias(venda_id: int, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
-    """Alias registrado antes da rota genérica para evitar conflito de rotas."""
+    """Alias registrado antes da rota genérica para evitar conflito de rotas.
+    Cancela a Venda E o Pedido vinculado, devolvendo o estoque — espelha DELETE /pedidos/{id}
+    para manter as telas de Vendas e Clientes 100% sincronizadas."""
     v = db.query(Venda).filter(Venda.id == venda_id).first()
     if not v: raise HTTPException(404, "Venda não encontrada")
     if not ctx["admin"] and v.tenant_id != ctx["tenant_id"]:
         raise HTTPException(403, "Acesso negado")
     if v.status_pagamento == "cancelado":
         raise HTTPException(400, "Venda já cancelada")
+
     v.status_pagamento = "cancelado"
+
+    # cancela o Pedido vinculado e devolve estoque (mesma lógica do DELETE /pedidos/{id})
+    from models import Pedido, Produto, Movimentacao
+    pedido = None
+    if v.descricao and v.descricao.startswith("Pedido #"):
+        try:
+            pid = int(v.descricao.replace("Pedido #", "").strip())
+            pedido = db.query(Pedido).filter(Pedido.id == pid).first()
+        except (ValueError, TypeError):
+            pedido = None
+    if pedido and pedido.status != "cancelado":
+        for it in pedido.itens:
+            prod = db.query(Produto).filter(Produto.id == it.produto_id).first()
+            if prod:
+                prod.estoque_atual += it.quantidade
+                db.add(Movimentacao(produto_id=prod.id, tipo="entrada", quantidade=it.quantidade,
+                                    motivo="cancelamento", observacao=f"Cancelamento pedido #{pedido.id}",
+                                    usuario_id=ctx["usuario_id"], tenant_id=tid(ctx)))
+        pedido.status = "cancelado"
+
     db.commit()
-    return {"mensagem": "Venda cancelada"}
+    return {"mensagem": "Venda e pedido cancelados, estoque devolvido"}
 
 @client_router.patch("/vendas/{venda_id}")
 def editar_venda(venda_id: int, dados: EditarVendaSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
