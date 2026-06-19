@@ -580,7 +580,7 @@ function ListView({parceiras, onOpen, onRepasse, sort, setSort}) {
 }
 
 /* ── PartnerModal (central, via Portal) ──────────────────────────────── */
-function PartnerModal({parceira, detalhe, loadingDetalhe, onClose, onRepasse, onVendaCli, onNovaCompra, onDeletarCli, onAdicionarCli, onDeletarParceira, theme}) {
+function PartnerModal({parceira, detalhe, loadingDetalhe, onClose, onRepasse, onVendaCli, onNovaCompra, onDeletarCli, onAdicionarCli, onDeletarParceira, onVerVenda, theme}) {
   const [aba, setAba] = useState('geral');
   const [openCompra, setOpenCompra] = useState({});
   const [addCli, setAddCli] = useState(false);
@@ -633,6 +633,7 @@ function PartnerModal({parceira, detalhe, loadingDetalhe, onClose, onRepasse, on
           <div className="pk-det-tabs">
             {[
               {k:'geral',  lbl:'Visão geral'},
+              {k:'vendas', lbl:`Vendas (${(d.vendas||[]).filter(v=>v.status_pagamento!=='cancelado').length})`},
               {k:'compras',lbl:`Compras (${d.compras.length})`},
               {k:'clientes',lbl:`Clientes (${(d.clientes||[]).length})`},
             ].map(t=>(
@@ -738,6 +739,47 @@ function PartnerModal({parceira, detalhe, loadingDetalhe, onClose, onRepasse, on
                       </div>
                     </div>
                   )}
+                </>
+
+              /* ── ABA VENDAS (carteira da parceira) ── */
+              ) : aba==='vendas' ? (
+                <>
+                  {(d.vendas||[]).length===0 ? (
+                    <div style={{textAlign:'center',padding:'40px 0',color:'var(--text-muted)',fontSize:13}}>
+                      Nenhuma venda registrada para os clientes desta parceira.<br/>
+                      <span style={{fontSize:11,fontFamily:'var(--font-mono)'}}>Use o botão de venda (cifrão) na aba Clientes.</span>
+                    </div>
+                  ) : (d.vendas||[]).map(v=>{
+                    const canc = v.status_pagamento==='cancelado';
+                    const cls = canc?'muted':v.status_pagamento==='pago'?'ok':v.status_pagamento==='vencido'?'crit':'warn';
+                    const lbl = canc?'CANCELADA':v.status_pagamento==='pago'?'PAGO':v.status_pagamento==='vencido'?'VENCIDO':'EM ABERTO';
+                    const parcAbertas = (v.parcelas||[]).filter(p=>!p.pago).length;
+                    return (
+                      <div key={v.id} style={{background:'var(--surface-2)',border:'1px solid var(--border)',borderRadius:11,padding:'12px 14px',marginBottom:9,opacity:canc?.55:1,cursor:'pointer'}} onClick={()=>onVerVenda(v)}>
+                        <div style={{display:'flex',alignItems:'center',gap:10}}>
+                          <div className="pk-cli-av" style={{background:cor(v.cliente),width:32,height:32,fontSize:13}}>{pkInit(v.cliente)}</div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{txt(v.cliente)}</div>
+                            <div style={{fontSize:10,fontFamily:'var(--font-mono)',color:'var(--text-muted)',marginTop:2}}>
+                              {v.data} · {txt(v.modo_pagamento)||'—'}{v.parcelado?` · ${v.num_parcelas}x`:''}
+                            </div>
+                          </div>
+                          <div style={{textAlign:'right'}}>
+                            <div style={{fontFamily:'var(--font-mono)',fontWeight:700,fontSize:14,textDecoration:canc?'line-through':'none'}}>{pkBRL(v.valor_total)}</div>
+                            <span className={`cf-pill ${cls}`} style={{fontSize:9,marginTop:3}}>{lbl}</span>
+                          </div>
+                        </div>
+                        {!canc && v.saldo>0 && (
+                          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:9,paddingTop:9,borderTop:'1px solid var(--border)'}}>
+                            <span style={{fontSize:11,fontFamily:'var(--font-mono)',color:'var(--warn)'}}>
+                              saldo {pkBRL(v.saldo)}{parcAbertas>0?` · ${parcAbertas} parcela(s)`:''}
+                            </span>
+                            <span style={{fontSize:11,color:'var(--brand)',fontWeight:600}}>Gerenciar →</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </>
 
               /* ── ABA COMPRAS ── */
@@ -1145,6 +1187,166 @@ function NovaCompraModal({parceira, produtos, onClose, onSaved, theme}) {
   );
 }
 
+/* ── Modal Gerenciar Venda (parcelas, pagar, abater, cancelar) ────────── */
+function VendaDetalheModal({venda, onClose, onChanged, theme}) {
+  const [v, setV] = useState(venda);
+  const [pagandoP, setPagandoP] = useState(null);
+  const [abatOpen, setAbatOpen] = useState(false);
+  const [abatVal, setAbatVal] = useState('');
+  const [aplicando, setAplicando] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const parcelas = v.parcelas||[];
+  const totalPago = parcelas.reduce((a,p)=>a+(p.valor_pago||0),0) || v.pago || 0;
+  const saldo = Math.max(v.valor_total - totalPago, 0);
+  const pagasN = parcelas.filter(p=>p.pago).length;
+  const pct = v.valor_total>0?Math.min((totalPago/v.valor_total)*100,100):0;
+  const canc = v.status_pagamento==='cancelado';
+
+  const refetch = async() => {
+    // o detalhe da venda vem do detalhe da parceira; pedimos ao pai recarregar
+    const novo = await onChanged();
+    if (novo){ const atual = (novo.vendas||[]).find(x=>x.id===v.id); if(atual) setV(atual); }
+  };
+
+  const pagarParcela = async(pid) => {
+    setPagandoP(pid); setErr('');
+    try{ await api.patch(`/parcelas/${pid}/pagar`, {}); await refetch(); }
+    catch(e){ setErr(e.message); }
+    finally{ setPagandoP(null); }
+  };
+
+  const aplicarAbat = async() => {
+    const val = parseFloat(abatVal)||0;
+    const abertas = parcelas.filter(p=>!p.pago);
+    if(val<=0){ setErr('Informe um valor.'); return; }
+    if(abertas.length===0){ setErr('Sem parcelas em aberto.'); return; }
+    setAplicando(true); setErr('');
+    try{
+      await api.patch(`/parcelas/${abertas[0].id}/pagar`, { valor_abatido: val });
+      setAbatOpen(false); setAbatVal('');
+      await refetch();
+    }catch(e){ setErr(e.message); }
+    finally{ setAplicando(false); }
+  };
+
+  const cancelar = async() => {
+    setBusy(true); setErr('');
+    try{ await api.patch(`/vendas/${v.id}/cancelar`, {}); await onChanged(); onClose(); }
+    catch(e){ setErr(e.message); setBusy(false); }
+  };
+
+  return (
+    <Portal theme={theme}>
+      <div className="pk-det-ov" style={{zIndex:175}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+        <div className="pk-det-modal" style={{maxWidth:600}}>
+          <div className="pk-det-hd">
+            <div style={{flex:1,minWidth:0}}>
+              <div className="pk-det-name" style={{fontSize:16}}>
+                {txt(v.descricao)||`Venda #${v.id}`}
+                {canc&&<span className="cf-pill muted" style={{marginLeft:8}}>CANCELADA</span>}
+              </div>
+              <div className="pk-det-meta">{v.data} · {txt(v.cliente)} · {txt(v.modo_pagamento)||'—'}{v.parcelado?` · ${v.num_parcelas}x`:''}</div>
+            </div>
+            <button className="cf-icon-btn" onClick={onClose}><Ic d={ICONS.x} size={15}/></button>
+          </div>
+
+          <div className="pk-det-body">
+            {err&&<div className="pk-err">⚠ {err}</div>}
+
+            {/* KPIs */}
+            <div className="pk-kpis3">
+              <div className="pk-kc"><div className="pk-kc-l">Total</div><div className="pk-kc-v">{pkBRL(v.valor_total)}</div></div>
+              <div className="pk-kc"><div className="pk-kc-l">Pago</div><div className="pk-kc-v" style={{color:'var(--ok)'}}>{pkBRL(totalPago)}</div></div>
+              <div className="pk-kc"><div className="pk-kc-l">Saldo</div><div className="pk-kc-v" style={{color:saldo>0?'var(--warn)':'var(--ok)'}}>{pkBRL(saldo)}</div></div>
+            </div>
+            {parcelas.length>0&&(
+              <div>
+                <div className="pk-vb-prog"><span style={{width:`${pct}%`}}/></div>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:9.5,fontFamily:'var(--font-mono)',color:'var(--text-muted)',marginTop:5}}>
+                  <span>{pagasN}/{parcelas.length} parcelas pagas</span><span>{pct.toFixed(0)}% quitado</span>
+                </div>
+              </div>
+            )}
+
+            {/* Parcelas */}
+            {parcelas.length>0&&(
+              <div>
+                <div className="pk-dsec-t">Parcelas</div>
+                <div style={{background:'var(--surface-2)',border:'1px solid var(--border)',borderRadius:11,overflow:'hidden'}}>
+                  {parcelas.map(pc=>{
+                    const vp=pc.valor_pago||0;
+                    const parcial=!pc.pago&&vp>0;
+                    const cls=pc.pago?'ok':parcial?'warn':pc.status==='vencido'?'crit':'muted';
+                    const lbl=pc.pago?'PAGO':parcial?'PARCIAL':pc.status==='vencido'?'VENCIDO':'ABERTO';
+                    return (
+                      <div key={pc.id} style={{display:'grid',gridTemplateColumns:'44px 1fr 92px auto',gap:8,alignItems:'center',padding:'9px 13px',borderBottom:'1px solid var(--border)'}}>
+                        <span style={{fontSize:12,fontFamily:'var(--font-mono)',color:'var(--text-muted)',textAlign:'center'}}>{pc.numero===0?'ENT':`${pc.numero}ª`}</span>
+                        <div>
+                          <div style={{fontSize:11,fontFamily:'var(--font-mono)',color:'var(--text-dim)'}}>{pc.vencimento||'—'}</div>
+                          {pc.dias_atraso>0&&<div style={{fontSize:9,color:'var(--crit)',fontFamily:'var(--font-mono)'}}>venceu há {pc.dias_atraso}d</div>}
+                        </div>
+                        <div style={{textAlign:'right'}}>
+                          {parcial
+                            ?<div style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}><span style={{color:'var(--warn)',fontSize:11,fontFamily:'var(--font-mono)'}}>{pkBRL(vp)}</span><span style={{color:'var(--text-muted)',fontSize:9,fontFamily:'var(--font-mono)'}}>/ {pkBRL(pc.valor)}</span></div>
+                            :<span style={{fontFamily:'var(--font-mono)',fontWeight:700,fontSize:12,color:pc.pago?'var(--ok)':'var(--text)'}}>{pkBRL(pc.valor)}</span>}
+                        </div>
+                        <div style={{display:'flex',gap:5,justifyContent:'flex-end'}}>
+                          <span className={`cf-pill ${cls}`} style={{fontSize:8}}>{lbl}</span>
+                          {!pc.pago&&!canc&&<button className="cf-btn" style={{padding:'4px 9px',fontSize:10,borderRadius:6,background:'color-mix(in oklab,var(--ok) 13%,transparent)',color:'var(--ok)',borderColor:'color-mix(in oklab,var(--ok) 30%,transparent)'}} disabled={pagandoP===pc.id} onClick={()=>pagarParcela(pc.id)}>{pagandoP===pc.id?'...':'✓ Pagar'}</button>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Abatimento inline */}
+            {!canc&&saldo>0&&(
+              abatOpen?(
+                <div style={{background:'var(--surface-2)',border:'1px solid var(--brand-line)',borderRadius:12,padding:14,display:'flex',flexDirection:'column',gap:10}}>
+                  <div style={{fontSize:11,fontWeight:700,color:'var(--brand)',fontFamily:'var(--font-mono)',letterSpacing:'.08em'}}>ABATER VALOR</div>
+                  <input className="pk-inp big" type="number" min="0.01" step="0.01" max={saldo} autoFocus placeholder="0,00" value={abatVal} onChange={e=>setAbatVal(e.target.value)}/>
+                  <div style={{fontSize:10,color:'var(--text-muted)',fontFamily:'var(--font-mono)'}}>Distribuído entre as parcelas em aberto. Saldo: {pkBRL(saldo)}</div>
+                  <div style={{display:'flex',gap:8}}>
+                    <button className="cf-btn cf-btn-ghost" style={{flex:1,justifyContent:'center'}} onClick={()=>{setAbatOpen(false);setAbatVal('');}}>Cancelar</button>
+                    <button className="cf-btn cf-btn-primary" style={{flex:2,justifyContent:'center'}} disabled={aplicando} onClick={aplicarAbat}>{aplicando?'Aplicando...':'Aplicar abatimento'}</button>
+                  </div>
+                </div>
+              ):(
+                <button className="cf-btn" style={{alignSelf:'flex-start',background:'color-mix(in oklab,var(--warn) 12%,transparent)',color:'var(--warn)',borderColor:'color-mix(in oklab,var(--warn) 30%,transparent)'}} onClick={()=>{setAbatOpen(true);setAbatVal('');}}>◑ Registrar abatimento</button>
+              )
+            )}
+
+            {v.observacao&&<div><div className="pk-dsec-t">Observação</div><div style={{fontSize:12.5,color:'var(--text-dim)',background:'var(--surface-2)',border:'1px solid var(--border)',borderRadius:10,padding:12}}>{txt(v.observacao)}</div></div>}
+          </div>
+
+          {/* Footer */}
+          {!canc&&(
+            <div className="pk-det-foot">
+              {confirmCancel?(
+                <>
+                  <span style={{flex:1,display:'flex',alignItems:'center',fontSize:12,color:'var(--crit)',fontWeight:600}}>Cancelar esta venda?</span>
+                  <button className="cf-btn cf-btn-ghost" onClick={()=>setConfirmCancel(false)}>Não</button>
+                  <button className="cf-btn cf-btn-danger" disabled={busy} onClick={cancelar}>{busy?'...':'Sim, cancelar'}</button>
+                </>
+              ):(
+                <>
+                  <span style={{flex:1}}/>
+                  <button className="cf-btn cf-btn-danger" onClick={()=>setConfirmCancel(true)}><Ic d={ICONS.trash} size={14}/> Cancelar venda</button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </Portal>
+  );
+}
+
 /* ══ COMPONENTE PRINCIPAL ════════════════════════════════════════════════ */
 export default function Parceiras() {
   const [params] = useSearchParams();
@@ -1165,6 +1367,7 @@ export default function Parceiras() {
   const [modalRepasse,  setModalRepasse]  = useState(null); // {parceira, compra}
   const [modalVenda,    setModalVenda]    = useState(null); // {parceira, cliente}
   const [modalCompra,   setModalCompra]   = useState(null); // {parceira}
+  const [vendaDet,      setVendaDet]      = useState(null); // venda em gerenciamento
 
   const showToast = useCallback((msg,type='ok')=>{ setToast({msg,type}); setTimeout(()=>setToast(null),3200); },[]);
 
@@ -1311,6 +1514,7 @@ export default function Parceiras() {
           onDeletarCli={handleDeletarCli}
           onAdicionarCli={handleAdicionarCli}
           onDeletarParceira={handleDeletarParceira}
+          onVerVenda={(v)=>setVendaDet(v)}
         />
       )}
 
@@ -1319,6 +1523,9 @@ export default function Parceiras() {
       {modalRepasse&&<RepasseModal parceira={modalRepasse.parceira} compra={modalRepasse.compra} onClose={()=>setModalRepasse(null)} onSaved={handleRepasse} theme={theme}/>}
       {modalVenda&&<VendaClienteModal parceira={modalVenda.parceira} cliente={modalVenda.cliente} produtos={produtos} onClose={()=>setModalVenda(null)} onSaved={handleVendaCli} theme={theme}/>}
       {modalCompra&&<NovaCompraModal parceira={modalCompra.parceira} produtos={produtos} onClose={()=>setModalCompra(null)} onSaved={handleNovaCompra} theme={theme}/>}
+      {vendaDet&&<VendaDetalheModal venda={vendaDet} theme={theme}
+        onClose={()=>setVendaDet(null)}
+        onChanged={async()=>{ if(selected){ const d=await api.get(`/parceiras/${selected.id}`); setDetalhe(d); await load(); return d; } return null; }}/>}
 
       {/* Toast */}
       {toast&&(

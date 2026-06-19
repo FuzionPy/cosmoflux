@@ -196,17 +196,44 @@ def detalhe_parceira(pid: int, ctx: dict = Depends(get_ctx), db: Session = Depen
             pago = sum((getattr(pc, "valor_pago", None) or 0) for pc in v.parcelas)
             saldo = round(v.valor_total - pago, 2)
             tem_vencida = any((not pc.pago and pc.vencimento and pc.vencimento < hoje) for pc in v.parcelas)
-            status = "pago" if saldo <= 0.01 else ("vencido" if tem_vencida else "em_aberto")
-            vendas_resumo["total_vendido"] += v.valor_total
-            vendas_resumo["total_recebido"] += pago
-            vendas_resumo["num_vendas"] += 1
-            if status == "em_aberto": vendas_resumo["num_em_aberto"] += 1
-            if status == "vencido":   vendas_resumo["num_vencidas"] += 1
+            if v.status_pagamento == "cancelado":
+                status = "cancelado"
+            elif saldo <= 0.01:
+                status = "pago"
+            elif tem_vencida:
+                status = "vencido"
+            else:
+                status = "em_aberto"
+            # parcelas detalhadas (para gerenciamento: pagar / abater)
+            parcelas_v = []
+            for pc in sorted(v.parcelas, key=lambda x: x.numero):
+                vpago = getattr(pc, "valor_pago", None) or 0
+                venc = pc.vencimento
+                st = "pago" if pc.pago else ("vencido" if (venc and venc < hoje) else "em_aberto")
+                dias_atr = (hoje - venc).days if (venc and venc < hoje and not pc.pago) else 0
+                parcelas_v.append({
+                    "id": pc.id, "numero": pc.numero, "valor": pc.valor,
+                    "valor_pago": vpago, "saldo_restante": round(pc.valor - vpago, 2),
+                    "pago": pc.pago, "status": st, "dias_atraso": dias_atr,
+                    "vencimento": venc.strftime("%d/%m/%Y") if venc else None,
+                    "vencimento_raw": venc.isoformat() if venc else None,
+                    "data_pago": pc.data_pago.strftime("%d/%m/%Y") if getattr(pc, "data_pago", None) else None,
+                })
+            if status != "cancelado":
+                vendas_resumo["total_vendido"] += v.valor_total
+                vendas_resumo["total_recebido"] += pago
+                vendas_resumo["num_vendas"] += 1
+                if status == "em_aberto": vendas_resumo["num_em_aberto"] += 1
+                if status == "vencido":   vendas_resumo["num_vencidas"] += 1
             vendas_lista.append({
                 "id": v.id, "cliente": nome_por_cid.get(v.cliente_id, "—"),
+                "cliente_id": v.cliente_id,
                 "descricao": v.descricao, "valor_total": v.valor_total,
                 "pago": round(pago, 2), "saldo": saldo, "status_pagamento": status,
                 "modo_pagamento": v.modo_pagamento,
+                "parcelado": len(parcelas_v) > 1, "num_parcelas": len(parcelas_v),
+                "parcelas": parcelas_v,
+                "observacao": v.observacao,
                 "data": v.criado_em.strftime("%d/%m/%Y") if v.criado_em else None,
             })
         vendas_resumo["total_vendido"] = round(vendas_resumo["total_vendido"], 2)
