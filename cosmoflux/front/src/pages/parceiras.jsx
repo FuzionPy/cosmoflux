@@ -1037,6 +1037,7 @@ function VendaClienteModal({parceira, cliente, produtos, onClose, onSaved, theme
   const salvar=async()=>{
     if(modo==='produto'&&itens.length===0){setErr('Adicione ao menos 1 produto.');return;}
     if(modo==='livre'&&(!valorLivre||parseFloat(valorLivre)<=0)){setErr('Informe o valor.');return;}
+    if((parcelado||pagamento==='Fiado'||pagamento==='Boleto')&&!vencimento){setErr('Informe a data de vencimento.');return;}
     setSaving(true); setErr('');
     try{
       // se a cliente não tem vínculo com cliente real, cria automaticamente

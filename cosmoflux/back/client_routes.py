@@ -157,22 +157,31 @@ def criar_venda_unificada(dados: VendaUnificadaSchema, ctx: dict = Depends(get_c
                            vencimento=date_type.today(), pago=True,
                            data_pago=date_type.today()))
 
-        # parcelas do restante
+        # parcelas do restante — SEMPRE cria quando há saldo (gera vencimento
+        # automático de 30 dias se nenhuma data foi informada), garantindo que
+        # toda venda com saldo tenha parcelas gerenciáveis (pagar/abater)
         if tem_restante:
-            if dados.parcelado and dados.num_parcelas > 1 and venc:
+            from datetime import timedelta
+            base_venc = venc or (date.today() + timedelta(days=30))
+            if dados.parcelado and dados.num_parcelas > 1:
                 valor_parc = round(restante / dados.num_parcelas, 2)
+                acumulado = 0.0
                 for i in range(dados.num_parcelas):
-                    mes = venc.month + i
-                    ano = venc.year + (mes - 1) // 12
+                    mes = base_venc.month + i
+                    ano = base_venc.year + (mes - 1) // 12
                     mes = ((mes - 1) % 12) + 1
-                    try:    venc_parc = venc.replace(year=ano, month=mes)
+                    try:    venc_parc = base_venc.replace(year=ano, month=mes)
                     except ValueError:
                         import calendar
                         ultimo_dia = calendar.monthrange(ano, mes)[1]
-                        venc_parc = venc.replace(year=ano, month=mes, day=ultimo_dia)
+                        venc_parc = base_venc.replace(year=ano, month=mes, day=ultimo_dia)
+                    # última parcela ajusta centavos para fechar o total exato
+                    if i == dados.num_parcelas - 1:
+                        valor_parc = round(restante - acumulado, 2)
+                    acumulado = round(acumulado + valor_parc, 2)
                     db.add(Parcela(venda_id=venda.id, numero=i+1, valor=valor_parc, vencimento=venc_parc))
-            elif venc:
-                db.add(Parcela(venda_id=venda.id, numero=1, valor=restante, vencimento=venc))
+            else:
+                db.add(Parcela(venda_id=venda.id, numero=1, valor=restante, vencimento=base_venc))
 
     db.commit()
     return {"mensagem": "Venda registrada", "pedido_id": pedido.id, "venda_id": venda_id, "total": total}
