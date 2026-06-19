@@ -8,8 +8,9 @@ const tok  = () => localStorage.getItem('token') || sessionStorage.getItem('toke
 const h    = () => ({ 'Content-Type':'application/json', Authorization:`Bearer ${tok()}` });
 const api  = {
   get:    url    => fetch(BASE+url,{headers:h()}).then(r=>r.json()),
-  post:   (u,b)  => fetch(BASE+u,{method:'POST',  headers:h(),body:JSON.stringify(b)}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+  post:   (u,b)  => fetch(BASE+u,{method:'POST',  headers:h(),body:JSON.stringify(b||{})}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
   put:    (u,b)  => fetch(BASE+u,{method:'PUT',   headers:h(),body:JSON.stringify(b)}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+  patch:  (u,b)  => fetch(BASE+u,{method:'PATCH', headers:h(),body:JSON.stringify(b||{})}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
   del:    url    => fetch(BASE+url,{method:'DELETE',headers:h()}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
 };
 
