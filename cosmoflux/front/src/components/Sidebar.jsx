@@ -150,8 +150,6 @@ const NAV_ITEMS = [
   { label: 'Clientes',     path: '/clientes',     icon: '◯', section: null },
   { label: 'Produtos',     path: '/produtos',     icon: '◈', section: 'ESTOQUE' },
   { label: 'Estoque',      path: '/estoque',      icon: '◫', section: null },
-  { label: 'Entradas',     path: '/entradas',     icon: '↑', section: null },
-  { label: 'Saídas',       path: '/saidas',       icon: '↓', section: null },
   { label: 'Relatórios',   path: '/relatorios',   icon: '▦', section: 'ANÁLISE' },
   { label: 'Lucros',       path: '/lucros',       icon: '◈', section: null },
   { label: 'Fornecedores', path: '/fornecedores', icon: '◎', section: 'CADASTROS' },
