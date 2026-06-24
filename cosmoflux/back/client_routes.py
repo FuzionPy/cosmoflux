@@ -258,16 +258,36 @@ def detalhe_cliente(cliente_id: int, ctx: dict = Depends(get_ctx), db: Session =
             ), 2) if parcelas else (v.valor_total if getattr(v,"status_pagamento","") == "pago" else 0)
             saldo_venda = round(max(v.valor_total - total_pago_venda, 0), 2)
 
-            try:
-                pedido = db.query(Pedido).filter(Pedido.cliente_id == c.id).order_by(desc(Pedido.id)).first()
-                status_entrega = pedido.status if pedido else None
-            except Exception:
-                status_entrega = None
+            # localiza o Pedido VINCULADO a esta venda (via descricao "Pedido #X")
+            # para trazer itens (produtos) e status de entrega corretos — espelha /pedidos
+            pedido = None
+            desc = getattr(v, "descricao", "") or ""
+            if desc.startswith("Pedido #"):
+                try:
+                    pid = int(desc.replace("Pedido #", "").strip())
+                    pedido = db.query(Pedido).filter(Pedido.id == pid).first()
+                except (ValueError, TypeError):
+                    pedido = None
+            status_entrega = pedido.status if pedido else None
+
+            # itens (produtos) da venda — mesma estrutura que /pedidos retorna
+            itens_venda = []
+            if pedido:
+                for it in pedido.itens:
+                    itens_venda.append({
+                        "produto_id":     it.produto_id,
+                        "produto":        it.produto_rel.nome if it.produto_rel else None,
+                        "quantidade":     it.quantidade,
+                        "preco_unitario": it.preco_unitario,
+                        "desconto_item":  it.desconto_item,
+                        "subtotal":       round(it.quantidade * it.preco_unitario - it.desconto_item, 2),
+                    })
 
             dv = getattr(v, "data_vencimento", None)
             dd = getattr(v, "data_venda", None)
             vendas.append({
                 "id":               v.id,
+                "pedido_id":        pedido.id if pedido else None,
                 "descricao":        getattr(v, "descricao", None),
                 "valor_total":      v.valor_total,
                 "desconto":         getattr(v, "desconto", None) or 0,
@@ -282,6 +302,8 @@ def detalhe_cliente(cliente_id: int, ctx: dict = Depends(get_ctx), db: Session =
                 "observacao":       getattr(v, "observacao", None),
                 "total_pago":       total_pago_venda,
                 "saldo_devedor":    saldo_venda,
+                "num_itens":        len(itens_venda),
+                "itens":            itens_venda,
                 "parcelas":         parcelas,
             })
         except Exception as e:

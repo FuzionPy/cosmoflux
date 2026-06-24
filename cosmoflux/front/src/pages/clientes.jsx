@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 const BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000') + '/api';
@@ -483,18 +484,75 @@ function AlertBanner({ items, type }) {
 // ── FORM VENDA (normalizado com tela de Vendas) ───────────────────────────────
 const PAGAMENTOS = ['PIX','Dinheiro','Cartão de crédito','Cartão de débito','Fiado','Transferência','Boleto'];
 
+/* ── ModalVenda — idêntico ao modal de Nova Venda da tela de Vendas ──────── */
+const MV_PAGAMENTOS = ['Dinheiro','Cartão de crédito','Cartão de débito','PIX','Boleto','Fiado','Transferência'];
+const mvBRL = (v) => 'R$ ' + Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const mvGetTheme = () => { try { return document.documentElement.getAttribute('data-theme') || 'dark'; } catch { return 'dark'; } };
+
+const MV_CSS = `
+.mv-modal-ov *{box-sizing:border-box;}
+.mv-modal-ov{--brand:#9166d8;--ok:#21a06d;--warn:#e08a2a;--crit:#e2514f;--font-ui:'Plus Jakarta Sans',system-ui,sans-serif;--font-mono:'JetBrains Mono',monospace;position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;font-family:var(--font-ui);animation:mvFade .2s ease both;}
+.mv-modal-ov[data-theme="dark"],.mv-modal-ov:not([data-theme]){--surface:#111319;--surface-2:#171a21;--elevated:#1a1e26;--border:rgba(255,255,255,.075);--border-strong:rgba(255,255,255,.15);--text:#edeef3;--text-dim:rgba(237,238,243,.6);--text-muted:rgba(237,238,243,.34);--shadow:0 8px 28px rgba(0,0,0,.32);}
+.mv-modal-ov[data-theme="light"]{--surface:#fff;--surface-2:#f8f6fa;--elevated:#fff;--border:rgba(28,20,36,.1);--border-strong:rgba(28,20,36,.2);--text:#1b1722;--text-dim:rgba(27,23,34,.62);--text-muted:rgba(27,23,34,.42);--shadow:0 10px 30px rgba(28,20,36,.07);}
+.mv-modal-ov{--brand-soft:color-mix(in oklab,var(--brand) 14%,transparent);--brand-line:color-mix(in oklab,var(--brand) 32%,transparent);color:var(--text);}
+@keyframes mvFade{from{opacity:0}to{opacity:1}}
+.mv-modal{background:var(--surface);border:1px solid var(--border-strong);border-radius:18px;width:100%;max-width:600px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.5);}
+.mv-hd{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.mv-title{font-size:16px;font-weight:800;}
+.mv-sub{font-size:11px;font-family:var(--font-mono);color:var(--text-muted);margin-top:3px;}
+.mv-body{overflow-y:auto;flex:1;padding:18px 22px;display:flex;flex-direction:column;gap:16px;}
+.mv-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;}
+.mv-fld{display:flex;flex-direction:column;gap:6px;}
+.mv-fld-lbl{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
+.mv-inp,.mv-sel{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);font-family:var(--font-ui);outline:none;width:100%;transition:border-color .2s;}
+.mv-inp:focus,.mv-sel:focus{border-color:var(--brand-line);}
+.mv-sel{cursor:pointer;}
+.mv-fr2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.mv-sectitle{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
+.mv-toggle{display:flex;gap:6px;background:var(--surface-2);border-radius:10px;padding:4px;}
+.mv-toggle button{flex:1;padding:8px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:600;font-family:var(--font-ui);transition:all .2s;background:transparent;color:var(--text-muted);}
+.mv-modo-prod.on{background:color-mix(in oklab,var(--ok) 15%,transparent);color:var(--ok);}
+.mv-modo-livre.on{background:color-mix(in oklab,var(--warn) 15%,transparent);color:var(--warn);}
+.mv-drop{position:absolute;top:100%;left:0;right:0;background:var(--elevated);border:1px solid var(--border-strong);border-radius:9px;margin-top:4px;z-index:20;max-height:200px;overflow-y:auto;box-shadow:var(--shadow);}
+.mv-opt{padding:9px 13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:13px;border-bottom:1px solid var(--border);}
+.mv-opt:hover{background:var(--surface-2);}
+.mv-item{display:flex;align-items:center;gap:9px;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:8px 12px;}
+.mv-qty{width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;}
+.mv-totais{background:color-mix(in oklab,var(--brand) 5%,var(--surface-2));border:1px solid var(--brand-line);border-radius:11px;padding:14px 16px;display:flex;flex-direction:column;gap:7px;}
+.mv-tot-row{display:flex;justify-content:space-between;font-size:13px;}
+.mv-err{font-size:12.5px;color:var(--crit);background:color-mix(in oklab,var(--crit) 9%,transparent);border:1px solid color-mix(in oklab,var(--crit) 25%,transparent);border-radius:9px;padding:9px 12px;}
+.mv-close{width:32px;height:32px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
+.mv-close:hover{color:var(--crit);border-color:color-mix(in oklab,var(--crit) 35%,transparent);}
+.mv-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-family:var(--font-ui);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;}
+.mv-btn-primary{background:var(--brand);border-color:var(--brand);color:#fff;}
+.mv-btn-primary:hover{filter:brightness(1.08);}
+.mv-btn-ghost{background:transparent;}
+@media(max-width:560px){.mv-fr2{grid-template-columns:1fr;}}
+`;
+
 function ModalVenda({ clienteId, clienteNome, onClose, onSaved, showToast }) {
-  const [form, setForm]       = useState({ modo_pagamento:'PIX', parcelado:false, num_parcelas:2, data_vencimento:'', desconto_geral:'', observacao:'', valor_entrada:'', modo_pagamento_entrada:'', descricao_livre:'', valor_livre:'' });
+  const [theme, setTheme] = useState(mvGetTheme);
+  const [form, setForm]       = useState({ modo_pagamento:'PIX', parcelado:false, num_parcelas:2, data_vencimento:'', desconto_geral:'', observacao:'', valor_entrada:'' });
   const [itens, setItens]     = useState([]);
   const [modoLivre, setModoLivre] = useState(false);
+  const [valorLivre, setValorLivre] = useState('');
+  const [descLivre, setDescLivre] = useState('');
   const [busca, setBusca]     = useState('');
+  const [drop, setDrop]       = useState(false);
   const [sugestoes, setSugestoes] = useState([]);
   const [saving, setSaving]   = useState(false);
   const [err, setErr]         = useState('');
-
   const F = (k,v) => setForm(f=>({...f,[k]:v}));
 
-  // busca produtos
+  useEffect(() => {
+    const obs = new MutationObserver(()=>setTheme(mvGetTheme()));
+    obs.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+    const prev = document.body.style.overflow; document.body.style.overflow='hidden';
+    const onKey = e => { if(e.key==='Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return ()=>{ obs.disconnect(); document.body.style.overflow=prev; window.removeEventListener('keydown',onKey); };
+  }, [onClose]);
+
   useEffect(() => {
     if (busca.length < 2) { setSugestoes([]); return; }
     const t = setTimeout(async () => {
@@ -508,249 +566,191 @@ function ModalVenda({ clienteId, clienteNome, onClose, onSaved, showToast }) {
     setItens(its => {
       const ex = its.find(i => i.produto_id === prod.id);
       if (ex) return its.map(i => i.produto_id===prod.id ? {...i, quantidade:i.quantidade+1} : i);
-      return [...its, { produto_id:prod.id, nome:prod.nome, preco:prod.preco_venda, quantidade:1, desconto_item:0 }];
+      return [...its, { produto_id:prod.id, nome:prod.nome, preco_unitario:prod.preco_venda, estoque:prod.estoque_atual, quantidade:1 }];
     });
-    setBusca(''); setSugestoes([]);
+    setBusca(''); setDrop(false);
   };
+  const delItem = (id) => setItens(its => its.filter(i => i.produto_id!==id));
+  const updQty  = (id,q) => setItens(its => its.map(i => i.produto_id===id ? {...i, quantidade:Math.max(1,q)} : i));
 
-  const remItem = (id) => setItens(its => its.filter(i => i.produto_id!==id));
-  const updQtd  = (id,v) => setItens(its => its.map(i => i.produto_id===id ? {...i, quantidade:Math.max(1,parseInt(v)||1)} : i));
+  const subtotal = modoLivre ? (parseFloat(valorLivre)||0) : itens.reduce((a,i)=>a+i.quantidade*i.preco_unitario,0);
+  const descG    = modoLivre ? 0 : (parseFloat(form.desconto_geral)||0);
+  const total    = Math.max(0, subtotal - descG);
+  const entrada  = Math.min(parseFloat(form.valor_entrada)||0, total);
+  const restante = Math.max(total - entrada, 0);
+  const valParc  = form.parcelado && form.num_parcelas>1 && restante>0 ? restante/parseInt(form.num_parcelas) : null;
 
-  const desconto   = parseFloat(form.desconto_geral)||0;
-  const subtotalProd = itens.reduce((a,i) => a + i.preco*i.quantidade - (i.desconto_item||0), 0);
-  const subtotal   = modoLivre ? (parseFloat(form.valor_livre)||0) : subtotalProd;
-  const total      = Math.max(subtotal - (modoLivre ? 0 : desconto), 0);
-  const entrada    = Math.min(parseFloat(form.valor_entrada)||0, total);
-  const restante   = Math.max(total - entrada, 0);
-  const valParcela = form.parcelado && form.num_parcelas>1 && restante>0
-    ? restante / parseInt(form.num_parcelas) : null;
+  const fiado = form.modo_pagamento==='Fiado';
 
   const save = async () => {
-    if (!modoLivre && itens.length === 0) { setErr('Adicione pelo menos um produto ou use "Valor livre".'); return; }
-    if (modoLivre && (!form.valor_livre || parseFloat(form.valor_livre)<=0)) { setErr('Informe o valor da venda.'); return; }
-    if (!form.data_vencimento) { setErr('Data de vencimento é obrigatória.'); return; }
+    if (!modoLivre && itens.length === 0) { setErr('Adicione ao menos 1 produto ou use Valor livre.'); return; }
+    if (modoLivre && (!valorLivre || parseFloat(valorLivre)<=0)) { setErr('Informe o valor da venda.'); return; }
+    if ((form.parcelado||fiado||form.modo_pagamento==='Boleto') && !form.data_vencimento) { setErr('Informe a data de vencimento.'); return; }
     setSaving(true); setErr('');
     try {
-      const payload = modoLivre ? {
+      const payload = {
         cliente_id: clienteId,
-        itens: [],
-        valor_livre: parseFloat(form.valor_livre),
-        descricao_livre: form.descricao_livre || 'Venda avulsa',
+        itens: modoLivre ? [] : itens.map(i=>({ produto_id:i.produto_id, quantidade:i.quantidade, preco_unitario:i.preco_unitario, desconto_item:0 })),
         modo_pagamento: form.modo_pagamento,
         parcelado: form.parcelado,
-        num_parcelas: form.parcelado ? parseInt(form.num_parcelas) : 1,
-        data_vencimento: form.data_vencimento,
-        desconto_geral: 0,
-        observacao: form.observacao || null,
+        num_parcelas: parseInt(form.num_parcelas)||1,
+        data_vencimento: form.data_vencimento||null,
         valor_entrada: entrada,
-        modo_pagamento_entrada: form.modo_pagamento_entrada || null,
-      } : {
-        cliente_id: clienteId,
-        itens: itens.map(i=>({ produto_id:i.produto_id, quantidade:i.quantidade, preco_unitario:i.preco, desconto_item:i.desconto_item||0 })),
-        modo_pagamento: form.modo_pagamento,
-        parcelado: form.parcelado,
-        num_parcelas: form.parcelado ? parseInt(form.num_parcelas) : 1,
-        data_vencimento: form.data_vencimento,
-        desconto_geral: desconto,
-        observacao: form.observacao || null,
-        valor_entrada: entrada,
-        modo_pagamento_entrada: form.modo_pagamento_entrada || null,
+        desconto_geral: descG,
+        observacao: form.observacao||null,
+        ...(modoLivre && { valor_livre: parseFloat(valorLivre), descricao_livre: descLivre||'Venda avulsa' }),
       };
       await api.post('/vendas/unificada', payload);
       showToast('Venda registrada!', '✓');
       onSaved();
     } catch(e) {
-      setErr(e?.detail || 'Erro ao registrar venda.');
+      setErr(e?.message || e?.detail || 'Erro ao registrar venda.');
     } finally { setSaving(false); }
   };
 
-  return (
-    <div className="modal-bg" onClick={e => e.target===e.currentTarget && onClose()}>
-      <div className="modal" style={{maxWidth:600,maxHeight:'90vh',overflow:'hidden',display:'flex',flexDirection:'column'}}>
-        <div className="modal-head">
+  const prodFiltrados = sugestoes;
+
+  return createPortal(
+    <div className="mv-modal-ov" data-theme={theme} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <style>{MV_CSS}</style>
+      <div className="mv-modal">
+        <div className="mv-hd">
           <div>
-            <div className="modal-title">Nova Venda</div>
-            <div className="modal-sub">Registra venda, baixa estoque e financeiro · {clienteNome}</div>
+            <div className="mv-title">Nova venda</div>
+            {clienteNome && <div className="mv-sub">{clienteNome}</div>}
           </div>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="mv-close" onClick={onClose}>×</button>
         </div>
 
-        <div className="modal-body" style={{overflowY:'auto',flex:1}}>
-          {err && <div className="form-err">⚠ {err}</div>}
+        <div className="mv-body">
+          {err && <div className="mv-err">⚠ {err}</div>}
 
-          {/* TOGGLE MODO */}
-          <div style={{display:'flex',gap:6,marginBottom:14,background:'rgba(255,255,255,.03)',borderRadius:9,padding:4}}>
-            <button onClick={()=>setModoLivre(false)} style={{flex:1,padding:'7px',borderRadius:7,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,transition:'all .2s',background:!modoLivre?'rgba(0,212,170,.15)':'transparent',color:!modoLivre?'#00d4aa':'rgba(232,234,237,.4)'}}>
-              📦 Produto do catálogo
-            </button>
-            <button onClick={()=>setModoLivre(true)} style={{flex:1,padding:'7px',borderRadius:7,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,transition:'all .2s',background:modoLivre?'rgba(255,211,42,.15)':'transparent',color:modoLivre?'#ffd32a':'rgba(232,234,237,.4)'}}>
-              ✏ Valor livre
-            </button>
+          {/* Toggle modo */}
+          <div className="mv-toggle">
+            <button className={`mv-modo-prod${!modoLivre?' on':''}`} onClick={()=>setModoLivre(false)}>📦 Produto do catálogo</button>
+            <button className={`mv-modo-livre${modoLivre?' on':''}`} onClick={()=>setModoLivre(true)}>✏ Valor livre</button>
           </div>
 
           {modoLivre ? (
-            <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:12}}>
-              <div className="form-field">
-                <label className="form-lbl">Descrição da venda</label>
-                <input className="form-inp" placeholder="Ex: Serviço, produto avulso..."
-                  value={form.descricao_livre} onChange={e=>F('descricao_livre',e.target.value)}/>
+            <>
+              <div className="mv-fld">
+                <label className="mv-fld-lbl">Descrição</label>
+                <input className="mv-inp" placeholder="Ex: serviço, produto avulso…" value={descLivre} onChange={e=>setDescLivre(e.target.value)}/>
               </div>
-              <div className="form-field">
-                <label className="form-lbl">Valor total (R$) *</label>
-                <input className="form-inp" type="number" min="0.01" step="0.01" placeholder="0,00"
-                  value={form.valor_livre} onChange={e=>F('valor_livre',e.target.value)} autoFocus/>
+              <div className="mv-fld">
+                <label className="mv-fld-lbl">Valor total (R$)</label>
+                <input className="mv-inp" type="number" min="0.01" step="0.01" placeholder="0,00" value={valorLivre} onChange={e=>setValorLivre(e.target.value)} style={{fontSize:18,fontWeight:700,fontFamily:'var(--font-mono)'}}/>
               </div>
-            </div>
+            </>
           ) : (
-          <>
-          {/* PRODUTOS */}
-          <div className="form-section-title">Produtos</div>
-          <div style={{position:'relative',marginBottom:8}}>
-            <div style={{display:'flex',gap:8}}>
-              <input className="form-inp" style={{flex:1}} placeholder="Buscar produto por nome ou SKU..."
-                value={busca} onChange={e=>setBusca(e.target.value)}/>
-            </div>
-            {sugestoes.length > 0 && (
-              <div style={{position:'absolute',top:'100%',left:0,right:0,background:'#1a1d22',border:'1px solid rgba(255,255,255,.1)',borderRadius:8,zIndex:50,maxHeight:200,overflowY:'auto'}}>
-                {sugestoes.map(p=>(
-                  <div key={p.id} onClick={()=>addItem(p)}
-                    style={{padding:'10px 14px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:13,borderBottom:'1px solid rgba(255,255,255,.05)'}}
-                    onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.04)'}
-                    onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <div>
-                      <span style={{color:'#e8eaed',fontWeight:600}}>{p.nome}</span>
-                      {p.sku && <span style={{fontSize:10,color:'rgba(232,234,237,.3)',marginLeft:8,fontFamily:'JetBrains Mono,monospace'}}>{p.sku}</span>}
+            <div className="mv-fld">
+              <label className="mv-fld-lbl">Produtos</label>
+              <div style={{position:'relative'}}>
+                <input className="mv-inp" placeholder="Buscar produto por nome ou SKU…" value={busca}
+                  onChange={e=>{setBusca(e.target.value);setDrop(true);}} onFocus={()=>setDrop(true)}/>
+                {drop && prodFiltrados.length>0 && (
+                  <div className="mv-drop">
+                    {prodFiltrados.map(p=>(
+                      <div key={p.id} className="mv-opt" onClick={()=>addItem(p)}>
+                        <span>{p.nome}</span>
+                        <span style={{display:'flex',gap:10,alignItems:'center'}}>
+                          <span style={{fontSize:11,color:'var(--text-muted)'}}>est. {p.estoque_atual}</span>
+                          <strong style={{fontFamily:'var(--font-mono)',color:'var(--ok)'}}>{mvBRL(p.preco_venda)}</strong>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {itens.length>0 && (
+                <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:8}}>
+                  {itens.map(i=>(
+                    <div key={i.produto_id} className="mv-item">
+                      <div style={{flex:1,fontSize:13,fontWeight:600}}>{i.nome}</div>
+                      <button className="mv-qty" onClick={()=>updQty(i.produto_id,i.quantidade-1)}>−</button>
+                      <span style={{fontFamily:'var(--font-mono)',minWidth:22,textAlign:'center'}}>{i.quantidade}</span>
+                      <button className="mv-qty" onClick={()=>updQty(i.produto_id,i.quantidade+1)}>+</button>
+                      <span style={{fontFamily:'var(--font-mono)',fontWeight:700,color:'var(--ok)',minWidth:78,textAlign:'right'}}>{mvBRL(i.preco_unitario*i.quantidade)}</span>
+                      <button className="mv-qty" style={{borderColor:'transparent',color:'var(--crit)'}} onClick={()=>delItem(i.produto_id)}>×</button>
                     </div>
-                    <div style={{display:'flex',gap:12,alignItems:'center'}}>
-                      <span style={{fontSize:11,color:'rgba(232,234,237,.4)'}}>Estoque: {p.estoque_atual}</span>
-                      <span style={{fontWeight:700,color:'#00d4aa',fontFamily:'JetBrains Mono,monospace'}}>{fmtBRL(p.preco_venda)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {itens.length === 0 ? (
-            <div style={{textAlign:'center',padding:'16px',color:'rgba(232,234,237,.25)',fontSize:12,fontFamily:'JetBrains Mono,monospace',background:'rgba(255,255,255,.02)',borderRadius:8,marginBottom:12}}>
-              Nenhum produto adicionado
-            </div>
-          ) : (
-            <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:12}}>
-              {itens.map(i=>(
-                <div key={i.produto_id} style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.06)',borderRadius:8,padding:'8px 12px'}}>
-                  <div style={{flex:1,fontSize:13,fontWeight:600,color:'#e8eaed'}}>{i.nome}</div>
-                  <div style={{display:'flex',alignItems:'center',gap:6}}>
-                    <button onClick={()=>updQtd(i.produto_id,i.quantidade-1)} style={{width:24,height:24,borderRadius:5,border:'1px solid rgba(255,255,255,.1)',background:'transparent',color:'#e8eaed',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
-                    <span style={{fontSize:13,fontFamily:'JetBrains Mono,monospace',minWidth:24,textAlign:'center'}}>{i.quantidade}</span>
-                    <button onClick={()=>updQtd(i.produto_id,i.quantidade+1)} style={{width:24,height:24,borderRadius:5,border:'1px solid rgba(255,255,255,.1)',background:'transparent',color:'#e8eaed',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
-                  </div>
-                  <span style={{fontSize:13,fontFamily:'JetBrains Mono,monospace',color:'#00d4aa',minWidth:80,textAlign:'right'}}>{fmtBRL(i.preco*i.quantidade)}</span>
-                  <button onClick={()=>remItem(i.produto_id)} style={{background:'none',border:'none',color:'rgba(255,71,87,.5)',cursor:'pointer',fontSize:16,padding:'0 2px'}}>×</button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          </>
-          )}
-
-          {/* PAGAMENTO */}
-          <div className="form-section-title">Pagamento</div>
-          <div className="form-row2">
-            <div className="form-field">
-              <label className="form-lbl">Forma de pagamento (restante)</label>
-              <select className="form-sel" value={form.modo_pagamento} onChange={e=>F('modo_pagamento',e.target.value)}>
-                {PAGAMENTOS.map(p=><option key={p}>{p}</option>)}
-              </select>
-            </div>
-            <div className="form-field">
-              <label className="form-lbl">Desconto geral (R$)</label>
-              <input className="form-inp" type="number" min="0" step="0.01" placeholder="0,00"
-                value={form.desconto_geral} onChange={e=>F('desconto_geral',e.target.value)}/>
-            </div>
-          </div>
-
-          <div className="form-row2">
-            <div className="form-field">
-              <label className="form-lbl">Valor de entrada (R$)</label>
-              <input className="form-inp" type="number" min="0" step="0.01" placeholder="0,00 — opcional"
-                value={form.valor_entrada} onChange={e=>F('valor_entrada',e.target.value)}/>
-            </div>
-            {parseFloat(form.valor_entrada)>0 && (
-              <div className="form-field">
-                <label className="form-lbl">Forma pagamento da entrada</label>
-                <select className="form-sel" value={form.modo_pagamento_entrada} onChange={e=>F('modo_pagamento_entrada',e.target.value)}>
-                  <option value="">Mesma do restante</option>
-                  {PAGAMENTOS.map(p=><option key={p}>{p}</option>)}
-                </select>
-              </div>
-            )}
-          </div>
-
-          <div className="form-row2">
-            <div className="form-field">
-              <label className="form-lbl">Data de vencimento *</label>
-              <input className="form-inp" type="date" value={form.data_vencimento} onChange={e=>F('data_vencimento',e.target.value)}/>
-            </div>
-            <div className="form-field">
-              <label className="form-lbl">Parcelado?</label>
-              <div style={{display:'flex',alignItems:'center',gap:10,marginTop:6}}>
-                <label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:13,color:'rgba(232,234,237,.7)'}}>
-                  <input type="checkbox" checked={form.parcelado} onChange={e=>F('parcelado',e.target.checked)} style={{accentColor:'#00d4aa',width:15,height:15}}/>
-                  Sim, parcelar
-                </label>
-              </div>
-            </div>
-          </div>
-
-          {form.parcelado && (
-            <div className="form-row2">
-              <div className="form-field">
-                <label className="form-lbl">Número de parcelas</label>
-                <select className="form-sel" value={form.num_parcelas} onChange={e=>F('num_parcelas',e.target.value)}>
-                  {[2,3,4,5,6,7,8,9,10,12].map(n=><option key={n} value={n}>{n}x</option>)}
-                </select>
-              </div>
-              {valParcela && (
-                <div className="form-field" style={{justifyContent:'flex-end'}}>
-                  <div className="parc-preview">
-                    <div><div className="pp-item-lbl">Cada parcela</div><div className="pp-item-val">{fmtBRL(valParcela)}</div></div>
-                  </div>
+                  ))}
                 </div>
               )}
             </div>
           )}
 
-          <div className="form-field">
-            <label className="form-lbl">Observação</label>
-            <textarea className="form-ta" placeholder="Opcional..."
-              value={form.observacao} onChange={e=>F('observacao',e.target.value)}/>
+          {/* Pagamento */}
+          <div className="mv-sectitle">Pagamento</div>
+          <div className="mv-fr2">
+            <div className="mv-fld">
+              <label className="mv-fld-lbl">Forma de pagamento</label>
+              <select className="mv-sel" value={form.modo_pagamento} onChange={e=>F('modo_pagamento',e.target.value)}>
+                {MV_PAGAMENTOS.map(m=><option key={m}>{m}</option>)}
+              </select>
+            </div>
+            {!modoLivre && (
+              <div className="mv-fld">
+                <label className="mv-fld-lbl">Desconto geral (R$)</label>
+                <input className="mv-inp" type="number" min="0" step="0.01" placeholder="0,00" value={form.desconto_geral} onChange={e=>F('desconto_geral',e.target.value)}/>
+              </div>
+            )}
+          </div>
+
+          <div className="mv-fr2">
+            <div className="mv-fld">
+              <label className="mv-fld-lbl">Valor de entrada (R$)</label>
+              <input className="mv-inp" type="number" min="0" step="0.01" placeholder="0,00 — opcional" value={form.valor_entrada} onChange={e=>F('valor_entrada',e.target.value)}/>
+            </div>
+            <div className="mv-fld">
+              <label className="mv-fld-lbl">Vencimento</label>
+              <input className="mv-inp" type="date" value={form.data_vencimento} onChange={e=>F('data_vencimento',e.target.value)}/>
+            </div>
+          </div>
+
+          <div className="mv-fr2">
+            <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,color:'var(--text-dim)'}}>
+              <input type="checkbox" checked={form.parcelado} onChange={e=>F('parcelado',e.target.checked)} style={{accentColor:'var(--brand)',width:15,height:15}}/>
+              Parcelar
+            </label>
+            {form.parcelado && (
+              <div className="mv-fld">
+                <label className="mv-fld-lbl">Nº de parcelas</label>
+                <select className="mv-sel" value={form.num_parcelas} onChange={e=>F('num_parcelas',e.target.value)}>
+                  {[2,3,4,5,6,7,8,9,10,12].map(n=><option key={n} value={n}>{n}x</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div className="mv-fld">
+            <label className="mv-fld-lbl">Observação</label>
+            <input className="mv-inp" placeholder="Opcional…" value={form.observacao} onChange={e=>F('observacao',e.target.value)}/>
           </div>
 
           {/* Totais */}
-          {itens.length > 0 && (
-            <div style={{background:'rgba(0,212,170,.04)',border:'1px solid rgba(0,212,170,.12)',borderRadius:10,padding:'12px 16px',display:'flex',flexDirection:'column',gap:6}}>
-              {desconto>0 && <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}><span style={{color:'rgba(232,234,237,.4)'}}>Subtotal</span><span style={{fontFamily:'JetBrains Mono,monospace'}}>{fmtBRL(subtotal)}</span></div>}
-              {desconto>0 && <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}><span style={{color:'rgba(232,234,237,.4)'}}>Desconto</span><span style={{fontFamily:'JetBrains Mono,monospace',color:'#ff6b35'}}>- {fmtBRL(desconto)}</span></div>}
-              <div style={{display:'flex',justifyContent:'space-between',fontSize:15,fontWeight:800}}><span style={{color:'#e8eaed'}}>Total</span><span style={{fontFamily:'JetBrains Mono,monospace',color:'#00d4aa'}}>{fmtBRL(total)}</span></div>
+          {total>0 && (
+            <div className="mv-totais">
+              {descG>0 && <div className="mv-tot-row"><span style={{color:'var(--text-muted)'}}>Subtotal</span><span style={{fontFamily:'var(--font-mono)'}}>{mvBRL(subtotal)}</span></div>}
+              {descG>0 && <div className="mv-tot-row"><span style={{color:'var(--text-muted)'}}>Desconto</span><span style={{fontFamily:'var(--font-mono)',color:'var(--crit)'}}>− {mvBRL(descG)}</span></div>}
+              <div className="mv-tot-row" style={{fontSize:16,fontWeight:800}}><span>Total</span><span style={{fontFamily:'var(--font-mono)',color:'var(--ok)'}}>{mvBRL(total)}</span></div>
               {entrada>0 && <>
-                <div style={{display:'flex',justifyContent:'space-between',fontSize:12,borderTop:'1px solid rgba(255,255,255,.06)',paddingTop:6}}><span style={{color:'#00d4aa'}}>✓ Entrada</span><span style={{fontFamily:'JetBrains Mono,monospace',color:'#00d4aa'}}>- {fmtBRL(entrada)}</span></div>
-                <div style={{display:'flex',justifyContent:'space-between',fontSize:13,fontWeight:700}}><span style={{color:'#e8eaed'}}>Restante a pagar</span><span style={{fontFamily:'JetBrains Mono,monospace',color:'#ffd32a'}}>{fmtBRL(restante)}</span></div>
+                <div className="mv-tot-row" style={{borderTop:'1px solid var(--border)',paddingTop:6}}><span style={{color:'var(--ok)'}}>Entrada</span><span style={{fontFamily:'var(--font-mono)',color:'var(--ok)'}}>− {mvBRL(entrada)}</span></div>
+                <div className="mv-tot-row" style={{fontWeight:700}}><span>Restante</span><span style={{fontFamily:'var(--font-mono)',color:'var(--warn)'}}>{mvBRL(restante)}</span></div>
               </>}
-              {valParcela && <div style={{fontSize:11,color:'rgba(232,234,237,.35)',fontFamily:'JetBrains Mono,monospace',textAlign:'right'}}>{form.num_parcelas}x de {fmtBRL(valParcela)}</div>}
+              {valParc && <div style={{fontSize:11,color:'var(--text-muted)',fontFamily:'var(--font-mono)',textAlign:'right'}}>{form.num_parcelas}x de {mvBRL(valParc)}</div>}
             </div>
           )}
         </div>
 
-        <div className="modal-foot">
-          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={save} disabled={saving}>
-            {saving ? 'Salvando...' : 'Confirmar Venda'}
+        <div className="mv-foot">
+          <button className="mv-btn mv-btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="mv-btn mv-btn-primary" onClick={save} disabled={saving}>
+            {saving ? 'Salvando…' : 'Confirmar venda'}
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
