@@ -312,6 +312,8 @@ export default function Estoque() {
   const [busca, setBusca] = useState("");
   const [alertasOpen, setAlertasOpen] = useState(true);
   const [movFiltro, setMovFiltro] = useState("todas");
+  const [temMais, setTemMais] = useState(false);
+  const [loadingMais, setLoadingMais] = useState(false);
   const [modal, setModal] = useState(null); // 'entrada' | 'saida' | null
   const [toast, setToast] = useState(null);
 
@@ -324,23 +326,44 @@ export default function Estoque() {
     return () => obs.disconnect();
   }, []);
 
+  const BLOCO = 50; // movimentações por bloco
+
   const load = useCallback(async () => {
     setLoading(true); setErroCarga("");
     try {
+      // pede BLOCO+1 para saber se existe mais de um bloco
       const [p, m] = await Promise.all([
         api.get("/produtos"),
-        api.get("/movimentacoes?limite=100"),
+        api.get(`/movimentacoes?limite=${BLOCO + 1}`),
       ]);
+      const lista = asArr(m);
       setProdutos(asArr(p));
-      setMovs(asArr(m));
+      setTemMais(lista.length > BLOCO);
+      setMovs(lista.slice(0, BLOCO));
     } catch (e) {
       setErroCarga(e.message || "Não foi possível carregar os dados.");
-      setProdutos([]); setMovs([]);
+      setProdutos([]); setMovs([]); setTemMais(false);
     } finally {
       setLoading(false);
     }
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  const carregarMais = useCallback(async () => {
+    setLoadingMais(true);
+    try {
+      // pede o total atual + 1 bloco + 1 (sentinela), e fica com o excedente
+      const alvo = movs.length + BLOCO;
+      const m = await api.get(`/movimentacoes?limite=${alvo + 1}`);
+      const lista = asArr(m);
+      setTemMais(lista.length > alvo);
+      setMovs(lista.slice(0, alvo));
+    } catch (e) {
+      showToast(e.message || "Erro ao carregar mais.", "crit");
+    } finally {
+      setLoadingMais(false);
+    }
+  }, [movs.length]);
 
   const showToast = (msg, kind) => {
     setToast({ msg, kind });
@@ -439,7 +462,7 @@ export default function Estoque() {
         </button>
         <button className={"cfx-tab" + (tab === "mov" ? " is-active" : "")} onClick={() => setTab("mov")}>
           Movimentações
-          <span className="cfx-tab-count cfx-mono">{movs.length}</span>
+          <span className="cfx-tab-count cfx-mono">{movs.length}{temMais ? "+" : ""}</span>
         </button>
       </nav>
 
@@ -576,6 +599,16 @@ export default function Estoque() {
               );
             })}
           </div>
+          {temMais && (
+            <div className="cfx-mais-wrap">
+              <button className="cfx-mais" onClick={carregarMais} disabled={loadingMais}>
+                {loadingMais ? "Carregando…" : "Carregar mais movimentações"}
+              </button>
+              {movFiltro !== "todas" && (
+                <span className="cfx-mais-hint">o filtro se aplica sobre o que já foi carregado</span>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -646,6 +679,11 @@ const STYLE = `
 
 /* tabs */
 .cfx-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:20px}
+.cfx-mais-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px}
+.cfx-mais{padding:9px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.cfx-mais:hover{border-color:var(--brand);color:var(--brand)}
+.cfx-mais:disabled{opacity:.6;cursor:default}
+.cfx-mais-hint{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-muted)}
 .cfx-tab{position:relative;background:none;border:none;font-family:inherit;font-size:14.5px;font-weight:700;
   color:var(--text-muted);padding:11px 4px;margin-right:22px;cursor:pointer;display:flex;align-items:center;gap:8px;
   transition:.15s;border-bottom:2px solid transparent;margin-bottom:-1px}
