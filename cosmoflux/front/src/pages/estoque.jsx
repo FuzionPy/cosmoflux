@@ -45,6 +45,7 @@ const SAIDA_MOTIVOS = [
 const asArr = (x) => (Array.isArray(x) ? x : x && (x.items || x.data || x.results) || []);
 const pid = (p) => p.id ?? p.produto_id ?? p._id;
 const pnome = (p) => p.nome ?? p.name ?? p.produto ?? "Produto";
+const psku = (p) => p.sku ?? p.codigo ?? p.codigo_barras ?? "";
 const pestoque = (p) => Number(p.estoque ?? p.estoque_atual ?? p.quantidade ?? p.qtd ?? 0);
 const pmin = (p) => Number(p.estoque_minimo ?? p.minimo ?? p.estoque_min ?? p.min ?? 0);
 const pcusto = (p) => Number(p.preco_custo ?? p.custo ?? p.preco ?? p.preco_venda ?? 0);
@@ -153,7 +154,12 @@ function ProductSelect({ produtos, value, onChange, tipo }) {
   const sel = produtos.find((p) => pid(p) === value);
   const filt = useMemo(() => {
     const t = q.trim().toLowerCase();
-    return produtos.filter((p) => !t || pnome(p).toLowerCase().includes(t)).slice(0, 8);
+    return produtos.filter((p) => {
+      if (!t) return true;
+      return pnome(p).toLowerCase().includes(t)
+          || psku(p).toLowerCase().includes(t)
+          || String(p.codigo_barras ?? "").toLowerCase().includes(t);
+    }).slice(0, 8);
   }, [produtos, q]);
   useEffect(() => {
     const h = (e) => wrapRef.current && !wrapRef.current.contains(e.target) && setOpen(false);
@@ -165,7 +171,7 @@ function ProductSelect({ produtos, value, onChange, tipo }) {
       <button type="button" className="cfx-field cfx-ps-trigger" onClick={() => setOpen((o) => !o)}>
         {sel ? (
           <span className="cfx-ps-sel">
-            <span className="cfx-ps-name">{pnome(sel)}</span>
+            <span className="cfx-ps-name">{pnome(sel)}{psku(sel) ? <span className="cfx-ps-sku cfx-mono" style={{marginLeft:8}}>SKU {psku(sel)}</span> : null}</span>
             <span className="cfx-ps-stock cfx-mono">{pestoque(sel)} un</span>
           </span>
         ) : (
@@ -177,12 +183,13 @@ function ProductSelect({ produtos, value, onChange, tipo }) {
         <div className="cfx-ps-pop">
           <div className="cfx-ps-search">
             <Svg d={Icon.search} size={15} />
-            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar produto…" />
+            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nome ou SKU…" />
           </div>
           <div className="cfx-ps-list">
             {filt.length === 0 && <div className="cfx-ps-empty">Nenhum produto.</div>}
             {filt.map((p) => {
               const st = statusOf(p);
+              const sku = psku(p);
               return (
                 <button
                   type="button"
@@ -190,7 +197,10 @@ function ProductSelect({ produtos, value, onChange, tipo }) {
                   className={"cfx-ps-opt" + (pid(p) === value ? " is-sel" : "")}
                   onClick={() => { onChange(pid(p)); setOpen(false); setQ(""); }}
                 >
-                  <span className="cfx-ps-name">{pnome(p)}</span>
+                  <span className="cfx-ps-opt-info">
+                    <span className="cfx-ps-name">{pnome(p)}</span>
+                    {sku && <span className="cfx-ps-sku cfx-mono">SKU {sku}</span>}
+                  </span>
                   <span className={"cfx-dot cfx-dot--" + (st === "ok" ? "ok" : st === "critico" ? "warn" : "crit")} />
                   <span className="cfx-ps-stock cfx-mono">{pestoque(p)} un</span>
                 </button>
@@ -823,6 +833,9 @@ textarea.cfx-field{resize:vertical;min-height:54px}
   border-radius:8px;cursor:pointer;font-family:inherit;text-align:left;color:var(--text)}
 .cfx-ps-opt:hover,.cfx-ps-opt.is-sel{background:var(--surface-2)}
 .cfx-ps-opt .cfx-ps-name{flex:1;font-size:13.5px}
+.cfx-ps-opt-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.cfx-ps-opt-info .cfx-ps-name{flex:none}
+.cfx-ps-sku{font-size:10px;color:var(--text-muted);letter-spacing:.02em}
 .cfx-ps-empty{padding:16px;text-align:center;color:var(--text-muted);font-size:13px}
 
 /* toast */
