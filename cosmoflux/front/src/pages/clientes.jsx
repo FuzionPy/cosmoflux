@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 const BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000') + '/api';
@@ -484,276 +483,6 @@ function AlertBanner({ items, type }) {
 // ── FORM VENDA (normalizado com tela de Vendas) ───────────────────────────────
 const PAGAMENTOS = ['PIX','Dinheiro','Cartão de crédito','Cartão de débito','Fiado','Transferência','Boleto'];
 
-/* ── ModalVenda — idêntico ao modal de Nova Venda da tela de Vendas ──────── */
-const MV_PAGAMENTOS = ['Dinheiro','Cartão de crédito','Cartão de débito','PIX','Boleto','Fiado','Transferência'];
-const mvBRL = (v) => 'R$ ' + Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-const mvGetTheme = () => { try { return document.documentElement.getAttribute('data-theme') || 'dark'; } catch { return 'dark'; } };
-
-const MV_CSS = `
-.mv-modal-ov *{box-sizing:border-box;}
-.mv-modal-ov{--brand:#9166d8;--ok:#21a06d;--warn:#e08a2a;--crit:#e2514f;--font-ui:'Plus Jakarta Sans',system-ui,sans-serif;--font-mono:'JetBrains Mono',monospace;position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;font-family:var(--font-ui);animation:mvFade .2s ease both;}
-.mv-modal-ov[data-theme="dark"],.mv-modal-ov:not([data-theme]){--surface:#111319;--surface-2:#171a21;--elevated:#1a1e26;--border:rgba(255,255,255,.075);--border-strong:rgba(255,255,255,.15);--text:#edeef3;--text-dim:rgba(237,238,243,.6);--text-muted:rgba(237,238,243,.34);--shadow:0 8px 28px rgba(0,0,0,.32);}
-.mv-modal-ov[data-theme="light"]{--surface:#fff;--surface-2:#f8f6fa;--elevated:#fff;--border:rgba(28,20,36,.1);--border-strong:rgba(28,20,36,.2);--text:#1b1722;--text-dim:rgba(27,23,34,.62);--text-muted:rgba(27,23,34,.42);--shadow:0 10px 30px rgba(28,20,36,.07);}
-.mv-modal-ov{--brand-soft:color-mix(in oklab,var(--brand) 14%,transparent);--brand-line:color-mix(in oklab,var(--brand) 32%,transparent);color:var(--text);}
-@keyframes mvFade{from{opacity:0}to{opacity:1}}
-.mv-modal{background:var(--surface);border:1px solid var(--border-strong);border-radius:18px;width:100%;max-width:600px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.5);}
-.mv-hd{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
-.mv-title{font-size:16px;font-weight:800;}
-.mv-sub{font-size:11px;font-family:var(--font-mono);color:var(--text-muted);margin-top:3px;}
-.mv-body{overflow-y:auto;flex:1;padding:18px 22px;display:flex;flex-direction:column;gap:16px;}
-.mv-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;}
-.mv-fld{display:flex;flex-direction:column;gap:6px;}
-.mv-fld-lbl{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
-.mv-inp,.mv-sel{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);font-family:var(--font-ui);outline:none;width:100%;transition:border-color .2s;}
-.mv-inp:focus,.mv-sel:focus{border-color:var(--brand-line);}
-.mv-sel{cursor:pointer;}
-.mv-fr2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-.mv-sectitle{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
-.mv-toggle{display:flex;gap:6px;background:var(--surface-2);border-radius:10px;padding:4px;}
-.mv-toggle button{flex:1;padding:8px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:600;font-family:var(--font-ui);transition:all .2s;background:transparent;color:var(--text-muted);}
-.mv-modo-prod.on{background:color-mix(in oklab,var(--ok) 15%,transparent);color:var(--ok);}
-.mv-modo-livre.on{background:color-mix(in oklab,var(--warn) 15%,transparent);color:var(--warn);}
-.mv-drop{position:absolute;top:100%;left:0;right:0;background:var(--elevated);border:1px solid var(--border-strong);border-radius:9px;margin-top:4px;z-index:20;max-height:200px;overflow-y:auto;box-shadow:var(--shadow);}
-.mv-opt{padding:9px 13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:13px;border-bottom:1px solid var(--border);}
-.mv-opt:hover{background:var(--surface-2);}
-.mv-item{display:flex;align-items:center;gap:9px;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:8px 12px;}
-.mv-qty{width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;}
-.mv-totais{background:color-mix(in oklab,var(--brand) 5%,var(--surface-2));border:1px solid var(--brand-line);border-radius:11px;padding:14px 16px;display:flex;flex-direction:column;gap:7px;}
-.mv-tot-row{display:flex;justify-content:space-between;font-size:13px;}
-.mv-err{font-size:12.5px;color:var(--crit);background:color-mix(in oklab,var(--crit) 9%,transparent);border:1px solid color-mix(in oklab,var(--crit) 25%,transparent);border-radius:9px;padding:9px 12px;}
-.mv-close{width:32px;height:32px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
-.mv-close:hover{color:var(--crit);border-color:color-mix(in oklab,var(--crit) 35%,transparent);}
-.mv-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-family:var(--font-ui);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;}
-.mv-btn-primary{background:var(--brand);border-color:var(--brand);color:#fff;}
-.mv-btn-primary:hover{filter:brightness(1.08);}
-.mv-btn-ghost{background:transparent;}
-@media(max-width:560px){.mv-fr2{grid-template-columns:1fr;}}
-`;
-
-function ModalVenda({ clienteId, clienteNome, onClose, onSaved, showToast }) {
-  const [theme, setTheme] = useState(mvGetTheme);
-  const [form, setForm]       = useState({ modo_pagamento:'PIX', parcelado:false, num_parcelas:2, data_vencimento:'', desconto_geral:'', observacao:'', valor_entrada:'' });
-  const [itens, setItens]     = useState([]);
-  const [modoLivre, setModoLivre] = useState(false);
-  const [valorLivre, setValorLivre] = useState('');
-  const [descLivre, setDescLivre] = useState('');
-  const [busca, setBusca]     = useState('');
-  const [drop, setDrop]       = useState(false);
-  const [sugestoes, setSugestoes] = useState([]);
-  const [saving, setSaving]   = useState(false);
-  const [err, setErr]         = useState('');
-  const F = (k,v) => setForm(f=>({...f,[k]:v}));
-
-  useEffect(() => {
-    const obs = new MutationObserver(()=>setTheme(mvGetTheme()));
-    obs.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
-    const prev = document.body.style.overflow; document.body.style.overflow='hidden';
-    const onKey = e => { if(e.key==='Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return ()=>{ obs.disconnect(); document.body.style.overflow=prev; window.removeEventListener('keydown',onKey); };
-  }, [onClose]);
-
-  useEffect(() => {
-    if (busca.length < 2) { setSugestoes([]); return; }
-    const t = setTimeout(async () => {
-      const data = await api.get(`/produtos?search=${encodeURIComponent(busca)}`).catch(()=>[]);
-      setSugestoes(Array.isArray(data) ? data.slice(0,8) : []);
-    }, 250);
-    return () => clearTimeout(t);
-  }, [busca]);
-
-  const addItem = (prod) => {
-    setItens(its => {
-      const ex = its.find(i => i.produto_id === prod.id);
-      if (ex) return its.map(i => i.produto_id===prod.id ? {...i, quantidade:i.quantidade+1} : i);
-      return [...its, { produto_id:prod.id, nome:prod.nome, preco_unitario:prod.preco_venda, estoque:prod.estoque_atual, quantidade:1 }];
-    });
-    setBusca(''); setDrop(false);
-  };
-  const delItem = (id) => setItens(its => its.filter(i => i.produto_id!==id));
-  const updQty  = (id,q) => setItens(its => its.map(i => i.produto_id===id ? {...i, quantidade:Math.max(1,q)} : i));
-
-  const subtotal = modoLivre ? (parseFloat(valorLivre)||0) : itens.reduce((a,i)=>a+i.quantidade*i.preco_unitario,0);
-  const descG    = modoLivre ? 0 : (parseFloat(form.desconto_geral)||0);
-  const total    = Math.max(0, subtotal - descG);
-  const entrada  = Math.min(parseFloat(form.valor_entrada)||0, total);
-  const restante = Math.max(total - entrada, 0);
-  const valParc  = form.parcelado && form.num_parcelas>1 && restante>0 ? restante/parseInt(form.num_parcelas) : null;
-
-  const fiado = form.modo_pagamento==='Fiado';
-
-  const save = async () => {
-    if (!modoLivre && itens.length === 0) { setErr('Adicione ao menos 1 produto ou use Valor livre.'); return; }
-    if (modoLivre && (!valorLivre || parseFloat(valorLivre)<=0)) { setErr('Informe o valor da venda.'); return; }
-    if ((form.parcelado||fiado||form.modo_pagamento==='Boleto') && !form.data_vencimento) { setErr('Informe a data de vencimento.'); return; }
-    setSaving(true); setErr('');
-    try {
-      const payload = {
-        cliente_id: clienteId,
-        itens: modoLivre ? [] : itens.map(i=>({ produto_id:i.produto_id, quantidade:i.quantidade, preco_unitario:i.preco_unitario, desconto_item:0 })),
-        modo_pagamento: form.modo_pagamento,
-        parcelado: form.parcelado,
-        num_parcelas: parseInt(form.num_parcelas)||1,
-        data_vencimento: form.data_vencimento||null,
-        valor_entrada: entrada,
-        desconto_geral: descG,
-        observacao: form.observacao||null,
-        ...(modoLivre && { valor_livre: parseFloat(valorLivre), descricao_livre: descLivre||'Venda avulsa' }),
-      };
-      await api.post('/vendas/unificada', payload);
-      showToast('Venda registrada!', '✓');
-      onSaved();
-    } catch(e) {
-      setErr(e?.message || e?.detail || 'Erro ao registrar venda.');
-    } finally { setSaving(false); }
-  };
-
-  const prodFiltrados = sugestoes;
-
-  return createPortal(
-    <div className="mv-modal-ov" data-theme={theme} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-      <style>{MV_CSS}</style>
-      <div className="mv-modal">
-        <div className="mv-hd">
-          <div>
-            <div className="mv-title">Nova venda</div>
-            {clienteNome && <div className="mv-sub">{clienteNome}</div>}
-          </div>
-          <button className="mv-close" onClick={onClose}>×</button>
-        </div>
-
-        <div className="mv-body">
-          {err && <div className="mv-err">⚠ {err}</div>}
-
-          {/* Toggle modo */}
-          <div className="mv-toggle">
-            <button className={`mv-modo-prod${!modoLivre?' on':''}`} onClick={()=>setModoLivre(false)}>📦 Produto do catálogo</button>
-            <button className={`mv-modo-livre${modoLivre?' on':''}`} onClick={()=>setModoLivre(true)}>✏ Valor livre</button>
-          </div>
-
-          {modoLivre ? (
-            <>
-              <div className="mv-fld">
-                <label className="mv-fld-lbl">Descrição</label>
-                <input className="mv-inp" placeholder="Ex: serviço, produto avulso…" value={descLivre} onChange={e=>setDescLivre(e.target.value)}/>
-              </div>
-              <div className="mv-fld">
-                <label className="mv-fld-lbl">Valor total (R$)</label>
-                <input className="mv-inp" type="number" min="0.01" step="0.01" placeholder="0,00" value={valorLivre} onChange={e=>setValorLivre(e.target.value)} style={{fontSize:18,fontWeight:700,fontFamily:'var(--font-mono)'}}/>
-              </div>
-            </>
-          ) : (
-            <div className="mv-fld">
-              <label className="mv-fld-lbl">Produtos</label>
-              <div style={{position:'relative'}}>
-                <input className="mv-inp" placeholder="Buscar produto por nome ou SKU…" value={busca}
-                  onChange={e=>{setBusca(e.target.value);setDrop(true);}} onFocus={()=>setDrop(true)}/>
-                {drop && prodFiltrados.length>0 && (
-                  <div className="mv-drop">
-                    {prodFiltrados.map(p=>(
-                      <div key={p.id} className="mv-opt" onClick={()=>addItem(p)}>
-                        <span>{p.nome}</span>
-                        <span style={{display:'flex',gap:10,alignItems:'center'}}>
-                          <span style={{fontSize:11,color:'var(--text-muted)'}}>est. {p.estoque_atual}</span>
-                          <strong style={{fontFamily:'var(--font-mono)',color:'var(--ok)'}}>{mvBRL(p.preco_venda)}</strong>
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {itens.length>0 && (
-                <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:8}}>
-                  {itens.map(i=>(
-                    <div key={i.produto_id} className="mv-item">
-                      <div style={{flex:1,fontSize:13,fontWeight:600}}>{i.nome}</div>
-                      <button className="mv-qty" onClick={()=>updQty(i.produto_id,i.quantidade-1)}>−</button>
-                      <span style={{fontFamily:'var(--font-mono)',minWidth:22,textAlign:'center'}}>{i.quantidade}</span>
-                      <button className="mv-qty" onClick={()=>updQty(i.produto_id,i.quantidade+1)}>+</button>
-                      <span style={{fontFamily:'var(--font-mono)',fontWeight:700,color:'var(--ok)',minWidth:78,textAlign:'right'}}>{mvBRL(i.preco_unitario*i.quantidade)}</span>
-                      <button className="mv-qty" style={{borderColor:'transparent',color:'var(--crit)'}} onClick={()=>delItem(i.produto_id)}>×</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Pagamento */}
-          <div className="mv-sectitle">Pagamento</div>
-          <div className="mv-fr2">
-            <div className="mv-fld">
-              <label className="mv-fld-lbl">Forma de pagamento</label>
-              <select className="mv-sel" value={form.modo_pagamento} onChange={e=>F('modo_pagamento',e.target.value)}>
-                {MV_PAGAMENTOS.map(m=><option key={m}>{m}</option>)}
-              </select>
-            </div>
-            {!modoLivre && (
-              <div className="mv-fld">
-                <label className="mv-fld-lbl">Desconto geral (R$)</label>
-                <input className="mv-inp" type="number" min="0" step="0.01" placeholder="0,00" value={form.desconto_geral} onChange={e=>F('desconto_geral',e.target.value)}/>
-              </div>
-            )}
-          </div>
-
-          <div className="mv-fr2">
-            <div className="mv-fld">
-              <label className="mv-fld-lbl">Valor de entrada (R$)</label>
-              <input className="mv-inp" type="number" min="0" step="0.01" placeholder="0,00 — opcional" value={form.valor_entrada} onChange={e=>F('valor_entrada',e.target.value)}/>
-            </div>
-            <div className="mv-fld">
-              <label className="mv-fld-lbl">Vencimento</label>
-              <input className="mv-inp" type="date" value={form.data_vencimento} onChange={e=>F('data_vencimento',e.target.value)}/>
-            </div>
-          </div>
-
-          <div className="mv-fr2">
-            <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,color:'var(--text-dim)'}}>
-              <input type="checkbox" checked={form.parcelado} onChange={e=>F('parcelado',e.target.checked)} style={{accentColor:'var(--brand)',width:15,height:15}}/>
-              Parcelar
-            </label>
-            {form.parcelado && (
-              <div className="mv-fld">
-                <label className="mv-fld-lbl">Nº de parcelas</label>
-                <select className="mv-sel" value={form.num_parcelas} onChange={e=>F('num_parcelas',e.target.value)}>
-                  {[2,3,4,5,6,7,8,9,10,12].map(n=><option key={n} value={n}>{n}x</option>)}
-                </select>
-              </div>
-            )}
-          </div>
-
-          <div className="mv-fld">
-            <label className="mv-fld-lbl">Observação</label>
-            <input className="mv-inp" placeholder="Opcional…" value={form.observacao} onChange={e=>F('observacao',e.target.value)}/>
-          </div>
-
-          {/* Totais */}
-          {total>0 && (
-            <div className="mv-totais">
-              {descG>0 && <div className="mv-tot-row"><span style={{color:'var(--text-muted)'}}>Subtotal</span><span style={{fontFamily:'var(--font-mono)'}}>{mvBRL(subtotal)}</span></div>}
-              {descG>0 && <div className="mv-tot-row"><span style={{color:'var(--text-muted)'}}>Desconto</span><span style={{fontFamily:'var(--font-mono)',color:'var(--crit)'}}>− {mvBRL(descG)}</span></div>}
-              <div className="mv-tot-row" style={{fontSize:16,fontWeight:800}}><span>Total</span><span style={{fontFamily:'var(--font-mono)',color:'var(--ok)'}}>{mvBRL(total)}</span></div>
-              {entrada>0 && <>
-                <div className="mv-tot-row" style={{borderTop:'1px solid var(--border)',paddingTop:6}}><span style={{color:'var(--ok)'}}>Entrada</span><span style={{fontFamily:'var(--font-mono)',color:'var(--ok)'}}>− {mvBRL(entrada)}</span></div>
-                <div className="mv-tot-row" style={{fontWeight:700}}><span>Restante</span><span style={{fontFamily:'var(--font-mono)',color:'var(--warn)'}}>{mvBRL(restante)}</span></div>
-              </>}
-              {valParc && <div style={{fontSize:11,color:'var(--text-muted)',fontFamily:'var(--font-mono)',textAlign:'right'}}>{form.num_parcelas}x de {mvBRL(valParc)}</div>}
-            </div>
-          )}
-        </div>
-
-        <div className="mv-foot">
-          <button className="mv-btn mv-btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="mv-btn mv-btn-primary" onClick={save} disabled={saving}>
-            {saving ? 'Salvando…' : 'Confirmar venda'}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
 // ── FORM CLIENTE ──────────────────────────────────────────────────────────────
 const CLI_EMPTY = {
   nome:'', email:'', telefone:'', cpf:'',
@@ -865,10 +594,9 @@ function ModalCliente({ inicial, onClose, onSaved, showToast }) {
 }
 
 // ── DETALHE CLIENTE ───────────────────────────────────────────────────────────
-function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }) {
+function DetalheCliente({ cliente, onClose, onEdit, onParcelaPaga }) {
   const [dados, setDados] = useState(null);
   const [vendaOpen, setVendaOpen] = useState({});
-  const [pagando, setPagando] = useState(null);
 
   useEffect(() => {
     api.get(`/clientes/${cliente.id}`).then(setDados);
@@ -876,243 +604,13 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
 
   const toggleVenda = id => setVendaOpen(s => ({ ...s, [id]: !s[id] }));
 
-  const [modalAbat,   setModalAbat]   = useState(null); // { venda, parcelas_abertas, saldo_total }
-  const [valorAbat,   setValorAbat]   = useState('');
-  const [abatMsg,     setAbatMsg]     = useState({ text:'', type:'' }); // type: success|error
-  const [aplicando,   setAplicando]   = useState(false);
-
-  const abrirAbat = (venda) => {
-    const abertas = (venda.parcelas || []).filter(p => !p.pago);
-    const saldo = abertas.reduce((a, p) => a + (p.saldo_restante ?? p.valor), 0);
-    setModalAbat({ venda, abertas, saldo_total: Math.round(saldo * 100) / 100 });
-    setValorAbat('');
-    setAbatMsg({ text:'', type:'' });
-  };
-
-  const aplicarAbatimento = async () => {
-    if (!modalAbat || !valorAbat) return;
-    const val = parseFloat(valorAbat);
-    if (!val || val <= 0) return;
-    if (val > modalAbat.saldo_total + 0.01) {
-      setAbatMsg({ text: `Valor excede o saldo devedor de ${fmtBRL(modalAbat.saldo_total)}`, type:'error' });
-      return;
-    }
-    setAplicando(true);
-    setAbatMsg({ text:'', type:'' });
-    try {
-      // envia para a primeira parcela em aberto — o backend distribui automaticamente
-      const primeiraAberta = modalAbat.abertas[0];
-      const res = await api.patch(`/parcelas/${primeiraAberta.id}/pagar`, {
-        data_pago: hoje(),
-        valor_abatido: val,
-      });
-      const updated = await api.get(`/clientes/${cliente.id}`);
-      setDados(updated);
-      onParcelaPaga();
-      const novoSaldo = res.saldo_total_restante ?? 0;
-      if (novoSaldo <= 0.01) {
-        setModalAbat(null);
-      } else {
-        // atualiza saldo no modal
-        const abertas = (updated.vendas?.find(v=>v.id===modalAbat.venda.id)?.parcelas||[]).filter(p=>!p.pago);
-        const saldo = abertas.reduce((a,p)=>a+(p.saldo_restante??p.valor),0);
-        setModalAbat(prev=>({...prev, abertas, saldo_total: Math.round(saldo*100)/100}));
-        setAbatMsg({ text: res.mensagem, type:'success' });
-        setValorAbat('');
-      }
-    } catch(e) {
-      const msg = e?.detail || e?.message || 'Erro ao aplicar abatimento';
-      setAbatMsg({ text: msg, type:'error' });
-    } finally { setAplicando(false); }
-  };
-  const [modalVenda,  setModalVenda]  = useState(null); // venda em edição
-  const [editVenda,   setEditVenda]   = useState({});
-  const [salvandoV,   setSalvandoV]   = useState(false);
-  const [cancelando,  setCancelando]  = useState(null);
-
-  const abrirEditVenda = (v) => {
-    setModalVenda(v);
-    setEditVenda({
-      modo_pagamento:  v.modo_pagamento  || '',
-      data_vencimento: v.data_vencimento_raw || '',
-      observacao:      v.observacao      || '',
-      descricao:       v.descricao       || '',
-    });
-  };
-
-  const salvarVenda = async () => {
-    if (!modalVenda) return;
-    setSalvandoV(true);
-    try {
-      await api.patch(`/vendas/${modalVenda.id}`, editVenda);
-      const updated = await api.get(`/clientes/${cliente.id}`);
-      setDados(updated);
-      setModalVenda(null);
-      onParcelaPaga();
-    } catch(e) {
-      setSalvandoV('erro');
-      setTimeout(() => setSalvandoV(false), 3000);
-      return;
-    }
-    setSalvandoV(false);
-  };
-
-  const [confirmCancel, setConfirmCancel] = useState(null); // vendaId
-  const [modalDetalhe, setModalDetalhe] = useState(null); // venda completa
-
-  const cancelarVenda = async (vendaId) => {
-    setCancelando(vendaId);
-    setConfirmCancel(null);
-    try {
-      await api.patch(`/vendas/${vendaId}/cancelar`, {});
-      const updated = await api.get(`/clientes/${cliente.id}`);
-      setDados(updated);
-      onParcelaPaga();
-    } catch(e) {
-      alert(e?.detail || 'Erro ao cancelar venda');
-    } finally { setCancelando(null); }
-  };
-
-  const alterarVencParcela = async (parcId, novaData) => {
-    await api.patch(`/parcelas/${parcId}/vencimento`, { data_vencimento: novaData });
-    const updated = await api.get(`/clientes/${cliente.id}`);
-    setDados(updated);
-  };
-
-  const pagarParcela = async (parcId) => {
-    setPagando(parcId);
-    try {
-      await api.patch(`/parcelas/${parcId}/pagar`, { data_pago: hoje() });
-      const updated = await api.get(`/clientes/${cliente.id}`);
-      setDados(updated);
-      onParcelaPaga();
-    } finally { setPagando(null); }
-  };
+  const [modalDetalhe, setModalDetalhe] = useState(null); // venda completa (somente leitura)
 
   const color = avatarColor(cliente.nome);
 
   return (
     <>
       <div className="overlay" onClick={onClose} />
-
-      {/* Modal de abatimento — inline styles, sem dependência de CSS externo */}
-      {modalAbat && (() => {
-        const val = parseFloat(valorAbat) || 0;
-        const excede = val > modalAbat.saldo_total + 0.01;
-        const valido = val > 0 && !excede && !aplicando;
-        const restante = Math.max(modalAbat.saldo_total - val, 0);
-        return (
-          <div
-            onClick={e => { if (e.target === e.currentTarget) setModalAbat(null); }}
-            style={{position:'fixed',inset:0,zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16,background:'rgba(0,0,0,.72)',backdropFilter:'blur(5px)'}}>
-            <div
-              onClick={e => e.stopPropagation()}
-              style={{background:'#13161a',border:'1px solid rgba(255,255,255,.12)',borderRadius:16,width:'100%',maxWidth:420,display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 32px 80px rgba(0,0,0,.8)'}}>
-
-              {/* Header */}
-              <div style={{padding:'18px 20px',borderBottom:'1px solid rgba(255,255,255,.06)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                <div style={{display:'flex',alignItems:'center',gap:10,fontSize:15,fontWeight:700,color:'#e8eaed'}}>
-                  <div style={{width:32,height:32,borderRadius:9,background:'rgba(255,211,42,.12)',border:'1px solid rgba(255,211,42,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,color:'#ffd32a'}}>◑</div>
-                  Registrar Abatimento
-                </div>
-                <button onClick={() => setModalAbat(null)} style={{background:'none',border:'none',color:'rgba(232,234,237,.35)',cursor:'pointer',fontSize:22,lineHeight:1,padding:'2px 6px',borderRadius:6}}>×</button>
-              </div>
-
-              {/* Body */}
-              <div style={{padding:'18px 20px',display:'flex',flexDirection:'column',gap:14}}>
-
-                {/* Saldo box */}
-                <div style={{background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.06)',borderRadius:10,padding:'14px 16px',display:'flex',flexDirection:'column',gap:8}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <span style={{fontSize:11,color:'rgba(232,234,237,.4)',fontFamily:"'JetBrains Mono',monospace"}}>Venda</span>
-                    <span style={{fontSize:12,fontWeight:700,fontFamily:"'JetBrains Mono',monospace",color:'#e8eaed'}}>{modalAbat.venda.descricao || `#${modalAbat.venda.id}`}</span>
-                  </div>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <span style={{fontSize:11,color:'rgba(232,234,237,.4)',fontFamily:"'JetBrains Mono',monospace"}}>Parcelas em aberto</span>
-                    <span style={{fontSize:12,fontWeight:700,fontFamily:"'JetBrains Mono',monospace",color:'#e8eaed'}}>{modalAbat.abertas.length}</span>
-                  </div>
-                  <div style={{borderTop:'1px solid rgba(255,255,255,.06)',margin:'2px 0'}}/>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <span style={{fontSize:12,fontWeight:700,color:'#e8eaed'}}>Saldo devedor total</span>
-                    <span style={{fontSize:17,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:'#ff6b35'}}>{fmtBRL(modalAbat.saldo_total)}</span>
-                  </div>
-                  {/* Lista de parcelas */}
-                  {modalAbat.abertas.length > 0 && (
-                    <div style={{display:'flex',flexDirection:'column',gap:3,maxHeight:110,overflowY:'auto',marginTop:2}}>
-                      {modalAbat.abertas.map(p => (
-                        <div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 10px',background:'rgba(255,255,255,.02)',borderRadius:7,border:'1px solid rgba(255,255,255,.04)'}}>
-                          <span style={{fontSize:11,color:'rgba(232,234,237,.45)',fontFamily:"'JetBrains Mono',monospace"}}>
-                            {p.numero===0 ? 'Entrada' : `${p.numero}ª parcela`}{p.vencimento ? ` · ${p.vencimento}` : ''}
-                          </span>
-                          <span style={{fontSize:12,fontWeight:700,fontFamily:"'JetBrains Mono',monospace",color:'#ff6b35'}}>{fmtBRL(p.saldo_restante ?? p.valor)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Input */}
-                <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                  <div style={{fontSize:9,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>Valor a abater (R$)</div>
-                  <input
-                    type="number" min="0.01" step="0.01"
-                    placeholder="0,00"
-                    value={valorAbat}
-                    onClick={e => e.stopPropagation()}
-                    onFocus={e => e.stopPropagation()}
-                    onChange={e => setValorAbat(e.target.value)}
-                    autoFocus
-                    style={{
-                      background:'#0a0c0f',
-                      border:`1px solid ${excede?'rgba(255,71,87,.5)':val>0?'rgba(255,211,42,.4)':'rgba(255,255,255,.1)'}`,
-                      borderRadius:10,padding:'13px 16px',fontSize:22,fontWeight:700,
-                      color:'#e8eaed',fontFamily:"'JetBrains Mono',monospace",outline:'none',width:'100%',
-                      boxShadow:val>0&&!excede?'0 0 0 3px rgba(255,211,42,.08)':excede?'0 0 0 3px rgba(255,71,87,.08)':'none',
-                      transition:'border-color .2s, box-shadow .2s',
-                    }}
-                  />
-                  {val > 0 && (
-                    <div style={{display:'flex',justifyContent:'space-between',fontSize:11,fontFamily:"'JetBrains Mono',monospace",padding:'0 2px',color:excede?'#ff4757':'rgba(232,234,237,.35)'}}>
-                      <span>{excede ? '⚠ Valor excede o saldo devedor' : 'Saldo após abatimento'}</span>
-                      {!excede && <span style={{color:'#00d4aa',fontWeight:700}}>{fmtBRL(restante)}</span>}
-                    </div>
-                  )}
-                </div>
-
-                {/* Feedback */}
-                {abatMsg.text && (
-                  <div style={{fontSize:12,fontFamily:"'JetBrains Mono',monospace",borderRadius:8,padding:'10px 14px',textAlign:'center',lineHeight:1.5,color:abatMsg.type==='success'?'#00d4aa':'#ff4757',background:abatMsg.type==='success'?'rgba(0,212,170,.08)':'rgba(255,71,87,.08)',border:`1px solid ${abatMsg.type==='success'?'rgba(0,212,170,.2)':'rgba(255,71,87,.2)'}`}}>
-                    {abatMsg.text}
-                  </div>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div style={{padding:'14px 20px',borderTop:'1px solid rgba(255,255,255,.06)',display:'flex',gap:10}}>
-                <button
-                  onClick={() => setModalAbat(null)}
-                  style={{flex:1,padding:'10px',borderRadius:9,border:'1px solid rgba(255,255,255,.08)',background:'transparent',color:'rgba(232,234,237,.5)',cursor:'pointer',fontFamily:"'Plus Jakarta Sans',sans-serif",fontWeight:600,fontSize:13}}>
-                  Cancelar
-                </button>
-                <button
-                  disabled={!valido}
-                  onClick={aplicarAbatimento}
-                  style={{flex:2,display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'11px 16px',borderRadius:9,border:'none',cursor:valido?'pointer':'not-allowed',fontFamily:"'Plus Jakarta Sans',sans-serif",fontWeight:700,fontSize:13,transition:'all .2s',background:valido?'linear-gradient(135deg,#ffd32a,#ff9500)':'rgba(255,255,255,.05)',color:valido?'#0d1117':'rgba(232,234,237,.2)'}}>
-                  {aplicando ? (
-                    <>
-                      <span style={{width:14,height:14,border:'2px solid rgba(0,0,0,.3)',borderTopColor:'#0d1117',borderRadius:'50%',animation:'spin .7s linear infinite',display:'inline-block'}}/>
-                      Aplicando...
-                    </>
-                  ) : val > 0 && !excede ? `✓ Abater ${fmtBRL(val)}` : 'Informe o valor'}
-                </button>
-              </div>
-
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Modal edição de venda */}
       {/* Modal detalhe da venda */}
       {modalDetalhe && (() => {
         const v = modalDetalhe;
@@ -1143,26 +641,6 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                   </div>
                 </div>
                 <div style={{display:'flex',gap:8,alignItems:'center',flexShrink:0}}>
-                  {!cancelada && (
-                    <>
-                      <button onClick={()=>{setModalDetalhe(null);abrirEditVenda(v);}}
-                        style={{padding:'6px 12px',borderRadius:8,border:'1px solid rgba(0,153,255,.2)',background:'rgba(0,153,255,.1)',color:'#0099ff',cursor:'pointer',fontSize:12,fontWeight:600}}>
-                        ✎ Editar
-                      </button>
-                      {confirmCancel===v.id ? (
-                        <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                          <span style={{fontSize:11,color:'rgba(232,234,237,.5)'}}>Confirmar?</span>
-                          <button onClick={()=>cancelarVenda(v.id)} style={{padding:'5px 10px',borderRadius:7,border:'none',background:'rgba(255,71,87,.2)',color:'#ff4757',cursor:'pointer',fontSize:12,fontWeight:600}}>{cancelando===v.id?'...':'Sim'}</button>
-                          <button onClick={()=>setConfirmCancel(null)} style={{padding:'5px 10px',borderRadius:7,border:'1px solid rgba(255,255,255,.08)',background:'transparent',color:'rgba(232,234,237,.5)',cursor:'pointer',fontSize:12}}>Não</button>
-                        </div>
-                      ) : (
-                        <button onClick={()=>setConfirmCancel(v.id)}
-                          style={{padding:'6px 12px',borderRadius:8,border:'1px solid rgba(255,71,87,.2)',background:'rgba(255,71,87,.1)',color:'#ff4757',cursor:'pointer',fontSize:12,fontWeight:600}}>
-                          ✕ Cancelar
-                        </button>
-                      )}
-                    </>
-                  )}
                   <button onClick={()=>setModalDetalhe(null)}
                     style={{background:'none',border:'none',color:'rgba(232,234,237,.35)',cursor:'pointer',fontSize:22,lineHeight:1,padding:'2px 4px'}}>×</button>
                 </div>
@@ -1239,16 +717,7 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                             <div style={{display:'grid',gridTemplateColumns:'44px 1fr 100px 100px 1fr',gap:8,padding:'11px 16px',borderBottom:'1px solid rgba(255,255,255,.03)',alignItems:'center'}}>
                               <span style={{fontSize:12,fontFamily:"'JetBrains Mono',monospace",color:'rgba(232,234,237,.4)',textAlign:'center'}}>{p.numero===0?'ENT':`${p.numero}ª`}</span>
                               <div>
-                                {!p.pago && !cancelada ? (
-                                  <input type="date" className="parc-venc-edit"
-                                    defaultValue={p.vencimento_raw||''}
-                                    onBlur={e=>{if(e.target.value)alterarVencParcela(p.id,e.target.value);}}
-                                    onClick={e=>e.stopPropagation()}
-                                    title="Clique para alterar vencimento"
-                                    style={{width:'100%'}}/>
-                                ) : (
-                                  <span style={{fontSize:12,fontFamily:"'JetBrains Mono',monospace",color:'rgba(232,234,237,.6)'}}>{p.vencimento||'—'}</span>
-                                )}
+                                <span style={{fontSize:12,fontFamily:"'JetBrains Mono',monospace",color:'rgba(232,234,237,.6)'}}>{p.vencimento||'—'}</span>
                                 {parcial && (
                                   <div style={{marginTop:4,display:'flex',alignItems:'center',gap:6}}>
                                     <div style={{flex:1,height:3,background:'rgba(255,255,255,.06)',borderRadius:2,overflow:'hidden'}}>
@@ -1270,20 +739,11 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                                 ) : <span style={{color:p.pago?'#00d4aa':'#e8eaed'}}>{fmtBRL(p.valor)}</span>}
                               </div>
                               <div style={{display:'flex',gap:6,justifyContent:'flex-end'}}>
-                                {!p.pago && !cancelada ? (
-                                  <>
-                                    <button onClick={()=>pagarParcela(p.id)} disabled={pagando===p.id}
-                                      style={{padding:'5px 10px',borderRadius:7,border:'none',background:'rgba(0,212,170,.15)',color:'#00d4aa',cursor:pagando===p.id?'not-allowed':'pointer',fontSize:11,fontWeight:600,opacity:pagando===p.id?.5:1}}>
-                                      {pagando===p.id?'...':'✓ Pagar'}
-                                    </button>
-                                    <button onClick={()=>abrirAbat(v)} disabled={pagando===p.id}
-                                      style={{padding:'5px 10px',borderRadius:7,border:'none',background:'rgba(255,211,42,.1)',color:'#ffd32a',cursor:'pointer',fontSize:11,fontWeight:600}}>
-                                      ◑ Abater
-                                    </button>
-                                  </>
-                                ) : p.pago ? (
+                                {p.pago ? (
                                   <span style={{fontSize:10,color:'rgba(232,234,237,.25)',fontFamily:"'JetBrains Mono',monospace"}}>{p.data_pago||''}</span>
-                                ) : null}
+                                ) : (
+                                  <span style={{fontSize:10,color:'rgba(232,234,237,.25)',fontFamily:"'JetBrains Mono',monospace"}}>gerencie em Vendas</span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1295,112 +755,17 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
               </div>
 
               {/* Footer */}
-              {!cancelada && (
-                <div style={{padding:'14px 24px',borderTop:'1px solid rgba(255,255,255,.06)',display:'flex',gap:10,justifyContent:'flex-end'}}>
-                  <button onClick={()=>{setModalDetalhe(null);abrirAbat(v);}}
-                    style={{padding:'9px 18px',borderRadius:9,border:'none',background:'rgba(255,211,42,.1)',color:'#ffd32a',cursor:'pointer',fontSize:13,fontWeight:700}}>
-                    ◑ Registrar Abatimento
-                  </button>
-                </div>
-              )}
+              <div style={{padding:'14px 24px',borderTop:'1px solid rgba(255,255,255,.06)',display:'flex',justifyContent:'flex-end'}}>
+                <span style={{fontSize:11,color:'rgba(232,234,237,.35)',fontFamily:"'JetBrains Mono',monospace"}}>
+                  Para pagar, abater ou cancelar esta venda, acesse a tela de Vendas
+                </span>
+              </div>
 
             </div>
           </div>
         );
       })()}
 
-      {/* Modal edição de venda — 100% inline */}
-      {modalVenda && (
-        <div onClick={e=>{if(e.target===e.currentTarget)setModalVenda(null);}}
-          style={{position:'fixed',inset:0,zIndex:450,display:'flex',alignItems:'center',justifyContent:'center',padding:16,background:'rgba(0,0,0,.72)',backdropFilter:'blur(4px)'}}>
-          <div onClick={e=>e.stopPropagation()}
-            style={{background:'#13161a',border:'1px solid rgba(255,255,255,.12)',borderRadius:16,width:'100%',maxWidth:420,display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 32px 80px rgba(0,0,0,.8)'}}>
-
-            {/* Header */}
-            <div style={{padding:'18px 20px',borderBottom:'1px solid rgba(255,255,255,.06)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <div style={{display:'flex',alignItems:'center',gap:10,fontSize:15,fontWeight:700,color:'#e8eaed'}}>
-                <div style={{width:32,height:32,borderRadius:9,background:'rgba(0,153,255,.12)',border:'1px solid rgba(0,153,255,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,color:'#0099ff'}}>✎</div>
-                Editar Venda #{modalVenda.id}
-              </div>
-              <button onClick={()=>setModalVenda(null)} style={{background:'none',border:'none',color:'rgba(232,234,237,.35)',cursor:'pointer',fontSize:22,lineHeight:1,padding:'2px 6px'}}>×</button>
-            </div>
-
-            {/* Body */}
-            <div style={{padding:'18px 20px',display:'flex',flexDirection:'column',gap:14}}>
-
-              {/* Descrição */}
-              <div style={{display:'flex',flexDirection:'column',gap:5}}>
-                <div style={{fontSize:9,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>Descrição</div>
-                <input
-                  value={editVenda.descricao||''}
-                  onChange={e=>setEditVenda(s=>({...s,descricao:e.target.value}))}
-                  placeholder="Ex: Compra de produtos"
-                  onClick={e=>e.stopPropagation()}
-                  style={{background:'#0e1013',border:'1px solid rgba(255,255,255,.08)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#e8eaed',fontFamily:"'Plus Jakarta Sans',sans-serif",outline:'none',width:'100%'}}
-                />
-              </div>
-
-              {/* Forma de pagamento */}
-              <div style={{display:'flex',flexDirection:'column',gap:5}}>
-                <div style={{fontSize:9,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>Forma de pagamento</div>
-                <select
-                  value={editVenda.modo_pagamento||''}
-                  onChange={e=>setEditVenda(s=>({...s,modo_pagamento:e.target.value}))}
-                  style={{background:'#0e1013',border:'1px solid rgba(255,255,255,.08)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#e8eaed',fontFamily:"'Plus Jakarta Sans',sans-serif",outline:'none',cursor:'pointer',width:'100%'}}>
-                  {['PIX','Dinheiro','Cartão de crédito','Cartão de débito','Fiado','Transferência','Boleto'].map(m=>(
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Data vencimento */}
-              <div style={{display:'flex',flexDirection:'column',gap:5}}>
-                <div style={{fontSize:9,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>Data de vencimento</div>
-                <div style={{fontSize:10,color:'rgba(232,234,237,.25)',fontFamily:"'JetBrains Mono',monospace",marginTop:-2}}>Redistribui automaticamente as parcelas em aberto</div>
-                <input
-                  type="date"
-                  value={editVenda.data_vencimento||''}
-                  onChange={e=>setEditVenda(s=>({...s,data_vencimento:e.target.value}))}
-                  onClick={e=>e.stopPropagation()}
-                  style={{background:'#0e1013',border:'1px solid rgba(255,255,255,.08)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#e8eaed',fontFamily:"'JetBrains Mono',monospace",outline:'none',width:'100%'}}
-                />
-              </div>
-
-              {/* Observação */}
-              <div style={{display:'flex',flexDirection:'column',gap:5}}>
-                <div style={{fontSize:9,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>Observação</div>
-                <input
-                  value={editVenda.observacao||''}
-                  onChange={e=>setEditVenda(s=>({...s,observacao:e.target.value}))}
-                  placeholder="Observação opcional"
-                  onClick={e=>e.stopPropagation()}
-                  style={{background:'#0e1013',border:'1px solid rgba(255,255,255,.08)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#e8eaed',fontFamily:"'Plus Jakarta Sans',sans-serif",outline:'none',width:'100%'}}
-                />
-              </div>
-
-              {salvandoV === 'erro' && (
-                <div style={{fontSize:12,color:'#ff4757',background:'rgba(255,71,87,.08)',border:'1px solid rgba(255,71,87,.2)',borderRadius:8,padding:'10px 14px',textAlign:'center'}}>
-                  Erro ao salvar. Tente novamente.
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div style={{padding:'14px 20px',borderTop:'1px solid rgba(255,255,255,.06)',display:'flex',gap:10}}>
-              <button onClick={()=>setModalVenda(null)}
-                style={{flex:1,padding:'10px',borderRadius:9,border:'1px solid rgba(255,255,255,.08)',background:'transparent',color:'rgba(232,234,237,.5)',cursor:'pointer',fontFamily:"'Plus Jakarta Sans',sans-serif",fontWeight:600,fontSize:13}}>
-                Cancelar
-              </button>
-              <button onClick={salvarVenda} disabled={salvandoV===true}
-                style={{flex:2,display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'11px 16px',borderRadius:9,border:'none',cursor:salvandoV===true?'not-allowed':'pointer',fontFamily:"'Plus Jakarta Sans',sans-serif",fontWeight:700,fontSize:13,background:salvandoV===true?'rgba(255,255,255,.06)':'linear-gradient(135deg,#0099ff,#0066cc)',color:salvandoV===true?'rgba(232,234,237,.3)':'#fff',transition:'all .2s'}}>
-                {salvandoV === true ? (
-                  <><span style={{width:14,height:14,border:'2px solid rgba(255,255,255,.3)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .7s linear infinite',display:'inline-block'}}/> Salvando...</>
-                ) : '✓ Salvar alterações'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="dp">
         <div className="dp-head">
@@ -1548,9 +913,7 @@ function DetalheCliente({ cliente, onClose, onEdit, onNovaVenda, onParcelaPaga }
                   </span>
                 )})
               </div>
-              <button className="btn btn-outline" style={{ padding:'5px 12px', fontSize:12 }} onClick={onNovaVenda}>
-                + Nova Venda
-              </button>
+              <span style={{fontSize:10.5,color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>somente leitura</span>
             </div>
 
             {!dados ? (
@@ -1864,7 +1227,6 @@ export default function Clientes() {
           cliente={selected}
           onClose={() => setSelected(null)}
           onEdit={() => setModal('edit')}
-          onNovaVenda={() => setModal('venda')}
           onParcelaPaga={() => { load(); }}
         />
       )}
@@ -1882,17 +1244,6 @@ export default function Clientes() {
       {modal === 'edit' && selected && (
         <ModalCliente
           inicial={selected}
-          onClose={() => setModal(null)}
-          onSaved={() => { setModal(null); load(); }}
-          showToast={showToast}
-        />
-      )}
-
-      {/* Modal nova venda */}
-      {modal === 'venda' && selected && (
-        <ModalVenda
-          clienteId={selected.id}
-          clienteNome={selected.nome}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); load(); }}
           showToast={showToast}
