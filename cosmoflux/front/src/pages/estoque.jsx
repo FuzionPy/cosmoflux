@@ -229,6 +229,14 @@ function MovForm({ tipo, produtos, onSubmit, onCancel }) {
   const excedeSaida = tipo === "saida" && prod && qNum > estoqueAtual;
   const valido = produtoId != null && qNum > 0 && !excedeSaida;
 
+  // comparação do custo informado vs custo padrão cadastrado — feedback de "boa compra"
+  const custoPadrao  = prod ? pcusto(prod) : 0;
+  const custoReal    = parseFloat(custo);
+  const temCustoReal = custo !== "" && !isNaN(custoReal);
+  const diffPct = temCustoReal && custoPadrao > 0
+    ? Number(((custoReal / custoPadrao - 1) * 100).toFixed(1))
+    : null;
+
   const submit = () => {
     if (!produtoId) return setErr("Selecione um produto.");
     if (!(qNum > 0)) return setErr("Informe uma quantidade válida.");
@@ -286,7 +294,18 @@ function MovForm({ tipo, produtos, onSubmit, onCancel }) {
           <label className="cfx-lab">
             <span>Preço de custo real <em>(opcional)</em></span>
             <input className="cfx-field cfx-mono" type="number" min="0" step="0.01" value={custo}
-              onChange={(e) => setCusto(e.target.value)} placeholder="R$ 0,00" />
+              onChange={(e) => setCusto(e.target.value)}
+              placeholder={prod ? `Padrão: ${fmtBRL(custoPadrao)}` : "R$ 0,00"} />
+            {temCustoReal && diffPct !== null && (
+              <span className="cfx-hint" style={{ color: diffPct < 0 ? "var(--ok)" : "var(--warn)" }}>
+                {diffPct < 0
+                  ? `↓ ${Math.abs(diffPct)}% abaixo do custo padrão — boa compra!`
+                  : `↑ ${diffPct}% acima do custo padrão`}
+              </span>
+            )}
+            {!temCustoReal && prod && (
+              <span className="cfx-hint">Se não preenchido, usa o custo padrão do produto nos cálculos de lucro</span>
+            )}
           </label>
         )}
 
