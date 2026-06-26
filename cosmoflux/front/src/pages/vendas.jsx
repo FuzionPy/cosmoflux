@@ -359,6 +359,18 @@ export default function Vendas() {
   // abre modal se vier ?novo=1
   useEffect(() => { if (params.get('novo')==='1') openModal(); /* eslint-disable-next-line */ }, []);
 
+  // abre o detalhe de uma venda específica se vier ?abrir=ID (link vindo de Clientes/Parceiras)
+  useEffect(() => {
+    const abrirId = params.get('abrir');
+    if (!abrirId || pedidos.length === 0) return;
+    const p = pedidos.find(x => String(x.id) === String(abrirId));
+    if (p) {
+      setSelected(p);
+      navigate('/vendas', { replace: true }); // limpa o parâmetro da URL
+    }
+    // eslint-disable-next-line
+  }, [pedidos]);
+
   /* resumo / KPIs */
   const ativas   = pedidos.filter(p => p.status !== 'cancelado');
   const aReceber = ativas.filter(p => p.status_pagamento==='em_aberto' || p.status_pagamento==='vencido');

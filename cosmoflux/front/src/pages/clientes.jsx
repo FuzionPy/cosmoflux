@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 const BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000') + '/api';
@@ -595,6 +596,7 @@ function ModalCliente({ inicial, onClose, onSaved, showToast }) {
 
 // ── DETALHE CLIENTE ───────────────────────────────────────────────────────────
 function DetalheCliente({ cliente, onClose, onEdit, onParcelaPaga }) {
+  const navigate = useNavigate();
   const [dados, setDados] = useState(null);
   const [vendaOpen, setVendaOpen] = useState({});
 
@@ -755,10 +757,19 @@ function DetalheCliente({ cliente, onClose, onEdit, onParcelaPaga }) {
               </div>
 
               {/* Footer */}
-              <div style={{padding:'14px 24px',borderTop:'1px solid rgba(255,255,255,.06)',display:'flex',justifyContent:'flex-end'}}>
-                <span style={{fontSize:11,color:'rgba(232,234,237,.35)',fontFamily:"'JetBrains Mono',monospace"}}>
-                  Para pagar, abater ou cancelar esta venda, acesse a tela de Vendas
+              <div style={{padding:'14px 24px',borderTop:'1px solid rgba(255,255,255,.06)',display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+                <span style={{fontSize:11,color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>
+                  visualização — ações ficam na tela de Vendas
                 </span>
+                {v.pedido_id ? (
+                  <button
+                    onClick={() => navigate(`/vendas?abrir=${v.pedido_id}`)}
+                    style={{padding:'9px 18px',borderRadius:9,border:'1px solid rgba(0,153,255,.25)',background:'rgba(0,153,255,.1)',color:'#0099ff',cursor:'pointer',fontSize:13,fontWeight:700,display:'flex',alignItems:'center',gap:7}}>
+                    Gerenciar em Vendas →
+                  </button>
+                ) : (
+                  <span style={{fontSize:11,color:'rgba(232,234,237,.3)'}}>sem pedido vinculado</span>
+                )}
               </div>
 
             </div>
