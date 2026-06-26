@@ -269,7 +269,7 @@ def listar_pedidos(
 
     resultado = []
     for p in pedidos:
-        venda = db.query(Venda).filter(Venda.descricao == f"Pedido #{p.id}").first()
+        venda = db.query(Venda).filter(Venda.pedido_id == p.id).first() or db.query(Venda).filter(Venda.descricao == f"Pedido #{p.id}").first()
         spag = calc_status_pagamento(venda, hoje)
 
         # parcelas da venda (para o modal de detalhe / abatimento)
@@ -363,7 +363,7 @@ def cancelar_pedido(pedido_id: int, ctx: dict = Depends(get_ctx), db: Session = 
     if pedido.status == "cancelado": raise HTTPException(400, "Já cancelado")
     # cancela venda financeira vinculada
     from models import Venda
-    venda = db.query(Venda).filter(Venda.descricao == f"Pedido #{pedido_id}").first()
+    venda = db.query(Venda).filter(Venda.pedido_id == pedido_id).first() or db.query(Venda).filter(Venda.descricao == f"Pedido #{pedido_id}").first()
     if venda: venda.status_pagamento = "cancelado"
     for it in pedido.itens:
         p = db.query(Produto).filter(Produto.id == it.produto_id).first()
@@ -753,3 +753,47 @@ def produtos_mais_vendidos(dias: int = Query(30), ctx: dict = Depends(get_ctx), 
     for r in resultado:
         r["receita"] = round(r["receita"], 2)
     return resultado
+
+
+# ── DIAGNÓSTICO: normalização Pedido ↔ Venda ────────────────────────
+@order_router.get("/diagnostico/vendas-orfas")
+def diagnostico_vendas_orfas(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    """Lista vendas sem nenhum Pedido vinculado (nem por FK, nem pela descrição antiga)
+    e pedidos com cliente_id mas sem nenhuma Venda financeira associada.
+    Use para auditar a saúde da normalização Pedido<->Venda."""
+    vendas = tf(db.query(Venda), Venda, ctx).all()
+    vendas_orfas = []
+    for v in vendas:
+        tem_pedido = bool(v.pedido_id)
+        if not tem_pedido:
+            # tenta o fallback de texto só para classificar corretamente o relatório
+            desc = v.descricao or ""
+            if desc.startswith("Pedido #"):
+                try:
+                    pid_legado = int(desc.replace("Pedido #", "").strip())
+                    tem_pedido = db.query(Pedido).filter(Pedido.id == pid_legado).first() is not None
+                except (ValueError, TypeError):
+                    tem_pedido = False
+        if not tem_pedido:
+            vendas_orfas.append({
+                "venda_id": v.id, "cliente_id": v.cliente_id,
+                "descricao": v.descricao, "valor_total": v.valor_total,
+                "data": v.criado_em.strftime("%d/%m/%Y") if v.criado_em else None,
+            })
+
+    pedidos_com_cliente = tf(db.query(Pedido), Pedido, ctx).filter(
+        Pedido.cliente_id.isnot(None), Pedido.status != "cancelado"
+    ).all()
+    ids_com_venda = {v.pedido_id for v in vendas if v.pedido_id}
+    pedidos_sem_venda = [{
+        "pedido_id": p.id, "cliente_id": p.cliente_id, "total": p.total,
+        "data": p.criado_em.strftime("%d/%m/%Y") if p.criado_em else None,
+    } for p in pedidos_com_cliente if p.id not in ids_com_venda]
+
+    return {
+        "total_vendas": len(vendas),
+        "vendas_orfas_count": len(vendas_orfas),
+        "vendas_orfas": vendas_orfas,
+        "pedidos_sem_venda_count": len(pedidos_sem_venda),
+        "pedidos_sem_venda": pedidos_sem_venda,
+    }

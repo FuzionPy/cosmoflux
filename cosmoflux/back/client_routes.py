@@ -140,6 +140,7 @@ def criar_venda_unificada(dados: VendaUnificadaSchema, ctx: dict = Depends(get_c
         obs_entrada = f"Entrada: R$ {entrada:.2f} ({dados.modo_pagamento_entrada or dados.modo_pagamento}). " if entrada > 0 else ""
         venda = Venda(
             cliente_id=dados.cliente_id, usuario_id=ctx["usuario_id"],
+            pedido_id=pedido.id,
             descricao=f"Pedido #{pedido.id}", valor_total=total,
             modo_pagamento=dados.modo_pagamento, parcelado=dados.parcelado,
             num_parcelas=dados.num_parcelas, data_vencimento=venc,
@@ -258,16 +259,17 @@ def detalhe_cliente(cliente_id: int, ctx: dict = Depends(get_ctx), db: Session =
             ), 2) if parcelas else (v.valor_total if getattr(v,"status_pagamento","") == "pago" else 0)
             saldo_venda = round(max(v.valor_total - total_pago_venda, 0), 2)
 
-            # localiza o Pedido VINCULADO a esta venda (via descricao "Pedido #X")
-            # para trazer itens (produtos) e status de entrega corretos — espelha /pedidos
-            pedido = None
-            desc = getattr(v, "descricao", "") or ""
-            if desc.startswith("Pedido #"):
-                try:
-                    pid = int(desc.replace("Pedido #", "").strip())
-                    pedido = db.query(Pedido).filter(Pedido.id == pid).first()
-                except (ValueError, TypeError):
-                    pedido = None
+            # localiza o Pedido vinculado via FK real (pedido_id). Fallback por texto
+            # da descrição só para registros antigos que ainda não foram migrados.
+            pedido = v.pedido_rel if getattr(v, "pedido_id", None) else None
+            if not pedido:
+                desc = getattr(v, "descricao", "") or ""
+                if desc.startswith("Pedido #"):
+                    try:
+                        pid_legado = int(desc.replace("Pedido #", "").strip())
+                        pedido = db.query(Pedido).filter(Pedido.id == pid_legado).first()
+                    except (ValueError, TypeError):
+                        pedido = None
             status_entrega = pedido.status if pedido else None
 
             # itens (produtos) da venda — mesma estrutura que /pedidos retorna
@@ -350,14 +352,27 @@ def deletar_cliente(cliente_id: int, ctx: dict = Depends(get_ctx), db: Session =
 # ── VENDAS ────────────────────────────────────────────────────────
 @client_router.post("/vendas")
 def criar_venda(dados: VendaSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    """Endpoint legado — mantido por compatibilidade, mas agora SEMPRE cria
+    o Pedido vinculado (igual /vendas/unificada) para nunca gerar venda órfã."""
     # verifica se cliente pertence ao tenant
     c = tf(db.query(Cliente), Cliente, ctx).filter(Cliente.id == dados.cliente_id).first()
     if not c: raise HTTPException(404, "Cliente não encontrado")
 
+    obs_final = getattr(dados, "observacao", None)
+
+    # cria o Pedido vinculado — garante normalização (toda Venda tem Pedido)
+    pedido = Pedido(
+        cliente_id=dados.cliente_id, usuario_id=ctx["usuario_id"],
+        status="concluido", total=dados.valor_total, desconto=0,
+        observacao=dados.descricao or obs_final, tenant_id=tid(ctx),
+    )
+    db.add(pedido); db.flush()
+
     venc = datetime.strptime(dados.data_vencimento, "%Y-%m-%d").date() if dados.data_vencimento else None
     venda = Venda(
         cliente_id=dados.cliente_id, usuario_id=ctx["usuario_id"],
-        descricao=dados.descricao, valor_total=dados.valor_total,
+        pedido_id=pedido.id,
+        descricao=dados.descricao or f"Pedido #{pedido.id}", valor_total=dados.valor_total,
         modo_pagamento=dados.modo_pagamento, parcelado=dados.parcelado,
         num_parcelas=dados.num_parcelas, data_vencimento=venc,
         observacao=obs_final, tenant_id=tid(ctx),

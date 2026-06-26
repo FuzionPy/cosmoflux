@@ -151,6 +151,7 @@ class Venda(Base):
     __tablename__ = "vendas"
     id               = Column(Integer, primary_key=True, autoincrement=True)
     cliente_id       = Column(Integer, ForeignKey("clientes.id"), nullable=False)
+    pedido_id        = Column(Integer, ForeignKey("pedidos.id"), nullable=True)  # vínculo real (substitui parsing de texto)
     usuario_id       = Column(Integer, ForeignKey("usuarios.id"))
     tenant_id        = Column(Integer, ForeignKey("tenants.id"), nullable=True)
     descricao        = Column(String)
@@ -166,12 +167,14 @@ class Venda(Base):
     criado_em        = Column(DateTime, default=datetime.utcnow)
     cliente_rel = relationship("Cliente", back_populates="vendas")
     usuario_rel = relationship("Usuario")
+    pedido_rel  = relationship("Pedido", foreign_keys=[pedido_id])
     parcelas    = relationship("Parcela", back_populates="venda_rel", cascade="all, delete-orphan")
     def __init__(self, cliente_id, valor_total, modo_pagamento, descricao=None,
                  parcelado=False, num_parcelas=1, valor_parcela=None, data_vencimento=None,
                  status_pagamento="pendente", observacao=None, usuario_id=None,
-                 data_venda=None, tenant_id=None):
+                 data_venda=None, tenant_id=None, pedido_id=None):
         self.cliente_id=cliente_id; self.usuario_id=usuario_id; self.tenant_id=tenant_id
+        self.pedido_id=pedido_id
         self.descricao=descricao; self.valor_total=valor_total; self.modo_pagamento=modo_pagamento
         self.parcelado=parcelado; self.num_parcelas=num_parcelas
         self.valor_parcela=valor_parcela or round(valor_total/max(num_parcelas,1), 2)

@@ -52,6 +52,14 @@ def auto_migrate():
             "ALTER TABLE parceiras ADD COLUMN IF NOT EXISTS ativa BOOLEAN DEFAULT TRUE",
             "UPDATE parceiras SET ativa = TRUE WHERE ativa IS NULL",
             "ALTER TABLE clientes_parceira ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id)",
+            # normalização Pedido ↔ Venda: vínculo real via FK em vez de parsing de texto
+            "ALTER TABLE vendas ADD COLUMN IF NOT EXISTS pedido_id INTEGER REFERENCES pedidos(id)",
+            # preenche o vínculo em vendas antigas, lendo o id de dentro da descrição "Pedido #N"
+            """UPDATE vendas
+               SET pedido_id = CAST(regexp_replace(descricao, '\\D', '', 'g') AS INTEGER)
+               WHERE pedido_id IS NULL
+                 AND descricao ~ '^Pedido #\\d+$'
+                 AND CAST(regexp_replace(descricao, '\\D', '', 'g') AS INTEGER) IN (SELECT id FROM pedidos)""",
         ]
         with engine.connect() as conn:
             for sql in migrações:
