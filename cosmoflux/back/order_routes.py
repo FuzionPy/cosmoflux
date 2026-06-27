@@ -886,6 +886,9 @@ def criar_pedidos_retroativos(ctx: dict = Depends(get_ctx), db: Session = Depend
             tenant_id=v.tenant_id,
         )
         db.add(pedido); db.flush()
+        # herda a data ORIGINAL da venda — senão o faturamento cai no mês errado
+        if v.criado_em:
+            pedido.criado_em = v.criado_em
         v.pedido_id = pedido.id
         if not v.descricao:
             v.descricao = f"Pedido #{pedido.id}"
@@ -893,3 +896,28 @@ def criar_pedidos_retroativos(ctx: dict = Depends(get_ctx), db: Session = Depend
 
     db.commit()
     return {"pedidos_criados_count": len(criados), "pedidos_criados": criados}
+
+
+@order_router.post("/diagnostico/corrigir-data-pedidos-retroativos")
+def corrigir_data_pedidos_retroativos(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    """Corrige a data (criado_em) dos pedidos retroativos para a data ORIGINAL
+    da venda vinculada. Sem isso, vendas antigas aparecem no faturamento do mês
+    em que o pedido retroativo foi gerado, inflando o mês errado."""
+    pedidos = tf(db.query(Pedido), Pedido, ctx).filter(
+        Pedido.observacao.like("[Retroativo]%")
+    ).all()
+
+    corrigidos = []
+    for p in pedidos:
+        venda = db.query(Venda).filter(Venda.pedido_id == p.id).first()
+        if venda and venda.criado_em and p.criado_em != venda.criado_em:
+            antiga = p.criado_em.strftime("%d/%m/%Y") if p.criado_em else None
+            p.criado_em = venda.criado_em
+            corrigidos.append({
+                "pedido_id": p.id, "venda_id": venda.id,
+                "data_antiga": antiga,
+                "data_nova": venda.criado_em.strftime("%d/%m/%Y"),
+            })
+
+    db.commit()
+    return {"corrigidos_count": len(corrigidos), "corrigidos": corrigidos}
