@@ -840,3 +840,30 @@ def reconciliar_vendas_orfas(ctx: dict = Depends(get_ctx), db: Session = Depends
         "vinculadas_count": len(vinculadas), "vinculadas": vinculadas,
         "nao_resolvidas_count": len(nao_resolvidas), "nao_resolvidas": nao_resolvidas,
     }
+
+
+@order_router.get("/diagnostico/investigar-venda/{venda_id}")
+def investigar_venda_orfa(venda_id: int, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    """Mostra TODOS os pedidos do mesmo cliente daquela venda, com data e total,
+    para entender visualmente por que o casamento automático não encontrou par."""
+    v = tf(db.query(Venda), Venda, ctx).filter(Venda.id == venda_id).first()
+    if not v:
+        raise HTTPException(404, "Venda não encontrada")
+
+    pedidos_cliente = tf(db.query(Pedido), Pedido, ctx).filter(
+        Pedido.cliente_id == v.cliente_id
+    ).order_by(Pedido.criado_em).all()
+
+    return {
+        "venda": {
+            "id": v.id, "cliente_id": v.cliente_id, "valor_total": v.valor_total,
+            "criado_em": v.criado_em.isoformat() if v.criado_em else None,
+            "descricao": v.descricao, "pedido_id": v.pedido_id,
+        },
+        "pedidos_do_mesmo_cliente": [{
+            "id": p.id, "total": p.total,
+            "criado_em": p.criado_em.isoformat() if p.criado_em else None,
+            "status": p.status,
+            "ja_usado_por_venda": db.query(Venda).filter(Venda.pedido_id == p.id).first() is not None,
+        } for p in pedidos_cliente],
+    }
