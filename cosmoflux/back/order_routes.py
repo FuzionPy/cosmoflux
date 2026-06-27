@@ -867,3 +867,29 @@ def investigar_venda_orfa(venda_id: int, ctx: dict = Depends(get_ctx), db: Sessi
             "ja_usado_por_venda": db.query(Venda).filter(Venda.pedido_id == p.id).first() is not None,
         } for p in pedidos_cliente],
     }
+
+
+@order_router.post("/diagnostico/criar-pedidos-retroativos")
+def criar_pedidos_retroativos(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    """Para cada venda sem pedido_id (e sem nenhum pedido correspondente real),
+    cria um Pedido retroativo SEM itens — só para fechar o vínculo financeiro
+    e permitir 'Gerenciar em Vendas' a partir de Clientes/Parceiras.
+    O pedido nasce com status 'concluido' e observação avisando que é retroativo."""
+    vendas = tf(db.query(Venda), Venda, ctx).filter(Venda.pedido_id.is_(None)).all()
+
+    criados = []
+    for v in vendas:
+        pedido = Pedido(
+            cliente_id=v.cliente_id, usuario_id=v.usuario_id,
+            status="concluido", total=v.valor_total, desconto=0,
+            observacao=f"[Retroativo] Pedido gerado automaticamente para vincular a venda #{v.id} (sem itens cadastrados)",
+            tenant_id=v.tenant_id,
+        )
+        db.add(pedido); db.flush()
+        v.pedido_id = pedido.id
+        if not v.descricao:
+            v.descricao = f"Pedido #{pedido.id}"
+        criados.append({"venda_id": v.id, "pedido_id_criado": pedido.id, "valor_total": v.valor_total})
+
+    db.commit()
+    return {"pedidos_criados_count": len(criados), "pedidos_criados": criados}
