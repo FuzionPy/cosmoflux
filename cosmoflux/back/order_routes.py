@@ -797,3 +797,46 @@ def diagnostico_vendas_orfas(ctx: dict = Depends(get_ctx), db: Session = Depends
         "pedidos_sem_venda_count": len(pedidos_sem_venda),
         "pedidos_sem_venda": pedidos_sem_venda,
     }
+
+
+@order_router.post("/diagnostico/reconciliar-vendas-orfas")
+def reconciliar_vendas_orfas(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    """Tenta vincular vendas sem pedido_id a um Pedido existente, casando por
+    cliente + mesma data + mesmo valor total (tolerância de 1 centavo).
+    Só vincula quando há exatamente UM candidato sem ambiguidade — casos
+    duvidosos ficam de fora e aparecem em 'nao_resolvidas' para revisão manual."""
+    vendas = tf(db.query(Venda), Venda, ctx).filter(Venda.pedido_id.is_(None)).all()
+
+    # pedidos já usados por alguma venda (FK ou texto legado) não podem ser reaproveitados
+    ids_usados = {v.pedido_id for v in tf(db.query(Venda), Venda, ctx).all() if v.pedido_id}
+
+    vinculadas, nao_resolvidas = [], []
+    for v in vendas:
+        dia_inicio = v.criado_em.replace(hour=0, minute=0, second=0, microsecond=0) if v.criado_em else None
+        dia_fim = dia_inicio + timedelta(days=1) if dia_inicio else None
+        candidatos = []
+        if dia_inicio:
+            candidatos = tf(db.query(Pedido), Pedido, ctx).filter(
+                Pedido.cliente_id == v.cliente_id,
+                Pedido.criado_em >= dia_inicio, Pedido.criado_em < dia_fim,
+                Pedido.id.notin_(ids_usados) if ids_usados else True,
+            ).all()
+            candidatos = [p for p in candidatos if abs(p.total - v.valor_total) < 0.02]
+
+        if len(candidatos) == 1:
+            pedido = candidatos[0]
+            v.pedido_id = pedido.id
+            ids_usados.add(pedido.id)
+            vinculadas.append({"venda_id": v.id, "pedido_id": pedido.id, "valor_total": v.valor_total})
+        else:
+            nao_resolvidas.append({
+                "venda_id": v.id, "cliente_id": v.cliente_id, "valor_total": v.valor_total,
+                "data": v.criado_em.strftime("%d/%m/%Y") if v.criado_em else None,
+                "candidatos_encontrados": len(candidatos),
+            })
+
+    db.commit()
+    return {
+        "vinculadas_count": len(vinculadas), "vinculadas": vinculadas,
+        "nao_resolvidas_count": len(nao_resolvidas), "nao_resolvidas": nao_resolvidas,
+    }
