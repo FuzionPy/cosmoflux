@@ -3,13 +3,20 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+from datetime import date, timedelta
 from models import (Parceira, CompraParceira, ItemCompraParceira,
                     RepasseParceira, ClienteParceira, Cliente, Produto,
                     Movimentacao, Venda, Pedido, Parcela, get_db)
 from auth_routes import get_ctx
-from datetime import date
 
 parceira_router = APIRouter(prefix="/api", tags=["parceiras"])
+
+def fmt_dt_local(dt):
+    """Converte datetime UTC (salvo no banco) para o fuso de Brasília (UTC-3)
+    antes de formatar — evita horário ~3h adiantado na exibição."""
+    if not dt:
+        return None
+    return (dt - timedelta(hours=3)).strftime("%d/%m/%Y %H:%M")
 
 def tid(ctx): return ctx.get("tenant_id")
 def tf(q, M, ctx):
@@ -162,7 +169,7 @@ def detalhe_parceira(pid: int, ctx: dict = Depends(get_ctx), db: Session = Depen
             "id": c.id, "valor_total": c.valor_total,
             "status_pag": "pago" if saldo <= 0 else c.status_pag,
             "saldo": saldo, "observacao": c.observacao,
-            "criado_em": c.criado_em.strftime("%d/%m/%Y %H:%M") if c.criado_em else None,
+            "criado_em": fmt_dt_local(c.criado_em),
             "itens": [{
                 "produto": it.produto_rel.nome if it.produto_rel else f"#{it.produto_id}",
                 "quantidade": it.quantidade, "preco_unitario": it.preco_unitario,

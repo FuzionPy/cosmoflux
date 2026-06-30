@@ -20,6 +20,14 @@ def tid(ctx):
     """Retorna tenant_id ou None (admin)."""
     return None if ctx["admin"] else ctx.get("tenant_id")
 
+def fmt_dt_local(dt):
+    """Formata um datetime UTC (como salvo no banco) para o fuso de Brasília
+    (UTC-3) no formato dd/mm/aaaa HH:MM. Sem isso, horários aparecem ~3h
+    adiantados (ex: 23:32 do dia 29 vira 02:32 do dia 30)."""
+    if not dt:
+        return None
+    return (dt - timedelta(hours=3)).strftime("%d/%m/%Y %H:%M")
+
 # ══════════════════════════════════════════════════════════════════
 # SCHEMAS
 # ══════════════════════════════════════════════════════════════════
@@ -207,7 +215,7 @@ def listar_movimentacoes(
         "motivo":     m.motivo, "observacao": m.observacao,
         "preco_custo_real": m.preco_custo_real,
         "usuario":    m.usuario_rel.nome if m.usuario_rel else None,
-        "data":       m.criado_em.strftime("%d/%m/%Y %H:%M") if m.criado_em else None,
+        "data":       fmt_dt_local(m.criado_em),
         "data_raw":   m.criado_em.isoformat() if m.criado_em else None,
     } for m in movs]
 
@@ -304,7 +312,7 @@ def listar_pedidos(
             "data_vencimento":  (sorted(venda.parcelas, key=lambda x: x.numero)[0].vencimento.strftime("%d/%m/%Y") if venda and venda.parcelas and sorted(venda.parcelas, key=lambda x: x.numero)[0].vencimento else None),
             "total": p.total, "desconto": p.desconto, "observacao": p.observacao,
             "descricao": venda.descricao if venda else f"Pedido #{p.id}",
-            "data":     p.criado_em.strftime("%d/%m/%Y %H:%M") if p.criado_em else None,
+            "data":     fmt_dt_local(p.criado_em),
             "data_venda": p.criado_em.strftime("%d/%m/%Y") if p.criado_em else None,
             "data_raw": p.criado_em.isoformat() if p.criado_em else None,
             "num_itens": len(p.itens),
@@ -629,7 +637,7 @@ def resumo_geral(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
             "tipo":       m.tipo,
             "quantidade": m.quantidade,
             "motivo":     m.motivo,
-            "data":       m.criado_em.strftime("%d/%m/%Y %H:%M") if m.criado_em else None,
+            "data":       fmt_dt_local(m.criado_em),
         } for m in movs],
     }
 
