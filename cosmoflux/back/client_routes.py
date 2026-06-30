@@ -198,12 +198,14 @@ def listar_clientes(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db))
         parcelas_vencidas = parcelas_proximas = 0
         total_em_aberto = 0.0
         vendas_ativas = [v for v in c.vendas if v.status_pagamento != "cancelado"]
+        total_gasto = sum(v.valor_total for v in vendas_ativas)
         for v in vendas_ativas:
             for p in v.parcelas:
                 if not p.pago:
                     total_em_aberto += p.valor
                     if p.vencimento < hoje:            parcelas_vencidas += 1
                     elif (p.vencimento - hoje).days <= 5: parcelas_proximas += 1
+        total_recebido = max(total_gasto - total_em_aberto, 0)
         resultado.append({
             "id": c.id, "nome": c.nome, "email": c.email,
             "telefone": c.telefone, "cpf": c.cpf,
@@ -212,7 +214,10 @@ def listar_clientes(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db))
             "vendedor": c.usuario_rel.nome if c.usuario_rel else None,
             "criado_em": c.criado_em.strftime("%d/%m/%Y") if c.criado_em else None,
             "total_vendas": len(vendas_ativas),
+            "total_gasto": round(total_gasto, 2),
+            "total_recebido": round(total_recebido, 2),
             "total_em_aberto": round(total_em_aberto, 2),
+            "quitado_pct": round((total_recebido / total_gasto) * 100) if total_gasto > 0 else 100,
             "parcelas_vencidas": parcelas_vencidas,
             "parcelas_proximas": parcelas_proximas,
             "alerta": "vencido" if parcelas_vencidas > 0 else "proximo" if parcelas_proximas > 0 else None,

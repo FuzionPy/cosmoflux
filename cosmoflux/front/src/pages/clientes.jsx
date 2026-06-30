@@ -1,1290 +1,743 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 
-// ── API helpers ───────────────────────────────────────────────────────────────
+/* ── API ──────────────────────────────────────────────────────────────── */
 const BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000') + '/api';
-const token = () => localStorage.getItem('token') || sessionStorage.getItem('token');
-const h = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` });
-
-const apiCall = async (url, opts={}) => {
-  const r = await fetch(BASE + url, { headers: h(), ...opts });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw { status: r.status, detail: data.detail || `Erro ${r.status}` };
-  return data;
+const tok  = () => localStorage.getItem('token') || sessionStorage.getItem('token');
+const h    = () => ({ 'Content-Type':'application/json', Authorization:`Bearer ${tok()}` });
+const api  = {
+  get:  url    => fetch(BASE+url,{headers:h()}).then(async r=>{const d=await r.json().catch(()=>([]));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+  post: (u,b)  => fetch(BASE+u,{method:'POST',  headers:h(),body:JSON.stringify(b||{})}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+  put:  (u,b)  => fetch(BASE+u,{method:'PUT',   headers:h(),body:JSON.stringify(b||{})}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+  del:  url    => fetch(BASE+url,{method:'DELETE',headers:h()}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
 };
-const api = {
-  get:   (url)       => apiCall(url),
-  post:  (url, body) => apiCall(url, { method:'POST',  body: JSON.stringify(body) }),
-  put:   (url, body) => apiCall(url, { method:'PUT',   body: JSON.stringify(body) }),
-  patch: (url, body) => apiCall(url, { method:'PATCH', body: JSON.stringify(body) }),
-  del:   (url)       => apiCall(url, { method:'DELETE' }),
+const getDocTheme = () => { try{return document.documentElement.getAttribute('data-theme')||'dark';}catch{return 'dark';} };
+
+/* ── helpers ──────────────────────────────────────────────────────────── */
+const fmtBRLc = (v, dec = 2) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+const fmtTelc = (t) => { const d = (t || '').replace(/\D/g, ''); return d.length === 11 ? d.replace(/^(\d{2})(\d{5})(\d{4})$/, '($1) $2-$3') : (t || '—'); };
+const inicial = (n) => (n || '?').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase();
+const avatarColor = (n) => { let hh = 0; for (let i = 0; i < (n || '').length; i++) hh = (hh * 31 + n.charCodeAt(i)) % 360; return `hsl(${hh}, 52%, 52%)`; };
+const txt = v => v==null ? '' : (typeof v === 'object' ? (v.nome || v.produto || '') : String(v));
+
+const VENDA_PAY = {
+  pago:      { cls: 'ok',   label: 'Pago' },
+  em_aberto: { cls: 'warn', label: 'Em aberto' },
+  vencido:   { cls: 'crit', label: 'Vencido' },
+  cancelado: { cls: 'info', label: 'Cancelado' },
+};
+function VPill({ v }) { const m = VENDA_PAY[v.status_pagamento] || VENDA_PAY.em_aberto; return <span className={`cf-pill ${m.cls}`}>{m.label}</span>; }
+
+const ALERTA_PILL = { vencido: { cls: 'crit', label: 'Vencido' }, proximo: { cls: 'warn', label: 'Vence em breve' } };
+
+const waLink = (cli) => {
+  const tel = (cli.telefone || '').replace(/\D/g, '');
+  const msg = cli.total_em_aberto > 0
+    ? `Oi, ${cli.nome.split(' ')[0]}! Tudo bem? Passando pra lembrar do seu saldo de ${fmtBRLc(cli.total_em_aberto)} aqui na loja 💜 Quando puder, me avisa pra gente acertar!`
+    : `Oi, ${cli.nome.split(' ')[0]}! Tudo bem? Chegou novidade aqui na loja, quer dar uma olhada? 💜`;
+  return `https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`;
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-const fmtBRL = v => `R$ ${Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
-const fmtTel = t => t ? t.replace(/\D/g,'').replace(/^(\d{2})(\d{5})(\d{4})$/,'($1) $2-$3') : '—';
-const hoje = () => new Date().toISOString().split('T')[0];
+const CLI_EMPTY = { nome: '', telefone: '', email: '', cpf: '', cidade: '', endereco: '', cep: '', observacao: '' };
 
-const MODOS = ['Dinheiro','PIX','Cartão Crédito','Cartão Débito','Boleto','Fiado'];
+/* ── ícones ───────────────────────────────────────────────────────────── */
+const Ic = ({d,size=16,sw=1.8}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" style={{display:'block',flexShrink:0}}>
+    {d}
+  </svg>
+);
+const ICONS = {
+  edit:  <><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/></>,
+  trash: <><path d="M3 6h18"/><path d="M19 6 18 20a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></>,
+  phone: <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.4-1.2a2 2 0 0 1 2.1-.5c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 2Z"/>,
+  mail:  <><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></>,
+  pin:   <><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></>,
+  wa:    <path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2Zm5.3 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7a11.6 11.6 0 0 1-4.8-4.3c-.4-.6-.9-1.5-.9-2.4 0-.9.5-1.3.7-1.5.2-.2.4-.3.6-.3h.5c.2 0 .4 0 .6.5l.7 1.7c.1.2.1.4 0 .5l-.3.5-.3.3c-.1.1-.3.3-.1.5.2.4.8 1.2 1.6 1.9 1 .9 1.8 1.1 2 1.2.2.1.4.1.5-.1l.7-.8c.2-.2.3-.2.5-.1l1.6.8c.2.1.4.2.4.3.1.1.1.6-.1 1.1Z"/>,
+  copy:  <><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></>,
+  sort:  <><path d="M3 6h12M3 12h9M3 18h6"/><path d="m18 9 3-3-3-3M21 6v12"/></>,
+  grid:  <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
+  list:  <><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></>,
+  spark: <path d="M12 2.5 14.2 9 21 11l-6.8 2L12 19.5 9.8 13 3 11l6.8-2L12 2.5Z"/>,
+  users: <><circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5.5a3 3 0 0 1 0 5.5"/><path d="M21 20a6 6 0 0 0-4-5.6"/></>,
+  x:     <><path d="M18 6L6 18M6 6l12 12"/></>,
+  plus:  <><path d="M12 5v14"/><path d="M5 12h14"/></>,
+};
 
-// ── STYLES ────────────────────────────────────────────────────────────────────
+/* ── CSS ──────────────────────────────────────────────────────────────── */
 const S = `
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+.cf-cli-root *,.cf-cli-root *::before,.cf-cli-root *::after{box-sizing:border-box;}
+.cf-cli-root{--font-ui:'Plus Jakarta Sans',system-ui,sans-serif;--font-mono:'JetBrains Mono',monospace;--brand:#9166d8;--radius:15px;--radius-sm:10px;--gap:16px;--kpi-pad:18px;--ok:#21a06d;--warn:#e08a2a;--crit:#e2514f;font-family:var(--font-ui);padding:24px;animation:cfcIn .3s ease both;}
+@keyframes cfcIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.cf-cli-root[data-theme="dark"],.cf-cli-root:not([data-theme]){--bg:#0a0b0f;--surface:#111319;--surface-2:#171a21;--elevated:#1a1e26;--border:rgba(255,255,255,.075);--border-strong:rgba(255,255,255,.15);--track:rgba(255,255,255,.08);--text:#edeef3;--text-dim:rgba(237,238,243,.6);--text-muted:rgba(237,238,243,.34);--shadow:0 8px 28px rgba(0,0,0,.32);}
+.cf-cli-root[data-theme="light"]{--bg:#f3f1f5;--surface:#fff;--surface-2:#f8f6fa;--elevated:#fff;--border:rgba(28,20,36,.1);--border-strong:rgba(28,20,36,.2);--track:rgba(28,20,36,.08);--text:#1b1722;--text-dim:rgba(27,23,34,.62);--text-muted:rgba(27,23,34,.42);--shadow:0 10px 30px rgba(28,20,36,.07);}
+.cf-cli-root{--brand-soft:color-mix(in oklab,var(--brand) 14%,transparent);--brand-line:color-mix(in oklab,var(--brand) 32%,transparent);color:var(--text);}
+.cf-cli-portal{--font-ui:'Plus Jakarta Sans',system-ui,sans-serif;--font-mono:'JetBrains Mono',monospace;--brand:#9166d8;--radius:15px;--radius-sm:10px;--ok:#21a06d;--warn:#e08a2a;--crit:#e2514f;font-family:var(--font-ui);}
+.cf-cli-portal[data-theme="dark"],.cf-cli-portal:not([data-theme]){--bg:#0a0b0f;--surface:#111319;--surface-2:#171a21;--elevated:#1a1e26;--border:rgba(255,255,255,.075);--border-strong:rgba(255,255,255,.15);--track:rgba(255,255,255,.08);--text:#edeef3;--text-dim:rgba(237,238,243,.6);--text-muted:rgba(237,238,243,.34);--shadow:0 8px 28px rgba(0,0,0,.32);}
+.cf-cli-portal[data-theme="light"]{--bg:#f3f1f5;--surface:#fff;--surface-2:#f8f6fa;--elevated:#fff;--border:rgba(28,20,36,.1);--border-strong:rgba(28,20,36,.2);--track:rgba(28,20,36,.08);--text:#1b1722;--text-dim:rgba(27,23,34,.62);--text-muted:rgba(27,23,34,.42);--shadow:0 10px 30px rgba(28,20,36,.07);}
+.cf-cli-portal{--brand-soft:color-mix(in oklab,var(--brand) 14%,transparent);--brand-line:color-mix(in oklab,var(--brand) 32%,transparent);color:var(--text);}
+.cf-cli-portal *,.cf-cli-portal *::before,.cf-cli-portal *::after{box-sizing:border-box;}
 
-*, *::before, *::after { box-sizing: border-box; }
+.cf-cl{display:flex;flex-direction:column;gap:var(--gap);max-width:1480px;margin:0 auto;}
 
-.cl-page {
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  color: #e8eaed;
-  animation: clFadeIn .35s ease both;
-}
-@keyframes clFadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+.cf-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-family:var(--font-ui);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;text-decoration:none;}
+.cf-btn:hover{border-color:var(--border-strong);}
+.cf-btn-primary{background:var(--brand);border-color:var(--brand);color:#fff;}
+.cf-btn-primary:hover{filter:brightness(1.08);}
+.cf-btn-ghost{background:transparent;}
+.cf-btn-danger{background:color-mix(in oklab,var(--crit) 10%,transparent);color:var(--crit);border-color:color-mix(in oklab,var(--crit) 28%,transparent);}
+.cf-btn-wa{background:color-mix(in oklab,#25d366 12%,transparent);color:#1ebe5a;border-color:color-mix(in oklab,#25d366 28%,transparent);}
+.cf-btn-wa:hover{background:color-mix(in oklab,#25d366 20%,transparent);}
+.cf-btn.sm{padding:7px 12px;font-size:12px;}
+.cf-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700;font-family:var(--font-mono);white-space:nowrap;}
+.cf-pill.ok{background:color-mix(in oklab,var(--ok) 14%,transparent);color:var(--ok);}
+.cf-pill.warn{background:color-mix(in oklab,var(--warn) 16%,transparent);color:var(--warn);}
+.cf-pill.crit{background:color-mix(in oklab,var(--crit) 14%,transparent);color:var(--crit);}
+.cf-pill.info{background:var(--brand-soft);color:var(--brand);}
+.cf-mclose{width:30px;height:30px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.cf-mclose:hover{color:var(--crit);border-color:color-mix(in oklab,var(--crit) 35%,transparent);}
+.cf-att-pulse{width:9px;height:9px;border-radius:50%;background:var(--crit);flex-shrink:0;animation:cfcPulse 1.8s infinite;}
+@keyframes cfcPulse{0%{box-shadow:0 0 0 0 color-mix(in oklab,var(--crit) 60%,transparent);}70%{box-shadow:0 0 0 7px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
 
-/* ── ALERTAS BANNER ── */
-.alert-banner {
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid;
-  animation: clFadeIn .4s ease both;
-}
-.alert-banner.danger { border-color: rgba(255,71,87,.3); background: rgba(255,71,87,.06); }
-.alert-banner.warn   { border-color: rgba(255,211,42,.3); background: rgba(255,211,42,.06); }
+.cf-cl-alert{display:flex;align-items:center;gap:12px;padding:13px 18px;background:color-mix(in oklab,var(--crit) 10%,var(--surface));border:1px solid color-mix(in oklab,var(--crit) 32%,transparent);border-radius:var(--radius);}
+.cf-cl-alert-txt{font-size:13px;font-weight:500;}
+.cf-cl-alert-txt strong{color:var(--crit);font-weight:700;}
+.cf-cl-alert .cf-btn{margin-left:auto;}
 
-.ab-header {
-  display: flex; align-items: center; gap: 10px;
-  padding: 12px 16px;
-  cursor: pointer; user-select: none;
-}
-.ab-dot { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
-.ab-title { font-size:13px;font-weight:700;flex:1; }
-.ab-count {
-  font-size:11px; font-family:'JetBrains Mono',monospace;
-  padding:2px 8px; border-radius:4px;
-}
-.alert-banner.danger .ab-count { background:rgba(255,71,87,.15);color:#ff4757; }
-.alert-banner.warn   .ab-count { background:rgba(255,211,42,.15);color:#ffd32a; }
-.ab-chevron { font-size:12px; transition: transform .2s; color: rgba(232,234,237,.4); }
-.ab-chevron.open { transform: rotate(180deg); }
+.cf-cl-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--gap);}
+.cf-cl-kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:var(--kpi-pad);position:relative;overflow:hidden;display:flex;flex-direction:column;gap:10px;}
+.cf-cl-kpi::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tone,var(--brand));}
+.cf-cl-kpi.t-brand{--tone:var(--brand);}
+.cf-cl-kpi.t-ok{--tone:var(--ok);}
+.cf-cl-kpi.t-warn{--tone:var(--warn);}
+.cf-cl-kpi.t-crit{--tone:var(--crit);}
+.cf-cl-kpi.hero{background:linear-gradient(135deg,color-mix(in oklab,var(--warn) 11%,var(--surface)),var(--surface));}
+.cf-cl-kpi-top{display:flex;align-items:center;justify-content:space-between;}
+.cf-cl-kpi-ic{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:color-mix(in oklab,var(--tone,var(--brand)) 14%,transparent);color:var(--tone,var(--brand));}
+.cf-cl-kpi-val{font-size:22px;font-weight:800;font-family:var(--font-mono);letter-spacing:-.02em;line-height:1;}
+.cf-cl-kpi-lbl{font-size:11.5px;font-weight:600;color:var(--text-dim);}
+.cf-cl-kpi-sub{font-size:10.5px;font-family:var(--font-mono);color:var(--text-muted);}
+.cf-cl-kpi-cta{align-self:flex-start;background:none;border:none;color:var(--crit);font-size:11.5px;font-weight:700;cursor:pointer;padding:0;}
 
-.ab-list { border-top:1px solid rgba(255,255,255,.06); }
-.ab-item {
-  display:flex; align-items:center; gap:12px;
-  padding:10px 16px;
-  border-bottom:1px solid rgba(255,255,255,.04);
-  font-size:12px;
-}
-.ab-item:last-child { border-bottom:none; }
-.ab-item-name { font-weight:600; color:#e8eaed; flex:1; }
-.ab-item-info { font-family:'JetBrains Mono',monospace; font-size:11px; color:rgba(232,234,237,.4); }
-.ab-item-val  { font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600; }
-.danger .ab-item-val { color:#ff4757; }
-.warn   .ab-item-val { color:#ffd32a; }
-.ab-badge {
-  font-size:10px; font-family:'JetBrains Mono',monospace;
-  padding:2px 7px; border-radius:4px; white-space:nowrap;
-}
-.alert-banner.danger .ab-badge { background:rgba(255,71,87,.15);color:#ff4757; }
-.alert-banner.warn   .ab-badge { background:rgba(255,211,42,.15);color:#ffd32a; }
+.cf-cl-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.cf-cl-srch{display:flex;align-items:center;gap:9px;flex:1;min-width:230px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 13px;color:var(--text-muted);transition:border-color .2s,box-shadow .2s;}
+.cf-cl-srch:focus-within{border-color:var(--brand-line);box-shadow:0 0 0 3px var(--brand-soft);}
+.cf-cl-srch input{flex:1;min-width:0;background:none;border:none;outline:none;font-family:var(--font-ui);font-size:13px;color:var(--text);}
+.cf-cl-srch input::placeholder{color:var(--text-muted);}
+.cf-cl-srch .x{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:17px;}
+.cf-cl-chips{display:flex;gap:6px;flex-wrap:wrap;}
+.cf-cl-chip{display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:9px;border:1px solid var(--border);background:var(--surface);color:var(--text-dim);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-ui);}
+.cf-cl-chip.on{background:var(--brand-soft);border-color:var(--brand-line);color:var(--brand);}
+.cf-cl-chip-dot{width:7px;height:7px;border-radius:50%;}
+.cf-cl-chip-n{font-family:var(--font-mono);font-size:10px;opacity:.7;}
+.cf-cl-tools-right{display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap;}
+.cf-cl-select{display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 11px;color:var(--text-muted);}
+.cf-cl-select select{background:none;border:none;outline:none;font-family:var(--font-ui);font-size:12.5px;color:var(--text);cursor:pointer;}
+.cf-cl-seg{display:flex;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px;}
+.cf-cl-seg button{width:30px;height:28px;border-radius:7px;border:none;background:transparent;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.cf-cl-seg button.on{background:var(--brand-soft);color:var(--brand);}
 
-/* ── HEADER ── */
-.cl-header { display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap; }
-.cl-title   { font-size:22px;font-weight:800;color:#e8eaed; }
-.cl-sub     { font-size:12px;color:rgba(232,234,237,.35);font-family:'JetBrains Mono',monospace;margin-top:4px; }
+.cf-cl-avatar{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;background:var(--av,var(--brand));flex-shrink:0;}
 
-/* ── STATS ── */
-.cl-stats { display:flex;gap:12px;flex-wrap:wrap; }
-.cl-stat {
-  background:#0e1013; border:1px solid rgba(255,255,255,.06);
-  border-radius:8px; padding:10px 16px;
-  display:flex; align-items:center; gap:10px;
-  flex:1; min-width:130px;
-}
-.cs-dot  { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
-.cs-val  { font-size:18px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#e8eaed; }
-.cs-lbl  { font-size:11px;color:rgba(232,234,237,.35);margin-top:1px; }
+.cf-cl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--gap);}
+.cf-cl-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;cursor:pointer;transition:all .16s;display:flex;flex-direction:column;gap:13px;}
+.cf-cl-card:hover{border-color:var(--border-strong);transform:translateY(-2px);}
+.cf-cl-card.al-vencido{border-left:3px solid var(--crit);}
+.cf-cl-card.al-proximo{border-left:3px solid var(--warn);}
+.cf-cl-card-top{display:flex;gap:11px;align-items:flex-start;}
+.cf-cl-card-id{min-width:0;flex:1;}
+.cf-cl-card-nmrow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+.cf-cl-card-name{font-size:14.5px;font-weight:700;}
+.cf-cl-card-tel{font-size:11px;font-family:var(--font-mono);color:var(--text-muted);margin-top:2px;}
+.cf-cl-card-loc{font-size:10.5px;color:var(--text-muted);margin-top:2px;}
+.cf-cl-card-mid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.cf-cl-fld-l{font-size:9px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:2px;}
+.cf-cl-fld-v{font-size:13px;font-weight:700;font-family:var(--font-mono);}
+.cf-cl-fld-v.muted{color:var(--text-muted);}
+.cf-cl-fld-v.ok{color:var(--ok);}
+.cf-cl-fld-v.warn{color:var(--warn);}
+.cf-cl-fld-v.crit{color:var(--crit);}
+.cf-cl-card-health{display:flex;flex-direction:column;gap:6px;}
+.cf-cl-health-top{display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim);}
+.cf-cl-card-foot{display:flex;align-items:center;gap:8px;padding-top:10px;border-top:1px solid var(--border);}
+.cf-cl-wa{display:flex;align-items:center;gap:5px;margin-left:auto;font-size:11.5px;font-weight:600;color:#1ebe5a;text-decoration:none;}
+.cf-cl-ic-btn{width:26px;height:26px;border-radius:7px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-dim);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.cf-cl-ic-btn.danger{color:var(--crit);border-color:color-mix(in oklab,var(--crit) 25%,transparent);}
 
-/* ── FILTRO ── */
-.cl-filters { display:flex;gap:10px;flex-wrap:wrap;align-items:center; }
-.cl-search {
-  display:flex;align-items:center;gap:8px;
-  background:#0e1013; border:1px solid rgba(255,255,255,.08);
-  border-radius:8px; padding:9px 14px; flex:1; min-width:200px;
-  transition:border-color .2s;
-}
-.cl-search:focus-within { border-color:rgba(0,212,170,.4); }
-.cl-search input {
-  background:none;border:none;outline:none;
-  font-size:13px;color:#e8eaed;font-family:'Plus Jakarta Sans',sans-serif;width:100%;
-}
-.cl-search input::placeholder { color:rgba(232,234,237,.25); }
-.cl-sel {
-  background:#0e1013; border:1px solid rgba(255,255,255,.08);
-  border-radius:8px; padding:9px 14px;
-  font-size:13px;color:rgba(232,234,237,.7);
-  font-family:'Plus Jakarta Sans',sans-serif;outline:none;cursor:pointer;
-}
+.cf-meter{width:100%;}
+.cf-meter-track{position:relative;height:6px;background:var(--track);border-radius:4px;overflow:visible;}
+.cf-meter-fill{height:100%;border-radius:4px;transition:width .5s;}
+.cf-meter-fill.ok{background:var(--ok);}
+.cf-meter-fill.warn{background:var(--warn);}
+.cf-meter-fill.crit{background:var(--crit);}
 
-/* ── GRID CLIENTES ── */
-.cl-grid {
-  display:grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px,1fr));
-  gap:14px;
-}
+.cf-cl-table{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
+.cf-cl-thead{display:grid;grid-template-columns:2.2fr 90px 1fr 1.4fr 1fr 130px;gap:12px;padding:11px 18px;border-bottom:1px solid var(--border);}
+.cf-cl-th{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
+.cf-cl-th.r{text-align:right;}
+.cf-cl-row{display:grid;grid-template-columns:2.2fr 90px 1fr 1.4fr 1fr 130px;gap:12px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.cf-cl-row:last-child{border-bottom:none;}
+.cf-cl-row:hover{background:var(--surface-2);}
+.cf-cl-r-name{display:flex;align-items:center;gap:10px;min-width:0;}
+.cf-cl-r-nm{font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cf-cl-r-sub{font-size:10.5px;font-family:var(--font-mono);color:var(--text-muted);}
+.cf-cl-cell.r{text-align:right;}
+.cf-cl-r-num{font-family:var(--font-mono);font-weight:700;}
+.cf-cl-r-num.muted{color:var(--text-muted);}
+.cf-cl-r-num.crit{color:var(--crit);}
+.cf-cl-r-num.warn{color:var(--warn);}
+.cf-cl-r-health{display:flex;flex-direction:column;gap:5px;min-width:90px;}
+.cf-cl-r-health-l{font-size:11px;font-family:var(--font-mono);}
+.cf-cl-r-actions{display:flex;gap:5px;justify-content:flex-end;}
+.cf-cl-empty{padding:60px 20px;text-align:center;color:var(--text-muted);display:flex;flex-direction:column;align-items:center;gap:10px;}
+.cf-cl-empty-ic{width:44px;height:44px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;color:var(--text-muted);}
+@media(max-width:1000px){.cf-cl-thead,.cf-cl-row{grid-template-columns:2fr 1fr 110px;}.cf-cl-th:nth-child(2),.cf-cl-th:nth-child(3),.cf-cl-row>:nth-child(2),.cf-cl-row>:nth-child(3){display:none;}}
 
-.cl-card {
-  background:#0e1013;
-  border:1px solid rgba(255,255,255,.06);
-  border-radius:12px; overflow:hidden;
-  transition:border-color .2s, transform .2s, box-shadow .2s;
-  animation:cardIn .4s cubic-bezier(.22,1,.36,1) both;
-  cursor:pointer; position:relative;
-}
-.cl-card:hover { border-color:rgba(255,255,255,.12); transform:translateY(-2px); box-shadow:0 8px 28px rgba(0,0,0,.3); }
-.cl-card.selected { border-color:rgba(0,212,170,.4); box-shadow:0 0 0 1px rgba(0,212,170,.15); }
-.cl-card.alerta-danger { border-color:rgba(255,71,87,.35); }
-.cl-card.alerta-warn   { border-color:rgba(255,211,42,.3); }
-@keyframes cardIn { from{opacity:0;transform:translateY(14px) scale(.98)} to{opacity:1;transform:none} }
+/* painel central via Portal */
+.cf-cl-ov{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;animation:cfcFade .2s ease both;}
+@keyframes cfcFade{from{opacity:0}to{opacity:1}}
+.cf-cl-panel{background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);width:100%;max-width:480px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.45);}
+.cf-cl-panel-hd{padding:20px 22px 16px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-shrink:0;}
+.cf-cl-panel-id{display:flex;gap:13px;align-items:flex-start;min-width:0;}
+.cf-cl-panel-id .cf-cl-avatar{width:48px;height:48px;font-size:18px;}
+.cf-cl-panel-title{font-size:18px;font-weight:800;letter-spacing:-.01em;line-height:1.25;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.cf-cl-panel-sub{font-size:11.5px;font-family:var(--font-mono);color:var(--text-muted);margin-top:4px;}
+.cf-cl-panel-body{flex:1;overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:20px;}
+.cf-cl-panel-body::-webkit-scrollbar{width:5px;}
+.cf-cl-panel-body::-webkit-scrollbar-thumb{background:var(--track);border-radius:3px;}
+.cf-cl-sec-t{font-size:9.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:11px;display:flex;align-items:center;justify-content:space-between;}
+.cf-cl-sec-t .muted{font-weight:500;text-transform:none;letter-spacing:0;}
+.cf-cl-contact{display:flex;flex-direction:column;gap:9px;}
+.cf-cl-contact-row{display:flex;align-items:center;gap:10px;}
+.cf-cl-contact-ic{width:28px;height:28px;border-radius:8px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex-shrink:0;}
+.cf-cl-contact-info{flex:1;min-width:0;}
+.cf-cl-contact-l{font-size:9px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);}
+.cf-cl-contact-v{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cf-cl-copy{width:26px;height:26px;border-radius:7px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.cf-cl-copy:hover{color:var(--brand);}
+.cf-cl-finance{display:flex;flex-direction:column;gap:10px;}
+.cf-cl-fin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+.cf-cl-fin-l{font-size:9px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:3px;}
+.cf-cl-fin-v{font-size:15px;font-weight:800;font-family:var(--font-mono);}
+.cf-cl-fin-v.ok{color:var(--ok);}
+.cf-cl-fin-v.warn{color:var(--warn);}
+.cf-cl-fin-v.crit{color:var(--crit);}
+.cf-cl-fin-meter-l{display:flex;justify-content:space-between;font-size:10.5px;font-family:var(--font-mono);color:var(--text-muted);}
+.cf-cl-venda{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 13px;margin-bottom:8px;}
+.cf-cl-venda.canc{opacity:.55;}
+.cf-cl-venda-top{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.cf-cl-venda-desc{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;font-family:var(--font-mono);color:var(--text-dim);}
+.cf-cl-venda-total{font-size:14px;font-weight:800;font-family:var(--font-mono);}
+.cf-cl-venda-meta{display:flex;gap:6px;font-size:10.5px;color:var(--text-muted);font-family:var(--font-mono);margin-top:5px;}
+.cf-cl-venda-foot{margin-top:9px;padding-top:9px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;}
+.cf-cl-gerenciar{display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--brand);font-size:11.5px;font-weight:700;cursor:pointer;padding:0;}
+.cf-cl-confirm-x{font-size:13px;color:var(--text-dim);line-height:1.5;}
+.cf-cl-panel-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:10px;flex-shrink:0;}
 
-.cl-card-alert-strip {
-  height:3px; width:100%;
-}
+/* modais */
+.cf-cl-mback{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);z-index:210;display:flex;align-items:center;justify-content:center;padding:20px;animation:cfcFade .2s ease both;}
+.cf-cl-modal{background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);width:100%;max-width:520px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.45);}
+.cf-cl-mhd{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.cf-cl-mtitle{font-size:15px;font-weight:800;}
+.cf-cl-msub{font-size:11px;font-family:var(--font-mono);color:var(--text-muted);margin-top:2px;}
+.cf-cl-mbody{padding:18px 22px;display:flex;flex-direction:column;gap:13px;overflow-y:auto;}
+.cf-cl-mfoot{padding:13px 22px;border-top:1px solid var(--border);display:flex;gap:9px;flex-shrink:0;}
+.cf-cl-err{font-size:12px;color:var(--crit);background:color-mix(in oklab,var(--crit) 10%,transparent);border:1px solid color-mix(in oklab,var(--crit) 25%,transparent);border-radius:8px;padding:9px 13px;}
+.cf-cl-form-sec{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--brand);font-family:var(--font-mono);margin-top:4px;}
+.cf-cl-form-row{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+.cf-cl-field{display:flex;flex-direction:column;gap:5px;}
+.cf-cl-field.full{grid-column:1/-1;}
+.cf-cl-label{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
+.cf-cl-input,.cf-cl-fselect,.cf-cl-textarea{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 12px;font-size:13px;color:var(--text);font-family:var(--font-ui);outline:none;width:100%;transition:border-color .18s;}
+.cf-cl-input:focus,.cf-cl-fselect:focus,.cf-cl-textarea:focus{border-color:var(--brand-line);}
+.cf-cl-textarea{min-height:70px;resize:vertical;font-family:var(--font-ui);}
+.cf-cl-divider{border:none;border-top:1px solid var(--border);margin:4px 0;}
+.cf-cl-confirm{background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);width:100%;max-width:380px;padding:22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 32px 80px rgba(0,0,0,.45);}
+.cf-cl-confirm-t{font-size:15px;font-weight:800;}
+.cf-cl-confirm-acts{display:flex;gap:9px;}
+.cf-cl-confirm-acts .cf-btn{flex:1;justifyContent:center;}
 
-.cl-card-top { padding:16px 16px 12px; border-bottom:1px solid rgba(255,255,255,.05); }
-.cl-card-avatar {
-  width:38px;height:38px;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;
-  font-size:15px;font-weight:800;color:#000;
-  flex-shrink:0; margin-bottom:10px;
-}
-.cl-card-name { font-size:15px;font-weight:700;color:#e8eaed;margin-bottom:3px; }
-.cl-card-tel  { font-size:12px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.4); }
-.cl-card-end  { font-size:11px;color:rgba(232,234,237,.3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-.cl-card-badges { display:flex;gap:6px;flex-wrap:wrap;margin-top:8px; }
+.cf-toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--elevated);border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:12px 18px;display:flex;align-items:center;gap:10px;font-size:13px;z-index:300;box-shadow:var(--shadow);animation:cfcFade .3s ease both;white-space:nowrap;}
+.cf-toast-ic{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;background:color-mix(in oklab,var(--ok) 14%,transparent);color:var(--ok);flex-shrink:0;}
+.cf-toast-ic.warn{background:color-mix(in oklab,var(--warn) 14%,transparent);color:var(--warn);}
+.cf-toast-ic.err{background:color-mix(in oklab,var(--crit) 14%,transparent);color:var(--crit);}
 
-.cl-card-mid {
-  padding:12px 16px;
-  display:grid;grid-template-columns:1fr 1fr 1fr;
-  gap:10px; border-bottom:1px solid rgba(255,255,255,.05);
-}
-.cl-mini-lbl { font-size:9px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.28);letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px; }
-.cl-mini-val { font-size:13px;font-weight:700;color:#e8eaed;font-family:'JetBrains Mono',monospace; }
-.cl-mini-val.green  { color:#00d4aa; }
-.cl-mini-val.red    { color:#ff4757; }
-.cl-mini-val.yellow { color:#ffd32a; }
+.cf-skel{background:linear-gradient(90deg,var(--track) 25%,var(--surface-2) 50%,var(--track) 75%);background-size:200% 100%;animation:cfcSh 1.5s infinite;border-radius:8px;}
+@keyframes cfcSh{from{background-position:200% 0}to{background-position:-200% 0}}
 
-.cl-card-bot {
-  padding:10px 16px;
-  display:flex;align-items:center;justify-content:space-between;
-}
-.cl-vendedor { font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.3); }
-.cl-actions  { display:flex;gap:6px; }
-
-/* ── ICON BTN ── */
-.icon-btn {
-  width:32px;height:32px;border-radius:7px;border:1px solid rgba(255,255,255,.1);
-  display:flex;align-items:center;justify-content:center;
-  cursor:pointer;transition:all .2s;
-  background:rgba(255,255,255,.05);color:rgba(232,234,237,.7);
-}
-.icon-btn:hover               { background:rgba(0,153,255,.15);color:#0099ff;border-color:rgba(0,153,255,.3);transform:translateY(-1px); }
-.icon-btn.danger              { background:rgba(255,255,255,.05);color:rgba(232,234,237,.7);border-color:rgba(255,255,255,.1); }
-.icon-btn.danger:hover        { background:rgba(255,71,87,.15);color:#ff4757;border-color:rgba(255,71,87,.3);transform:translateY(-1px); }
-
-/* ── EMPTY ── */
-.cl-empty { grid-column:1/-1;padding:60px 20px;text-align:center;color:rgba(232,234,237,.25); }
-.cl-empty-icon { font-size:36px;margin-bottom:12px;opacity:.4; }
-
-/* ── SKELETON ── */
-.skel {
-  background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 75%);
-  background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:6px;
-}
-@keyframes shimmer { from{background-position:200% 0} to{background-position:-200% 0} }
-
-/* ── BADGE ── */
-.badge {
-  display:inline-flex;align-items:center;
-  padding:2px 7px;border-radius:4px;
-  font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace;
-}
-.b-green  { background:rgba(0,212,170,.12);color:#00d4aa; }
-.b-red    { background:rgba(255,71,87,.12);color:#ff4757; }
-.b-yellow { background:rgba(255,211,42,.12);color:#ffd32a; }
-.b-blue   { background:rgba(0,153,255,.12);color:#0099ff; }
-.b-gray   { background:rgba(255,255,255,.07);color:rgba(232,234,237,.5); }
-
-/* ── DETAIL PANEL ── */
-.dp {
-  position:fixed;right:0;top:0;bottom:0;
-  width:420px;background:#0e1013;
-  border-left:1px solid rgba(255,255,255,.08);
-  z-index:150;overflow-y:auto;
-  animation:dpIn .3s cubic-bezier(.22,1,.36,1) both;
-  display:flex;flex-direction:column;
-}
-.dp::-webkit-scrollbar{width:4px}
-.dp::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:2px}
-@keyframes dpIn { from{transform:translateX(100%)} to{transform:none} }
-
-.dp-head {
-  padding:22px;border-bottom:1px solid rgba(255,255,255,.06);
-  display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
-  flex-shrink:0;
-}
-.dp-avatar {
-  width:48px;height:48px;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;
-  font-size:18px;font-weight:800;color:#000;
-  flex-shrink:0;
-}
-.dp-name { font-size:18px;font-weight:800;color:#e8eaed;line-height:1.3; }
-.dp-meta { font-size:11px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.3);margin-top:3px; }
-
-.dp-body  { padding:20px 22px;flex:1;display:flex;flex-direction:column;gap:22px; }
-.dp-sec-title {
-  font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
-  color:rgba(232,234,237,.28);font-family:'JetBrains Mono',monospace;margin-bottom:12px;
-}
-.dp-grid2 { display:grid;grid-template-columns:1fr 1fr;gap:14px; }
-.dp-field-lbl { font-size:10px;color:rgba(232,234,237,.28);font-family:'JetBrains Mono',monospace;margin-bottom:3px; }
-.dp-field-val { font-size:14px;font-weight:600;color:#e8eaed; }
-.dp-field-val.mono { font-family:'JetBrains Mono',monospace; }
-.dp-field-val.green { color:#00d4aa; }
-.dp-field-val.red   { color:#ff4757; }
-.dp-field-val.yellow{ color:#ffd32a; }
-
-/* Vendas accordion */
-.venda-block {
-  background:#13161a;border:1px solid rgba(255,255,255,.06);
-  border-radius:10px;overflow:hidden;
-}
-.venda-header {
-  padding:12px 14px;cursor:pointer;
-  display:flex;align-items:center;gap:10px;
-  transition:background .15s;
-}
-.venda-header:hover { background:rgba(255,255,255,.03); }
-.venda-desc  { font-size:13px;font-weight:600;color:#e8eaed;flex:1; }
-.venda-total { font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#00d4aa; }
-
-.venda-body { border-top:1px solid rgba(255,255,255,.06); }
-.venda-info { display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.04); }
-.vi-lbl { font-size:9px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.28);text-transform:uppercase;letter-spacing:.1em;margin-bottom:2px; }
-.vi-val { font-size:13px;font-weight:600;color:#e8eaed; }
-
-/* Parcelas */
-.parcela-row {
-  display:grid;
-  grid-template-columns: 36px 1fr 80px 70px auto;
-  align-items:center;gap:6px;
-  padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.03);
-  transition:background .15s;
-}
-.parcela-row:last-child { border-bottom:none; }
-.parcela-row:hover { background:rgba(255,255,255,.02); }
-.parc-num  { font-size:11px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.4);text-align:center; }
-.parc-venc { font-size:11px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.5); }
-.parc-val  { font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#e8eaed;text-align:right; }
-.parc-pay-btn {
-  padding:3px 10px;border-radius:5px;border:none;
-  font-size:10px;font-family:'JetBrains Mono',monospace;font-weight:600;
-  cursor:pointer;transition:all .15s;
-  background:rgba(0,212,170,.12);color:#00d4aa;
-}
-.parc-pay-btn:hover { background:rgba(0,212,170,.25); }
-.parc-pay-btn:disabled { opacity:.4;cursor:not-allowed; }
-
-.dp-foot {
-  padding:14px 22px;border-top:1px solid rgba(255,255,255,.06);
-  display:flex;gap:10px;flex-shrink:0;
-}
-
-/* ── MODAL ── */
-.modal-bg {
-  position:fixed;inset:0;
-  background:rgba(0,0,0,.75);backdrop-filter:blur(4px);
-  z-index:200;display:flex;align-items:center;justify-content:center;
-  padding:20px;animation:clFadeIn .2s ease both;
-}
-.modal {
-  background:#0e1013;border:1px solid rgba(255,255,255,.1);
-  border-radius:16px;width:100%;max-width:560px;
-  max-height:90vh;overflow-y:auto;
-  animation:modalIn .3s cubic-bezier(.22,1,.36,1) both;
-}
-.modal::-webkit-scrollbar{width:4px}
-.modal::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:2px}
-@keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(14px)}to{opacity:1;transform:none}}
-
-.modal-head {
-  padding:22px 24px 18px;border-bottom:1px solid rgba(255,255,255,.06);
-  display:flex;align-items:center;justify-content:space-between;
-}
-.modal-title { font-size:16px;font-weight:800;color:#e8eaed; }
-.modal-sub   { font-size:11px;color:rgba(232,234,237,.35);font-family:'JetBrains Mono',monospace;margin-top:2px; }
-.modal-close {
-  width:32px;height:32px;border-radius:8px;border:none;
-  background:rgba(255,255,255,.05);color:rgba(232,234,237,.5);
-  cursor:pointer;transition:all .15s;
-  display:flex;align-items:center;justify-content:center;font-size:18px;
-}
-.modal-close:hover { background:rgba(255,71,87,.15);color:#ff4757; }
-
-.modal-body { padding:22px 24px;display:flex;flex-direction:column;gap:16px; }
-.modal-foot {
-  padding:14px 24px;border-top:1px solid rgba(255,255,255,.06);
-  display:flex;gap:10px;justify-content:flex-end;
-}
-
-/* ── FORM ── */
-.form-row2 { display:grid;grid-template-columns:1fr 1fr;gap:14px; }
-.form-row3 { display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px; }
-.form-field { display:flex;flex-direction:column;gap:5px; }
-.form-field.full { grid-column:1/-1; }
-.form-lbl {
-  font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
-  color:rgba(232,234,237,.35);font-family:'JetBrains Mono',monospace;
-}
-.form-inp, .form-sel, .form-ta {
-  background:#13161a;border:1px solid rgba(255,255,255,.08);
-  border-radius:8px;padding:10px 14px;
-  font-size:13px;color:#e8eaed;
-  font-family:'Plus Jakarta Sans',sans-serif;outline:none;
-  transition:border-color .2s,box-shadow .2s;width:100%;
-}
-.form-inp::placeholder { color:rgba(232,234,237,.2); }
-.form-inp:focus,.form-sel:focus,.form-ta:focus {
-  border-color:rgba(0,212,170,.4);box-shadow:0 0 0 3px rgba(0,212,170,.08);
-}
-.form-sel option { background:#0e1013; }
-.form-ta { resize:vertical;min-height:72px; }
-
-.form-divider {
-  border:none;border-top:1px solid rgba(255,255,255,.06);margin:4px 0;
-}
-.form-section-lbl {
-  font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
-  color:rgba(232,234,237,.28);font-family:'JetBrains Mono',monospace;
-  padding-bottom:4px;
-}
-
-/* parcelas preview */
-.parc-preview {
-  background:rgba(0,212,170,.05);border:1px solid rgba(0,212,170,.12);
-  border-radius:8px;padding:12px 14px;display:flex;gap:20px;
-}
-.pp-item-lbl { font-size:9px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.28);text-transform:uppercase;letter-spacing:.1em;margin-bottom:3px; }
-.pp-item-val { font-size:16px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#00d4aa; }
-
-.form-err {
-  background:rgba(255,71,87,.1);border:1px solid rgba(255,71,87,.3);
-  border-radius:8px;padding:10px 14px;font-size:12px;
-  color:#ff4757;font-family:'JetBrains Mono',monospace;
-}
-
-/* ── BTNS ── */
-.btn {
-  display:flex;align-items:center;gap:6px;
-  padding:9px 18px;border-radius:8px;border:none;
-  font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:600;
-  cursor:pointer;transition:all .15s;white-space:nowrap;
-}
-.btn-primary { background:#00d4aa;color:#000; }
-.btn-primary:hover { background:#00efc0;transform:translateY(-1px); }
-.btn-primary:disabled { opacity:.5;cursor:not-allowed;transform:none; }
-.btn-ghost   { background:rgba(255,255,255,.05);color:rgba(232,234,237,.6);border:1px solid rgba(255,255,255,.08); }
-.btn-ghost:hover { background:rgba(255,255,255,.09);color:#e8eaed; }
-.btn-danger  { background:rgba(255,71,87,.12);color:#ff4757;border:1px solid rgba(255,71,87,.2); }
-.btn-danger:hover { background:rgba(255,71,87,.2); }
-.btn-outline { background:transparent;color:rgba(232,234,237,.6);border:1px solid rgba(255,255,255,.12); }
-.btn-outline:hover { background:rgba(255,255,255,.05);color:#e8eaed; }
-
-/* ── TOAST ── */
-.toast {
-  position:fixed;bottom:24px;right:24px;
-  background:#0e1013;border:1px solid rgba(255,255,255,.1);
-  border-radius:10px;padding:13px 18px;
-  display:flex;align-items:center;gap:10px;
-  font-size:13px;color:#e8eaed;z-index:300;
-  animation:toastIn .3s cubic-bezier(.22,1,.36,1) both;
-  box-shadow:0 8px 28px rgba(0,0,0,.4);min-width:220px;
-}
-@keyframes toastIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
-
-/* ── CONFIRM ── */
-.confirm {
-  background:#0e1013;border:1px solid rgba(255,255,255,.1);
-  border-radius:12px;padding:24px;max-width:340px;width:100%;
-  animation:modalIn .2s ease both;
-}
-.confirm-title { font-size:16px;font-weight:700;color:#e8eaed;margin-bottom:8px; }
-.confirm-text  { font-size:13px;color:rgba(232,234,237,.5);line-height:1.6;margin-bottom:20px; }
-.confirm-acts  { display:flex;gap:10px;justify-content:flex-end; }
-
-/* OVERLAY */
-.overlay { position:fixed;inset:0;z-index:140; }
-
-/* ── RESPONSIVE ── */
-@media(max-width:768px){
-  .cl-page{padding:14px;gap:14px}
-  .form-row2,.form-row3{grid-template-columns:1fr}
-  .dp{width:100%}
-  .cl-grid{grid-template-columns:1fr}
-}
+@media(max-width:1100px){.cf-cl-kpis{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:560px){.cf-cl-kpis{grid-template-columns:1fr;}.cf-cl-form-row{grid-template-columns:1fr;}}
 `;
 
-// ── AVATAR COLOR ─────────────────────────────────────────────────────────────
-const COLORS = ['#00d4aa','#0099ff','#a855f7','#ff6b35','#ffd32a','#ff4757','#00b3de'];
-const avatarColor = name => COLORS[(name?.charCodeAt(0) || 0) % COLORS.length];
-
-// ── ALERT BANNER ─────────────────────────────────────────────────────────────
-function AlertBanner({ items, type }) {
-  const [open, setOpen] = useState(true);
-  if (!items.length) return null;
-  const isDanger = type === 'danger';
-  return (
-    <div className={`alert-banner ${type}`}>
-      <div className="ab-header" onClick={() => setOpen(o => !o)}>
-        <div className="ab-dot" style={{ background: isDanger ? '#ff4757' : '#ffd32a' }} />
-        <div className="ab-title" style={{ color: isDanger ? '#ff4757' : '#ffd32a' }}>
-          {isDanger ? '⚠ Pagamentos Vencidos' : '⏰ Vencem em Breve'}
-        </div>
-        <span className="ab-count">{items.length}</span>
-        <span className={`ab-chevron${open ? ' open' : ''}`}>▼</span>
-      </div>
-      {open && (
-        <div className="ab-list">
-          {items.map((it, i) => (
-            <div key={i} className="ab-item">
-              <span className="ab-badge">
-                {isDanger ? `${it.dias}d atrasado` : `${it.dias}d restante`}
-              </span>
-              <span className="ab-item-name">{it.cliente}</span>
-              <span className="ab-item-info">{it.descricao || `Parcela ${it.numero}`}</span>
-              <span className="ab-item-val">{fmtBRL(it.valor)}</span>
-              {it.cliente_tel && (
-                <a href={`https://wa.me/55${it.cliente_tel.replace(/\D/g,'')}`}
-                  target="_blank" rel="noreferrer"
-                  style={{ fontSize:11, color:'#25d366', textDecoration:'none', whiteSpace:'nowrap' }}>
-                  WhatsApp
-                </a>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+/* ── Portal ───────────────────────────────────────────────────────────── */
+function Portal({children, theme}) {
+  useEffect(()=>{ const p=document.body.style.overflow; document.body.style.overflow='hidden'; return()=>{ document.body.style.overflow=p; }; },[]);
+  return createPortal(<div className="cf-cli-portal" data-theme={theme}>{children}</div>, document.body);
 }
 
-// ── FORM VENDA (normalizado com tela de Vendas) ───────────────────────────────
-const PAGAMENTOS = ['PIX','Dinheiro','Cartão de crédito','Cartão de débito','Fiado','Transferência','Boleto'];
-
-// ── FORM CLIENTE ──────────────────────────────────────────────────────────────
-const CLI_EMPTY = {
-  nome:'', email:'', telefone:'', cpf:'',
-  endereco:'', cidade:'', cep:'', observacao:'',
-};
-
-function ModalCliente({ inicial, onClose, onSaved, showToast }) {
-  const isEdit = !!inicial?.id;
-  const [form, setForm] = useState(inicial
-    ? { nome:inicial.nome||'', email:inicial.email||'', telefone:inicial.telefone||'',
-        cpf:inicial.cpf||'', endereco:inicial.endereco||'', cidade:inicial.cidade||'',
-        cep:inicial.cep||'', observacao:inicial.observacao||'' }
-    : CLI_EMPTY);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
-  const F = (k, v) => setForm(f => ({ ...f, [k]: v }));
-
-  const save = async () => {
-    if (!form.nome) { setErr('Nome é obrigatório.'); return; }
-    setSaving(true); setErr('');
-    try {
-      if (isEdit) {
-        await api.put(`/clientes/${inicial.id}`, form);
-        showToast('Cliente atualizado!', '✎');
-      } else {
-        await api.post('/clientes', form);
-        showToast('Cliente cadastrado!', '✓');
-      }
-      onSaved();
-    } catch { setErr('Erro ao salvar cliente.'); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <div className="modal-bg" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-head">
-          <div>
-            <div className="modal-title">{isEdit ? 'Editar Cliente' : 'Novo Cliente'}</div>
-            <div className="modal-sub">{isEdit ? 'Atualize os dados do cliente' : 'Cadastre um novo cliente'}</div>
-          </div>
-          <button className="modal-close" onClick={onClose}>×</button>
-        </div>
-        <div className="modal-body">
-          {err && <div className="form-err">⚠ {err}</div>}
-
-          <div className="form-section-lbl">Dados Pessoais</div>
-          <div className="form-row2">
-            <div className="form-field full">
-              <label className="form-lbl">Nome Completo *</label>
-              <input className="form-inp" placeholder="Ex: Maria Silva"
-                value={form.nome} onChange={e => F('nome', e.target.value)} />
-            </div>
-          </div>
-          <div className="form-row2">
-            <div className="form-field">
-              <label className="form-lbl">Telefone / WhatsApp</label>
-              <input className="form-inp" placeholder="(11) 99999-9999"
-                value={form.telefone} onChange={e => F('telefone', e.target.value)} />
-            </div>
-            <div className="form-field">
-              <label className="form-lbl">CPF</label>
-              <input className="form-inp" placeholder="000.000.000-00"
-                value={form.cpf} onChange={e => F('cpf', e.target.value)} />
-            </div>
-          </div>
-          <div className="form-field">
-            <label className="form-lbl">E-mail</label>
-            <input className="form-inp" type="email" placeholder="email@exemplo.com"
-              value={form.email} onChange={e => F('email', e.target.value)} />
-          </div>
-
-          <hr className="form-divider" />
-          <div className="form-section-lbl">Endereço</div>
-          <div className="form-field">
-            <label className="form-lbl">Endereço (Rua, número, bairro)</label>
-            <input className="form-inp" placeholder="Rua das Flores, 123 - Centro"
-              value={form.endereco} onChange={e => F('endereco', e.target.value)} />
-          </div>
-          <div className="form-row2">
-            <div className="form-field">
-              <label className="form-lbl">Cidade</label>
-              <input className="form-inp" placeholder="São Paulo"
-                value={form.cidade} onChange={e => F('cidade', e.target.value)} />
-            </div>
-            <div className="form-field">
-              <label className="form-lbl">CEP</label>
-              <input className="form-inp" placeholder="00000-000"
-                value={form.cep} onChange={e => F('cep', e.target.value)} />
-            </div>
-          </div>
-
-          <hr className="form-divider" />
-          <div className="form-field">
-            <label className="form-lbl">Observações</label>
-            <textarea className="form-ta" placeholder="Preferências, histórico, anotações..."
-              value={form.observacao} onChange={e => F('observacao', e.target.value)} />
-          </div>
-        </div>
-        <div className="modal-foot">
-          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={save} disabled={saving}>
-            {saving ? 'Salvando...' : isEdit ? 'Salvar Alterações' : 'Cadastrar Cliente'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── DETALHE CLIENTE ───────────────────────────────────────────────────────────
-function DetalheCliente({ cliente, onClose, onEdit, onParcelaPaga }) {
+/* ── Painel de detalhe (MODAL CENTRAL via Portal) — somente leitura de vendas ── */
+function ClientePanel({ cli, detalhe, loadingDetalhe, onClose, onEdit, onDelete, onToast, theme }) {
+  if (!cli) return null;
   const navigate = useNavigate();
-  const [dados, setDados] = useState(null);
-  const [vendaOpen, setVendaOpen] = useState({});
-
-  useEffect(() => {
-    api.get(`/clientes/${cliente.id}`).then(setDados);
-  }, [cliente.id]);
-
-  const toggleVenda = id => setVendaOpen(s => ({ ...s, [id]: !s[id] }));
-
-  const [modalDetalhe, setModalDetalhe] = useState(null); // venda completa (somente leitura)
-
-  const color = avatarColor(cliente.nome);
+  const ap = ALERTA_PILL[cli.alerta];
+  const copiar = (t, label) => { navigator.clipboard && navigator.clipboard.writeText(t); onToast(`${label} copiado`); };
+  const d = detalhe || {};
+  const vendas = d.vendas || [];
 
   return (
-    <>
-      <div className="overlay" onClick={onClose} />
-      {/* Modal detalhe da venda */}
-      {modalDetalhe && (() => {
-        const v = modalDetalhe;
-        const cancelada = v.status_pagamento === 'cancelado';
-        const totalParcelas = (v.parcelas||[]).length;
-        const pagas = (v.parcelas||[]).filter(p=>p.pago).length;
-        const totalPago = (v.parcelas||[]).reduce((a,p)=>a+(p.valor_pago||0),0);
-        const saldo = Math.max(v.valor_total - totalPago, 0);
-        const pct = v.valor_total > 0 ? Math.min((totalPago/v.valor_total)*100,100) : 0;
-        return (
-          <div onClick={e=>{if(e.target===e.currentTarget)setModalDetalhe(null);}}
-            style={{position:'fixed',inset:0,zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16,background:'rgba(0,0,0,.75)',backdropFilter:'blur(6px)'}}>
-            <div onClick={e=>e.stopPropagation()}
-              style={{background:'#13161a',border:'1px solid rgba(255,255,255,.1)',borderRadius:16,width:'100%',maxWidth:680,maxHeight:'88vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 32px 80px rgba(0,0,0,.8)'}}>
+    <Portal theme={theme}>
+      <div className="cf-cl-ov" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+        <div className="cf-cl-panel">
+          <div className="cf-cl-panel-hd">
+            <div className="cf-cl-panel-id">
+              <div className="cf-cl-avatar" style={{ '--av': avatarColor(cli.nome) }}>{inicial(cli.nome)}</div>
+              <div style={{ minWidth: 0 }}>
+                <div className="cf-cl-panel-title">{cli.nome}</div>
+                <div className="cf-cl-panel-sub">cliente desde {cli.criado_em || '—'} · {cli.total_vendas} compra(s)</div>
+                {ap && <div style={{ marginTop: 9 }}><span className={`cf-pill ${ap.cls}`}>{ap.label} · {fmtBRLc(cli.total_em_aberto)}</span></div>}
+              </div>
+            </div>
+            <button className="cf-mclose" onClick={onClose}><Ic d={ICONS.x} size={14}/></button>
+          </div>
 
-              {/* Header */}
-              <div style={{padding:'18px 24px',borderBottom:'1px solid rgba(255,255,255,.06)',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:16,fontWeight:700,color:'#e8eaed',display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                    {v.descricao || `Venda #${v.id}`}
-                    {cancelada && <span className="badge b-red" style={{fontSize:10}}>CANCELADA</span>}
-                  </div>
-                  <div style={{fontSize:11,color:'rgba(232,234,237,.35)',fontFamily:"'JetBrains Mono',monospace",marginTop:4,display:'flex',gap:12,flexWrap:'wrap'}}>
-                    <span>{v.data_venda}</span>
-                    <span>·</span>
-                    <span>{v.modo_pagamento}</span>
-                    {v.parcelado && <><span>·</span><span>{v.num_parcelas}x</span></>}
-                  </div>
+          <div className="cf-cl-panel-body">
+            <section>
+              <div className="cf-cl-sec-t">Contato</div>
+              <div className="cf-cl-contact">
+                <div className="cf-cl-contact-row">
+                  <span className="cf-cl-contact-ic"><Ic d={ICONS.phone} size={14}/></span>
+                  <div className="cf-cl-contact-info"><div className="cf-cl-contact-l">Telefone / WhatsApp</div><div className="cf-cl-contact-v">{fmtTelc(cli.telefone)}</div></div>
+                  {cli.telefone && <button className="cf-cl-copy" onClick={() => copiar(fmtTelc(cli.telefone), 'Telefone')} title="Copiar"><Ic d={ICONS.copy} size={14}/></button>}
                 </div>
-                <div style={{display:'flex',gap:8,alignItems:'center',flexShrink:0}}>
-                  <button onClick={()=>setModalDetalhe(null)}
-                    style={{background:'none',border:'none',color:'rgba(232,234,237,.35)',cursor:'pointer',fontSize:22,lineHeight:1,padding:'2px 4px'}}>×</button>
+                <div className="cf-cl-contact-row">
+                  <span className="cf-cl-contact-ic"><Ic d={ICONS.mail} size={14}/></span>
+                  <div className="cf-cl-contact-info"><div className="cf-cl-contact-l">E-mail</div><div className="cf-cl-contact-v">{cli.email || '—'}</div></div>
+                  {cli.email && <button className="cf-cl-copy" onClick={() => copiar(cli.email, 'E-mail')} title="Copiar"><Ic d={ICONS.copy} size={14}/></button>}
+                </div>
+                <div className="cf-cl-contact-row">
+                  <span className="cf-cl-contact-ic"><Ic d={ICONS.pin} size={14}/></span>
+                  <div className="cf-cl-contact-info"><div className="cf-cl-contact-l">Localização</div><div className="cf-cl-contact-v">{[cli.endereco, cli.cidade].filter(Boolean).join(' · ') || '—'}</div></div>
+                </div>
+                <div className="cf-cl-contact-row">
+                  <span className="cf-cl-contact-ic"><Ic d={ICONS.users} size={14}/></span>
+                  <div className="cf-cl-contact-info"><div className="cf-cl-contact-l">CPF</div><div className="cf-cl-contact-v" style={{ fontFamily: 'var(--font-mono)' }}>{cli.cpf || '—'}</div></div>
                 </div>
               </div>
+            </section>
 
-              {/* Body */}
-              <div style={{overflowY:'auto',flex:1,padding:'20px 24px',display:'flex',flexDirection:'column',gap:20}}>
-
-                {/* Resumo financeiro */}
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
-                  {[
-                    {lbl:'TOTAL',   val:fmtBRL(v.valor_total), color:'#e8eaed'},
-                    {lbl:'PAGO',    val:fmtBRL(totalPago),     color:'#00d4aa'},
-                    {lbl:'SALDO',   val:fmtBRL(saldo),         color:saldo>0?'#ff6b35':'#00d4aa'},
-                  ].map(k=>(
-                    <div key={k.lbl} style={{background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.06)',borderRadius:10,padding:'14px 16px'}}>
-                      <div style={{fontSize:9,fontWeight:600,letterSpacing:'.12em',color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace",marginBottom:6}}>{k.lbl}</div>
-                      <div style={{fontSize:20,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:k.color}}>{k.val}</div>
-                    </div>
-                  ))}
+            <section>
+              <div className="cf-cl-sec-t">Resumo financeiro</div>
+              <div className="cf-cl-finance">
+                <div className="cf-cl-fin-grid">
+                  <div><div className="cf-cl-fin-l">Comprou</div><div className="cf-cl-fin-v">{fmtBRLc(cli.total_gasto, 0)}</div></div>
+                  <div><div className="cf-cl-fin-l">Pago</div><div className="cf-cl-fin-v ok">{fmtBRLc(cli.total_recebido, 0)}</div></div>
+                  <div><div className="cf-cl-fin-l">Em aberto</div><div className={`cf-cl-fin-v ${cli.alerta === 'vencido' ? 'crit' : cli.total_em_aberto > 0 ? 'warn' : 'ok'}`}>{cli.total_em_aberto > 0 ? fmtBRLc(cli.total_em_aberto, 0) : '—'}</div></div>
                 </div>
-                {totalParcelas > 0 && (
-                  <div style={{display:'flex',flexDirection:'column',gap:4}}>
-                    <div style={{height:6,background:'rgba(255,255,255,.06)',borderRadius:3,overflow:'hidden'}}>
-                      <div style={{height:'100%',width:`${pct}%`,background:'linear-gradient(90deg,#00d4aa,#0099ff)',borderRadius:3,transition:'width .6s'}}/>
-                    </div>
-                    <div style={{display:'flex',justifyContent:'space-between',fontSize:10,fontFamily:"'JetBrains Mono',monospace",color:'rgba(232,234,237,.3)'}}>
-                      <span>{pagas}/{totalParcelas} parcelas pagas</span>
-                      <span>{pct.toFixed(0)}% quitado</span>
-                    </div>
-                  </div>
-                )}
+                <div className="cf-meter"><div className="cf-meter-track"><div className={`cf-meter-fill ${cli.alerta === 'vencido' ? 'crit' : cli.total_em_aberto > 0 ? 'warn' : 'ok'}`} style={{ width: (cli.quitado_pct||100) + '%' }} /></div></div>
+                <div className="cf-cl-fin-meter-l"><span>{cli.quitado_pct||100}% quitado</span>{cli.parcelas_vencidas > 0 && <span style={{ color: 'var(--crit)' }}>⚠ {cli.parcelas_vencidas} parcela(s) vencida(s)</span>}</div>
+              </div>
+            </section>
 
-                {/* Info grid */}
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:12}}>
-                  {[
-                    {lbl:'Pagamento',        val:v.modo_pagamento||'—'},
-                    {lbl:'Status Pgto.',     val: v.status_pagamento==='pago'?<span className="badge b-green">✓ PAGO</span>:v.status_pagamento==='cancelado'?<span className="badge b-red">CANCELADO</span>:v.status_pagamento==='vencido'?<span className="badge b-red">VENCIDO</span>:<span className="badge b-yellow">EM ABERTO</span>},
-                    {lbl:'Entrega',          val: v.status_entrega==='entregue'?<span className="badge b-green">ENTREGUE</span>:v.status_entrega==='pendente_entrega'?<span className="badge b-yellow">PENDENTE</span>:<span className="badge b-gray">—</span>},
-                    {lbl:'Vencimento',       val:v.data_vencimento||'—'},
-                  ].map(k=>(
-                    <div key={k.lbl}>
-                      <div style={{fontSize:9,fontWeight:600,letterSpacing:'.1em',textTransform:'uppercase',color:'rgba(232,234,237,.28)',fontFamily:"'JetBrains Mono',monospace",marginBottom:5}}>{k.lbl}</div>
-                      <div style={{fontSize:13,fontWeight:600,color:'#e8eaed'}}>{k.val}</div>
-                    </div>
-                  ))}
-                </div>
-                {v.observacao && (
-                  <div style={{background:'rgba(255,255,255,.02)',borderRadius:8,padding:'10px 14px',fontSize:12,color:'rgba(232,234,237,.5)',lineHeight:1.6}}>
-                    <span style={{fontSize:9,fontWeight:600,letterSpacing:'.1em',textTransform:'uppercase',color:'rgba(232,234,237,.28)',fontFamily:"'JetBrains Mono',monospace",display:'block',marginBottom:4}}>Observação</span>
-                    {v.observacao}
-                  </div>
-                )}
+            {cli.total_em_aberto > 0 && (
+              <a className="cf-btn cf-btn-wa" style={{ justifyContent: 'center' }} href={waLink(cli)} target="_blank" rel="noreferrer">
+                <Ic d={ICONS.wa} size={15}/> Cobrar {fmtBRLc(cli.total_em_aberto, 0)} no WhatsApp
+              </a>
+            )}
 
-                {/* Parcelas */}
-                {v.parcelas?.length > 0 && (
-                  <div>
-                    <div style={{fontSize:10,fontWeight:600,letterSpacing:'.1em',textTransform:'uppercase',color:'rgba(232,234,237,.28)',fontFamily:"'JetBrains Mono',monospace",marginBottom:10}}>
-                      Parcelas ({v.parcelas.length})
+            <section>
+              <div className="cf-cl-sec-t">Histórico de compras <span className="muted">{vendas.length} venda(s)</span></div>
+              {loadingDetalhe ? (
+                <div style={{display:'flex',flexDirection:'column',gap:8}}>{[1,2].map(i=><div key={i} className="cf-skel" style={{height:60}}/>)}</div>
+              ) : vendas.length===0 ? (
+                <div style={{fontSize:12,color:'var(--text-muted)',fontFamily:'var(--font-mono)'}}>Nenhuma venda registrada</div>
+              ) : vendas.map(v => {
+                const canc = v.status_pagamento === 'cancelado';
+                const pend = !canc && (v.status_pagamento === 'em_aberto' || v.status_pagamento === 'vencido');
+                return (
+                  <div key={v.id} className={`cf-cl-venda${canc ? ' canc' : ''}`}>
+                    <div className="cf-cl-venda-top">
+                      <div className="cf-cl-venda-desc">#{v.id} <VPill v={v} /></div>
+                      <div className="cf-cl-venda-total">{fmtBRLc(v.valor_total)}</div>
                     </div>
-                    <div style={{background:'rgba(255,255,255,.02)',border:'1px solid rgba(255,255,255,.05)',borderRadius:10,overflow:'hidden'}}>
-                      {/* Header da tabela */}
-                      <div style={{display:'grid',gridTemplateColumns:'44px 1fr 100px 100px 1fr',gap:8,padding:'8px 16px',borderBottom:'1px solid rgba(255,255,255,.06)',fontSize:9,fontWeight:600,letterSpacing:'.1em',textTransform:'uppercase',color:'rgba(232,234,237,.25)',fontFamily:"'JetBrains Mono',monospace"}}>
-                        <span>#</span><span>Vencimento</span><span style={{textAlign:'center'}}>Status</span><span style={{textAlign:'right'}}>Valor</span><span style={{textAlign:'right'}}>Ações</span>
+                    <div className="cf-cl-venda-meta">
+                      <span>{v.data_venda}</span><span>·</span><span>{txt(v.modo_pagamento)||'—'}</span><span>·</span><span>{v.num_itens} {v.num_itens===1?'item':'itens'}</span>
+                    </div>
+                    {(pend || v.pedido_id) && (
+                      <div className="cf-cl-venda-foot">
+                        {v.pedido_id ? (
+                          <button className="cf-cl-gerenciar" onClick={()=>navigate(`/vendas?abrir=${v.pedido_id}`)}>
+                            Gerenciar em Vendas →
+                          </button>
+                        ) : (
+                          <span style={{fontSize:10.5,color:'var(--text-muted)',fontFamily:'var(--font-mono)'}}>sem pedido vinculado</span>
+                        )}
                       </div>
-                      {v.parcelas.map(p => {
-                        const vp = p.valor_pago||0;
-                        const parcial = !p.pago && vp > 0;
-                        const stBadge = p.pago?'b-green':parcial?'b-yellow':p.status==='vencido'?'b-red':'b-gray';
-                        const stLabel = p.pago?'✓ PAGO':parcial?'PARCIAL':p.status==='vencido'?'VENCIDO':'EM ABERTO';
-                        const pctP = p.valor>0?Math.min((vp/p.valor)*100,100):0;
-                        return (
-                          <div key={p.id}>
-                            <div style={{display:'grid',gridTemplateColumns:'44px 1fr 100px 100px 1fr',gap:8,padding:'11px 16px',borderBottom:'1px solid rgba(255,255,255,.03)',alignItems:'center'}}>
-                              <span style={{fontSize:12,fontFamily:"'JetBrains Mono',monospace",color:'rgba(232,234,237,.4)',textAlign:'center'}}>{p.numero===0?'ENT':`${p.numero}ª`}</span>
-                              <div>
-                                <span style={{fontSize:12,fontFamily:"'JetBrains Mono',monospace",color:'rgba(232,234,237,.6)'}}>{p.vencimento||'—'}</span>
-                                {parcial && (
-                                  <div style={{marginTop:4,display:'flex',alignItems:'center',gap:6}}>
-                                    <div style={{flex:1,height:3,background:'rgba(255,255,255,.06)',borderRadius:2,overflow:'hidden'}}>
-                                      <div style={{height:'100%',width:`${pctP}%`,background:'#ffd32a',borderRadius:2}}/>
-                                    </div>
-                                    <span style={{fontSize:10,color:'#ffd32a',fontFamily:"'JetBrains Mono',monospace",whiteSpace:'nowrap'}}>Restam {fmtBRL(p.saldo_restante||0)}</span>
-                                  </div>
-                                )}
-                              </div>
-                              <div style={{textAlign:'center'}}>
-                                <span className={`badge ${stBadge}`} style={{fontSize:9}}>{stLabel}</span>
-                              </div>
-                              <div style={{textAlign:'right',fontFamily:"'JetBrains Mono',monospace",fontSize:13,fontWeight:700}}>
-                                {parcial ? (
-                                  <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}>
-                                    <span style={{color:'#ffd32a',fontSize:12}}>{fmtBRL(vp)}</span>
-                                    <span style={{color:'rgba(232,234,237,.3)',fontSize:10}}>/ {fmtBRL(p.valor)}</span>
-                                  </div>
-                                ) : <span style={{color:p.pago?'#00d4aa':'#e8eaed'}}>{fmtBRL(p.valor)}</span>}
-                              </div>
-                              <div style={{display:'flex',gap:6,justifyContent:'flex-end'}}>
-                                {p.pago ? (
-                                  <span style={{fontSize:10,color:'rgba(232,234,237,.25)',fontFamily:"'JetBrains Mono',monospace"}}>{p.data_pago||''}</span>
-                                ) : (
-                                  <span style={{fontSize:10,color:'rgba(232,234,237,.25)',fontFamily:"'JetBrains Mono',monospace"}}>gerencie em Vendas</span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })}
+            </section>
 
-              {/* Footer */}
-              <div style={{padding:'14px 24px',borderTop:'1px solid rgba(255,255,255,.06)',display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
-                <span style={{fontSize:11,color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>
-                  visualização — ações ficam na tela de Vendas
-                </span>
-                {v.pedido_id ? (
-                  <button
-                    onClick={() => navigate(`/vendas?abrir=${v.pedido_id}`)}
-                    style={{padding:'9px 18px',borderRadius:9,border:'1px solid rgba(0,153,255,.25)',background:'rgba(0,153,255,.1)',color:'#0099ff',cursor:'pointer',fontSize:13,fontWeight:700,display:'flex',alignItems:'center',gap:7}}>
-                    Gerenciar em Vendas →
-                  </button>
-                ) : (
-                  <span style={{fontSize:11,color:'rgba(232,234,237,.3)'}}>sem pedido vinculado</span>
-                )}
-              </div>
-
-            </div>
-          </div>
-        );
-      })()}
-
-
-      <div className="dp">
-        <div className="dp-head">
-          <div style={{ display:'flex', gap:12, alignItems:'flex-start', flex:1, minWidth:0 }}>
-            <div className="dp-avatar" style={{ background: color }}>
-              {cliente.nome[0]?.toUpperCase()}
-            </div>
-            <div style={{ flex:1, minWidth:0 }}>
-              <div className="dp-name">{cliente.nome}</div>
-              <div className="dp-meta">{fmtTel(cliente.telefone)}</div>
-              <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:8 }}>
-                {cliente.alerta === 'vencido'  && <span className="badge b-red">VENCIDO</span>}
-                {cliente.alerta === 'proximo'  && <span className="badge b-yellow">VENCE EM BREVE</span>}
-                {cliente.total_em_aberto > 0   && <span className="badge b-blue">{fmtBRL(cliente.total_em_aberto)} em aberto</span>}
-              </div>
-            </div>
-          </div>
-          <button className="modal-close" onClick={onClose}>×</button>
-        </div>
-
-        <div className="dp-body">
-          {/* Dados */}
-          <div>
-            <div className="dp-sec-title">Informações</div>
-            <div className="dp-grid2">
-              <div>
-                <div className="dp-field-lbl">Telefone</div>
-                <div className="dp-field-val mono">{fmtTel(dados?.telefone)}</div>
-              </div>
-              <div>
-                <div className="dp-field-lbl">CPF</div>
-                <div className="dp-field-val mono">{dados?.cpf || '—'}</div>
-              </div>
-              <div style={{ gridColumn:'1/-1' }}>
-                <div className="dp-field-lbl">E-mail</div>
-                <div className="dp-field-val" style={{ fontSize:13 }}>{dados?.email || '—'}</div>
-              </div>
-              <div style={{ gridColumn:'1/-1' }}>
-                <div className="dp-field-lbl">Endereço</div>
-                <div className="dp-field-val" style={{ fontSize:13 }}>{dados?.endereco || '—'}</div>
-              </div>
-              {dados?.cidade && (
-                <div>
-                  <div className="dp-field-lbl">Cidade</div>
-                  <div className="dp-field-val" style={{ fontSize:13 }}>{dados.cidade}</div>
-                </div>
-              )}
-              {dados?.cep && (
-                <div>
-                  <div className="dp-field-lbl">CEP</div>
-                  <div className="dp-field-val mono">{dados.cep}</div>
-                </div>
-              )}
-              {dados?.observacao && (
-                <div style={{ gridColumn:'1/-1' }}>
-                  <div className="dp-field-lbl">Observações</div>
-                  <div style={{ fontSize:12, color:'rgba(232,234,237,.5)', lineHeight:1.6,
-                    background:'rgba(255,255,255,.03)', borderRadius:7, padding:'10px 12px', marginTop:4 }}>
-                    {dados.observacao}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Resumo Financeiro — apenas vendas ativas (não canceladas, não 100% pagas) */}
-          {dados?.vendas?.length > 0 && (() => {
-            const vendasAtivas = dados.vendas.filter(v =>
-              v.status_pagamento !== 'cancelado' && v.status_pagamento !== 'pago'
-            );
-            const todasCanceladas = dados.vendas.every(v => v.status_pagamento === 'cancelado');
-            const todasPagas = dados.vendas.length > 0 &&
-              dados.vendas.filter(v => v.status_pagamento !== 'cancelado').every(v => v.status_pagamento === 'pago');
-
-            // sem compras ativas
-            if (vendasAtivas.length === 0) {
-              return (
-                <div style={{background:'rgba(255,255,255,.02)',border:'1px solid rgba(255,255,255,.06)',borderRadius:12,padding:'20px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:12}}>
-                  <div style={{width:36,height:36,borderRadius:10,background: todasPagas ? 'rgba(0,212,170,.12)' : 'rgba(255,255,255,.04)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>
-                    {todasPagas ? '✓' : '○'}
-                  </div>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:700,color: todasPagas ? '#00d4aa' : 'rgba(232,234,237,.4)'}}>
-                      {todasPagas ? 'Tudo quitado!' : 'Sem compras ativas'}
-                    </div>
-                    <div style={{fontSize:11,color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace",marginTop:2}}>
-                      {todasPagas ? 'Todas as vendas foram pagas' : 'Nenhuma venda em aberto no momento'}
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-
-            const totalVendas = vendasAtivas.reduce((a,v) => a + v.valor_total, 0);
-            const totalPago   = vendasAtivas.reduce((a,v) => {
-              const pagas   = (v.parcelas||[]).filter(p=>p.pago).reduce((s,p)=>s+p.valor,0);
-              const parciais = (v.parcelas||[]).filter(p=>!p.pago&&(p.valor_pago||0)>0).reduce((s,p)=>s+(p.valor_pago||0),0);
-              return a + pagas + parciais;
-            }, 0);
-            const totalAberto = Math.max(totalVendas - totalPago, 0);
-            const pct = totalVendas > 0 ? Math.min((totalPago/totalVendas)*100, 100) : 0;
-            const vencidas = vendasAtivas.filter(v => v.status_pagamento === 'vencido').length;
-
-            return (
-              <div style={{background:'rgba(255,255,255,.02)',border:'1px solid rgba(255,255,255,.06)',borderRadius:12,padding:'16px',marginBottom:16,display:'flex',flexDirection:'column',gap:12}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <div style={{fontSize:11,fontWeight:600,letterSpacing:'.1em',textTransform:'uppercase',color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>Resumo Financeiro</div>
-                  <div style={{fontSize:10,color:'rgba(232,234,237,.25)',fontFamily:"'JetBrains Mono',monospace"}}>{vendasAtivas.length} venda(s) ativa(s)</div>
-                </div>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
-                  <div style={{display:'flex',flexDirection:'column',gap:3}}>
-                    <span style={{fontSize:10,color:'rgba(232,234,237,.35)',fontFamily:"'JetBrains Mono',monospace"}}>TOTAL</span>
-                    <span style={{fontSize:15,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:'#e8eaed'}}>{fmtBRL(totalVendas)}</span>
-                  </div>
-                  <div style={{display:'flex',flexDirection:'column',gap:3}}>
-                    <span style={{fontSize:10,color:'rgba(232,234,237,.35)',fontFamily:"'JetBrains Mono',monospace"}}>PAGO</span>
-                    <span style={{fontSize:15,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:'#00d4aa'}}>{fmtBRL(totalPago)}</span>
-                  </div>
-                  <div style={{display:'flex',flexDirection:'column',gap:3}}>
-                    <span style={{fontSize:10,color:'rgba(232,234,237,.35)',fontFamily:"'JetBrains Mono',monospace"}}>EM ABERTO</span>
-                    <span style={{fontSize:15,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:totalAberto>0?'#ff6b35':'#00d4aa'}}>{fmtBRL(totalAberto)}</span>
-                  </div>
-                </div>
-                <div style={{display:'flex',flexDirection:'column',gap:5}}>
-                  <div style={{height:8,background:'rgba(255,255,255,.06)',borderRadius:4,overflow:'hidden'}}>
-                    <div style={{height:'100%',width:`${pct}%`,background:'linear-gradient(90deg,#00d4aa,#0099ff)',borderRadius:4,transition:'width .6s ease'}}/>
-                  </div>
-                  <div style={{display:'flex',justifyContent:'space-between',fontSize:10,fontFamily:"'JetBrains Mono',monospace",color:'rgba(232,234,237,.35)'}}>
-                    <span>{pct.toFixed(0)}% quitado</span>
-                    {vencidas > 0 && <span style={{color:'#ff4757'}}>⚠ {vencidas} venda(s) vencida(s)</span>}
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Vendas */}
-          <div>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
-              <div className="dp-sec-title" style={{ marginBottom:0 }}>
-                Vendas ({dados?.vendas?.filter(v=>v.status_pagamento!=='cancelado').length || 0}
-                {dados?.vendas?.some(v=>v.status_pagamento==='cancelado') && (
-                  <span style={{fontSize:10,color:'rgba(232,234,237,.3)',fontWeight:400,marginLeft:4}}>
-                    + {dados.vendas.filter(v=>v.status_pagamento==='cancelado').length} cancelada(s)
-                  </span>
-                )})
-              </div>
-              <span style={{fontSize:10.5,color:'rgba(232,234,237,.3)',fontFamily:"'JetBrains Mono',monospace"}}>somente leitura</span>
-            </div>
-
-            {!dados ? (
-              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                {[1,2].map(i => <div key={i} className="skel" style={{ height:52 }} />)}
-              </div>
-            ) : dados.vendas?.length === 0 ? (
-              <div style={{ textAlign:'center', padding:'20px', color:'rgba(232,234,237,.25)', fontSize:12, fontFamily:'JetBrains Mono, monospace' }}>
-                Nenhuma venda registrada
-              </div>
-            ) : dados.vendas.map(v => {
-              const cancelada = v.status_pagamento === 'cancelado';
-              return (
-              <div key={v.id} className="venda-block"
-                style={{marginBottom:10,opacity:cancelada?.45:1,filter:cancelada?'grayscale(0.4)':'none',transition:'all .2s',cursor:cancelada?'default':'pointer'}}
-                onClick={()=>!cancelada&&setModalDetalhe(v)}>
-                <div className="venda-header" style={{cursor:'inherit'}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div className="venda-desc" style={{display:'flex',alignItems:'center',gap:6}}>
-                      {v.descricao || `Venda #${v.id}`}
-                      {cancelada && <span className="badge b-red" style={{fontSize:9}}>CANCELADA</span>}
-                    </div>
-                    <div style={{fontSize:11,color:'rgba(232,234,237,.3)',fontFamily:'JetBrains Mono,monospace',marginTop:3,display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
-                      <span>{v.data_venda}</span>
-                      <span>·</span>
-                      <span>{v.modo_pagamento}</span>
-                      {v.parcelado && <><span>·</span><span>{v.num_parcelas}x de {fmtBRL(v.valor_parcela)}</span></>}
-                      {!cancelada && (() => {
-                        const saldo = (v.parcelas||[]).filter(p=>!p.pago).reduce((a,p)=>a+(p.saldo_restante??p.valor),0);
-                        return saldo>0 ? <><span>·</span><span style={{color:'#ff6b35',fontWeight:700}}>saldo: {fmtBRL(saldo)}</span></> : null;
-                      })()}
-                    </div>
-                  </div>
-                  {/* Status badge */}
-                  <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4}}>
-                    <div className="venda-total">{fmtBRL(v.valor_total)}</div>
-                    {!cancelada && (() => {
-                      const st = v.status_pagamento;
-                      const cls = st==='pago'?'b-green':st==='vencido'?'b-red':'b-yellow';
-                      const lbl = st==='pago'?'✓ PAGO':st==='vencido'?'VENCIDO':'EM ABERTO';
-                      return <span className={`badge ${cls}`} style={{fontSize:9}}>{lbl}</span>;
-                    })()}
-                  </div>
-                  {/* Seta */}
-                  {!cancelada && <span style={{fontSize:11,color:'rgba(232,234,237,.2)',marginLeft:6}}>›</span>}
-                </div>
-
-
-              </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="dp-foot">
-          <button className="btn btn-primary" style={{ flex:1, justifyContent:'center' }} onClick={onEdit}>
-            Editar Cliente
-          </button>
-          <button className="btn btn-ghost" onClick={onClose}>Fechar</button>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ── MAIN COMPONENT ────────────────────────────────────────────────────────────
-export default function Clientes() {
-  const [clientes,  setClientes]  = useState([]);
-  const [alertas,   setAlertas]   = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [search,    setSearch]    = useState('');
-  const [filtro,    setFiltro]    = useState('todos');
-
-  const [selected,  setSelected]  = useState(null);
-  const [modal,     setModal]     = useState(null); // 'novo' | 'edit' | 'venda'
-  const [confirmDel, setConfirmDel] = useState(null);
-  const [toast,     setToast]     = useState(null);
-
-  const showToast = (msg, icon = '✓') => {
-    setToast({ msg, icon });
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [cl, al] = await Promise.allSettled([
-        api.get('/clientes'),
-        api.get('/alertas/pagamentos'),
-      ]);
-      if (cl.status === 'fulfilled') setClientes(cl.value);
-      if (al.status === 'fulfilled') setAlertas(al.value);
-    } finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const vencidos = alertas.filter(a => a.status === 'vencido');
-  const proximos = alertas.filter(a => a.status === 'proximo');
-
-  const filtered = clientes.filter(c => {
-    const m = !search || c.nome.toLowerCase().includes(search.toLowerCase())
-      || (c.telefone||'').includes(search)
-      || (c.cidade||'').toLowerCase().includes(search.toLowerCase());
-    const f = filtro === 'todos' ? true
-      : filtro === 'vencido'  ? c.alerta === 'vencido'
-      : filtro === 'proximo'  ? c.alerta === 'proximo'
-      : filtro === 'aberto'   ? c.total_em_aberto > 0
-      : true;
-    return m && f;
-  });
-
-  const stats = {
-    total:   clientes.length,
-    aberto:  clientes.filter(c => c.total_em_aberto > 0).length,
-    vencido: clientes.filter(c => c.alerta === 'vencido').length,
-    ok:      clientes.filter(c => !c.alerta && c.total_em_aberto === 0).length,
-  };
-
-  const handleDelete = async (id) => {
-    try {
-      await api.del(`/clientes/${id}`);
-      setConfirmDel(null); setSelected(null);
-      showToast('Cliente removido.', '🗑');
-      load();
-    } catch { showToast('Erro ao remover.', '✕'); }
-  };
-
-  return (
-    <>
-      <style>{S}</style>
-
-      <div className="cl-page">
-
-        {/* Alertas banner */}
-        {vencidos.length > 0 && <AlertBanner items={vencidos} type="danger" />}
-        {proximos.length > 0 && <AlertBanner items={proximos} type="warn" />}
-
-        {/* Header */}
-        <div className="cl-header">
-          <div>
-            <div className="cl-title">Clientes</div>
-            <div className="cl-sub">{clientes.length} cliente(s) cadastrado(s)</div>
-          </div>
-          <button className="btn btn-primary" onClick={() => setModal('novo')}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            Novo Cliente
-          </button>
-        </div>
-
-        {/* Stats */}
-        <div className="cl-stats">
-          {[
-            { label:'Total',       val:stats.total,   color:'#0099ff' },
-            { label:'Em aberto',   val:stats.aberto,  color:'#ffd32a' },
-            { label:'Vencidos',    val:stats.vencido, color:'#ff4757' },
-            { label:'Em dia',      val:stats.ok,      color:'#00d4aa' },
-          ].map(s => (
-            <div key={s.label} className="cl-stat">
-              <div className="cs-dot" style={{ background:s.color }} />
-              <div>
-                <div className="cs-val">{s.val}</div>
-                <div className="cs-lbl">{s.label}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Filtros */}
-        <div className="cl-filters">
-          <div className="cl-search">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-              style={{ color:'rgba(232,234,237,.28)',flexShrink:0 }}>
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input placeholder="Buscar por nome, telefone ou cidade..."
-              value={search} onChange={e => setSearch(e.target.value)} />
-            {search && (
-              <button onClick={() => setSearch('')}
-                style={{ background:'none',border:'none',color:'rgba(232,234,237,.3)',cursor:'pointer',fontSize:16,lineHeight:1 }}>
-                ×
-              </button>
+            {cli.observacao && (
+              <section>
+                <div className="cf-cl-sec-t">Observações</div>
+                <div className="cf-cl-confirm-x" style={{ margin: 0 }}>{cli.observacao}</div>
+              </section>
             )}
           </div>
-          <select className="cl-sel" value={filtro} onChange={e => setFiltro(e.target.value)}>
-            <option value="todos">Todos</option>
-            <option value="aberto">Com saldo aberto</option>
-            <option value="proximo">Vence em breve</option>
-            <option value="vencido">Vencidos</option>
-          </select>
-        </div>
 
-        {/* Grid */}
-        <div className="cl-grid">
-          {loading ? (
-            Array.from({ length:6 }).map((_,i) => (
-              <div key={i} className="cl-card" style={{ animationDelay:`${i*.05}s`,cursor:'default' }}>
-                <div style={{ padding:16, display:'flex', flexDirection:'column', gap:10 }}>
-                  <div className="skel" style={{ height:38, width:38, borderRadius:'50%' }} />
-                  <div className="skel" style={{ height:16, width:'70%' }} />
-                  <div className="skel" style={{ height:12, width:'45%' }} />
-                </div>
-                <div style={{ padding:'10px 16px', display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
-                  {[1,2,3].map(j => <div key={j} className="skel" style={{ height:32 }} />)}
-                </div>
-              </div>
-            ))
-          ) : filtered.length === 0 ? (
-            <div className="cl-empty">
-              <div className="cl-empty-icon">◯</div>
-              <div style={{ fontSize:14 }}>Nenhum cliente encontrado</div>
-              <div style={{ fontSize:12, fontFamily:'JetBrains Mono, monospace', marginTop:4 }}>
-                {search ? 'Tente outro termo de busca' : 'Cadastre o primeiro cliente'}
-              </div>
-            </div>
-          ) : filtered.map((c, i) => {
-            const color = avatarColor(c.nome);
-            const alertClass = c.alerta === 'vencido' ? 'alerta-danger'
-                             : c.alerta === 'proximo'  ? 'alerta-warn' : '';
-            return (
-              <div
-                key={c.id}
-                className={`cl-card ${alertClass}${selected?.id === c.id ? ' selected' : ''}`}
-                style={{ animationDelay:`${i*.04}s` }}
-                onClick={() => setSelected(selected?.id === c.id ? null : c)}
-              >
-                {/* Alert strip */}
-                <div className="cl-card-alert-strip" style={{
-                  background: c.alerta === 'vencido' ? 'rgba(255,71,87,.6)'
-                            : c.alerta === 'proximo' ? 'rgba(255,211,42,.5)' : 'transparent'
-                }} />
-
-                <div className="cl-card-top">
-                  <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
-                    <div className="cl-card-avatar" style={{ background:color }}>
-                      {c.nome[0]?.toUpperCase()}
-                    </div>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div className="cl-card-name">{c.nome}</div>
-                      <div className="cl-card-tel">{fmtTel(c.telefone)}</div>
-                      {c.endereco && <div className="cl-card-end">{c.endereco}{c.cidade ? `, ${c.cidade}` : ''}</div>}
-                    </div>
-                  </div>
-                  <div className="cl-card-badges">
-                    {c.alerta === 'vencido' && <span className="badge b-red">VENCIDO</span>}
-                    {c.alerta === 'proximo' && <span className="badge b-yellow">VENCE EM BREVE</span>}
-                    {c.total_em_aberto > 0  && <span className="badge b-blue">{fmtBRL(c.total_em_aberto)}</span>}
-                  </div>
-                </div>
-
-                <div className="cl-card-mid">
-                  <div>
-                    <div className="cl-mini-lbl">Vendas</div>
-                    <div className="cl-mini-val">{c.total_vendas}</div>
-                  </div>
-                  <div>
-                    <div className="cl-mini-lbl">Em aberto</div>
-                    <div className={`cl-mini-val ${c.total_em_aberto > 0 ? c.alerta === 'vencido' ? 'red' : 'yellow' : 'green'}`}>
-                      {c.total_em_aberto > 0 ? fmtBRL(c.total_em_aberto) : '—'}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="cl-mini-lbl">Venc. parc.</div>
-                    <div className={`cl-mini-val ${c.parcelas_vencidas > 0 ? 'red' : c.parcelas_proximas > 0 ? 'yellow' : 'green'}`}>
-                      {c.parcelas_vencidas > 0 ? c.parcelas_vencidas
-                       : c.parcelas_proximas > 0 ? c.parcelas_proximas : '—'}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="cl-card-bot" onClick={e => e.stopPropagation()}>
-                  <div className="cl-vendedor">
-                    {c.vendedor ? `Vendedor: ${c.vendedor}` : `Desde ${c.criado_em}`}
-                  </div>
-                  <div style={{display:'flex',gap:6}}>
-                    <button title="Editar cliente"
-                      onClick={e => { e.stopPropagation(); setSelected(c); setModal('edit'); }}
-                      style={{width:32,height:32,borderRadius:7,border:'1px solid rgba(255,255,255,.1)',background:'rgba(255,255,255,.05)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',transition:'all .2s',color:'rgba(232,234,237,.7)',padding:0}}
-                      onMouseEnter={e=>{e.currentTarget.style.background='rgba(0,153,255,.15)';e.currentTarget.style.color='#0099ff';e.currentTarget.style.borderColor='rgba(0,153,255,.3)';}}
-                      onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,.05)';e.currentTarget.style.color='rgba(232,234,237,.7)';e.currentTarget.style.borderColor='rgba(255,255,255,.1)';}}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/>
-                      </svg>
-                    </button>
-                    <button title="Excluir cliente"
-                      onClick={e => { e.stopPropagation(); setConfirmDel(c); }}
-                      style={{width:32,height:32,borderRadius:7,border:'1px solid rgba(255,255,255,.1)',background:'rgba(255,255,255,.05)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',transition:'all .2s',color:'rgba(232,234,237,.7)',padding:0}}
-                      onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,71,87,.15)';e.currentTarget.style.color='#ff4757';e.currentTarget.style.borderColor='rgba(255,71,87,.3)';}}
-                      onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,.05)';e.currentTarget.style.color='rgba(232,234,237,.7)';e.currentTarget.style.borderColor='rgba(255,255,255,.1)';}}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6"/>
-                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                        <path d="M10 11v6M14 11v6"/>
-                        <path d="M9 6V4h6v2"/>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Detail panel */}
-      {selected && modal !== 'edit' && modal !== 'venda' && modal !== 'novo' && (
-        <DetalheCliente
-          cliente={selected}
-          onClose={() => setSelected(null)}
-          onEdit={() => setModal('edit')}
-          onParcelaPaga={() => { load(); }}
-        />
-      )}
-
-      {/* Modal novo cliente */}
-      {modal === 'novo' && (
-        <ModalCliente
-          onClose={() => setModal(null)}
-          onSaved={() => { setModal(null); load(); }}
-          showToast={showToast}
-        />
-      )}
-
-      {/* Modal editar cliente */}
-      {modal === 'edit' && selected && (
-        <ModalCliente
-          inicial={selected}
-          onClose={() => setModal(null)}
-          onSaved={() => { setModal(null); load(); }}
-          showToast={showToast}
-        />
-      )}
-
-      {/* Confirm delete */}
-      {confirmDel && (
-        <div className="modal-bg" onClick={e => e.target === e.currentTarget && setConfirmDel(null)}>
-          <div className="confirm">
-            <div className="confirm-title">Remover cliente?</div>
-            <div className="confirm-text">
-              Tem certeza que deseja remover <strong style={{ color:'#e8eaed' }}>{confirmDel.nome}</strong>?
-              O histórico de vendas será preservado.
-            </div>
-            <div className="confirm-acts">
-              <button className="btn btn-ghost" onClick={() => setConfirmDel(null)}>Cancelar</button>
-              <button className="btn btn-danger" onClick={() => handleDelete(confirmDel.id)}>Remover</button>
-            </div>
+          <div className="cf-cl-panel-foot">
+            <button className="cf-btn cf-btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onEdit(cli)}><Ic d={ICONS.edit} size={14}/> Editar</button>
+            <button className="cf-btn cf-btn-danger" onClick={() => onDelete(cli)}><Ic d={ICONS.trash} size={14}/></button>
           </div>
         </div>
+      </div>
+    </Portal>
+  );
+}
+
+/* ══ COMPONENTE PRINCIPAL ════════════════════════════════════════════════ */
+export default function Clientes() {
+  const [theme, setTheme] = useState(getDocTheme);
+  const [clientes, setClientes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState('');
+
+  const [busca, setBusca] = useState('');
+  const [filtro, setFiltro] = useState('todos');
+  const [ordem, setOrdem] = useState('nome');
+  const [view, setView] = useState('grade');
+  const [sel, setSel] = useState(null);
+  const [detalhe, setDetalhe] = useState(null);
+  const [loadingDet, setLoadingDet] = useState(false);
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState(CLI_EMPTY);
+  const [formErr, setFormErr] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  useEffect(()=>{
+    const obs=new MutationObserver(()=>setTheme(getDocTheme()));
+    obs.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+    return ()=>obs.disconnect();
+  },[]);
+
+  const showToast = (msg, tone = 'ok') => { setToast({ msg, tone }); setTimeout(() => setToast(null), 3000); };
+
+  const load = useCallback(async () => {
+    setLoading(true); setErro('');
+    try {
+      const data = await api.get('/clientes');
+      setClientes(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setErro(e.message || 'Não foi possível carregar os clientes.');
+    } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const loadDetalhe = useCallback(async (id) => {
+    setLoadingDet(true);
+    try { const d = await api.get(`/clientes/${id}`); setDetalhe(d); }
+    catch (e) { showToast(e.message, 'err'); }
+    finally { setLoadingDet(false); }
+  }, []);
+  useEffect(() => { if (sel) loadDetalhe(sel.id); else setDetalhe(null); }, [sel, loadDetalhe]);
+
+  const counts = useMemo(() => ({
+    todos: clientes.length,
+    aberto: clientes.filter(c => c.total_em_aberto > 0).length,
+    vencido: clientes.filter(c => c.alerta === 'vencido').length,
+    emdia: clientes.filter(c => c.total_em_aberto === 0).length,
+  }), [clientes]);
+
+  const kpis = useMemo(() => ({
+    total: clientes.length,
+    receber: clientes.reduce((a, c) => a + c.total_em_aberto, 0),
+    nReceber: clientes.filter(c => c.total_em_aberto > 0).length,
+    faturado: clientes.reduce((a, c) => a + c.total_gasto, 0),
+    vencido: clientes.filter(c => c.alerta === 'vencido').reduce((a, c) => a + c.total_em_aberto, 0),
+    nVencido: counts.vencido,
+  }), [clientes, counts]);
+
+  const lista = useMemo(() => {
+    let r = clientes.filter(c => {
+      if (filtro === 'aberto' && c.total_em_aberto <= 0) return false;
+      if (filtro === 'vencido' && c.alerta !== 'vencido') return false;
+      if (filtro === 'emdia' && c.total_em_aberto > 0) return false;
+      if (busca) {
+        const q = busca.toLowerCase();
+        if (!(c.nome.toLowerCase().includes(q) || (c.telefone || '').includes(q) || (c.cidade || '').toLowerCase().includes(q))) return false;
+      }
+      return true;
+    });
+    const cmp = {
+      nome: (a, b) => a.nome.localeCompare(b.nome),
+      saldo: (a, b) => b.total_em_aberto - a.total_em_aberto,
+      vencido: (a, b) => (b.parcelas_vencidas - a.parcelas_vencidas) || (b.total_em_aberto - a.total_em_aberto),
+      compras: (a, b) => b.total_gasto - a.total_gasto,
+    }[ordem];
+    return [...r].sort(cmp);
+  }, [clientes, filtro, busca, ordem]);
+
+  const openNovo = () => { setForm(CLI_EMPTY); setFormErr(''); setModal('novo'); };
+  const openEdit = (c) => {
+    setForm({ nome: c.nome, telefone: c.telefone || '', email: c.email || '', cpf: c.cpf || '',
+      cidade: c.cidade || '', endereco: c.endereco || '', cep: c.cep || '', observacao: c.observacao || '' });
+    setFormErr(''); setModal({ editId: c.id });
+  };
+
+  const salvar = async () => {
+    if (!form.nome.trim()) { setFormErr('O nome é obrigatório.'); return; }
+    setSalvando(true); setFormErr('');
+    try {
+      const payload = { nome: form.nome.trim(), telefone: form.telefone.trim()||null, email: form.email.trim()||null,
+        cpf: form.cpf.trim()||null, endereco: form.endereco.trim()||null, cidade: form.cidade.trim()||null,
+        cep: form.cep.trim()||null, observacao: form.observacao.trim()||null };
+      if (modal.editId) {
+        await api.put(`/clientes/${modal.editId}`, payload);
+        showToast('Cliente atualizado');
+      } else {
+        await api.post('/clientes', payload);
+        showToast('Cliente cadastrado');
+      }
+      setModal(null);
+      await load();
+      if (sel && modal.editId === sel.id) await loadDetalhe(sel.id);
+    } catch (e) {
+      setFormErr(e.message || 'Erro ao salvar cliente.');
+    } finally { setSalvando(false); }
+  };
+
+  const remover = async (c) => {
+    try {
+      await api.del(`/clientes/${c.id}`);
+      setConfirmDel(null); setSel(null);
+      showToast('Cliente removido', 'err');
+      await load();
+    } catch (e) {
+      showToast(e.message || 'Erro ao remover cliente', 'err');
+    }
+  };
+
+  const CHIPS = [
+    { k: 'todos', label: 'Todos', dot: null },
+    { k: 'aberto', label: 'Com saldo', dot: 'var(--warn)' },
+    { k: 'vencido', label: 'Vencidos', dot: 'var(--crit)' },
+    { k: 'emdia', label: 'Em dia', dot: 'var(--ok)' },
+  ];
+  const ORD_LABEL = { nome: 'Nome (A–Z)', saldo: 'Maior saldo', vencido: 'Mais vencidos', compras: 'Mais compraram' };
+
+  const KPIS = [
+    { tone: 't-brand', ic: 'users', val: kpis.total, lbl: 'Clientes ativos', sub: `${kpis.total} cadastrados` },
+    { tone: 't-warn', ic: 'spark', val: fmtBRLc(kpis.receber, 0), lbl: 'A receber (fiado)', sub: `${kpis.nReceber} cliente(s) com saldo`, hero: kpis.receber > 0, cta: kpis.receber > 0 ? 'Ver pendências' : null, ctaTo: 'aberto' },
+    { tone: 't-ok', ic: 'spark', val: fmtBRLc(kpis.faturado, 0), lbl: 'Total já comprado', sub: 'soma do histórico ativo' },
+    { tone: 't-crit', ic: 'spark', val: fmtBRLc(kpis.vencido, 0), lbl: 'Vencido', sub: kpis.nVencido ? `${kpis.nVencido} cliente(s) atrasado(s)` : 'tudo em dia', cta: kpis.nVencido ? 'Cobrar agora' : null, ctaTo: 'vencido' },
+  ];
+
+  return (
+    <div className="cf-cli-root" data-theme={theme}>
+      <style>{S}</style>
+      <div className="cf-cl">
+
+        <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16,flexWrap:'wrap'}}>
+          <div>
+            <div style={{fontSize:22,fontWeight:800}}>Clientes</div>
+            <div style={{fontSize:12,color:'var(--text-muted)',fontFamily:'var(--font-mono)',marginTop:4}}>{clientes.length} clientes cadastrados</div>
+          </div>
+          <button className="cf-btn cf-btn-primary" onClick={openNovo}><Ic d={ICONS.plus} size={15}/> Novo cliente</button>
+        </div>
+
+        {erro && <div className="cf-cl-err">⚠ {erro}</div>}
+
+        {loading ? (
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16}}>{[1,2,3,4].map(i=><div key={i} className="cf-skel" style={{height:100}}/>)}</div>
+        ) : (
+          <>
+            {counts.vencido > 0 && (
+              <div className="cf-cl-alert">
+                <span className="cf-att-pulse" />
+                <span className="cf-cl-alert-txt"><strong>{counts.vencido} cliente(s) com pagamento vencido</strong> somando {fmtBRLc(kpis.vencido)} — combine a cobrança pelo WhatsApp.</span>
+                <button className="cf-btn cf-btn-ghost sm" onClick={() => setFiltro('vencido')}>Ver vencidos</button>
+              </div>
+            )}
+
+            <div className="cf-cl-kpis">
+              {KPIS.map(k => (
+                <div key={k.lbl} className={`cf-cl-kpi ${k.tone}${k.hero ? ' hero' : ''}`}>
+                  <div className="cf-cl-kpi-top"><span className="cf-cl-kpi-ic"><Ic d={ICONS[k.ic]} size={16}/></span></div>
+                  <div className="cf-cl-kpi-val">{k.val}</div>
+                  <div><div className="cf-cl-kpi-lbl">{k.lbl}</div><div className="cf-cl-kpi-sub">{k.sub}</div></div>
+                  {k.cta && <button className="cf-cl-kpi-cta" onClick={() => setFiltro(k.ctaTo)}>{k.cta} →</button>}
+                </div>
+              ))}
+            </div>
+
+            <div className="cf-cl-toolbar">
+              <div className="cf-cl-srch">
+                <Ic d={ICONS.users} size={15} />
+                <input placeholder="Buscar nome, telefone ou cidade…" value={busca} onChange={e => setBusca(e.target.value)} />
+                {busca && <button className="x" onClick={() => setBusca('')}>×</button>}
+              </div>
+              <div className="cf-cl-chips">
+                {CHIPS.map(c => (
+                  <button key={c.k} className={`cf-cl-chip${filtro === c.k ? ' on' : ''}`} onClick={() => setFiltro(c.k)}>
+                    {c.dot && <span className="cf-cl-chip-dot" style={{ background: c.dot }} />}{c.label}<span className="cf-cl-chip-n">{counts[c.k]}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="cf-cl-tools-right">
+                <div className="cf-cl-select">
+                  <Ic d={ICONS.sort} size={14} />
+                  <select value={ordem} onChange={e => setOrdem(e.target.value)}>
+                    {Object.entries(ORD_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  </select>
+                </div>
+                <div className="cf-cl-seg">
+                  <button className={view === 'grade' ? 'on' : ''} onClick={() => setView('grade')} title="Grade"><Ic d={ICONS.grid} size={15}/></button>
+                  <button className={view === 'lista' ? 'on' : ''} onClick={() => setView('lista')} title="Lista"><Ic d={ICONS.list} size={15}/></button>
+                </div>
+              </div>
+            </div>
+
+            {lista.length === 0 ? (
+              <div className="cf-cl-table"><div className="cf-cl-empty"><div className="cf-cl-empty-ic"><Ic d={ICONS.users} size={20}/></div><div>Nenhum cliente neste filtro</div></div></div>
+            ) : view === 'grade' ? (
+              <div className="cf-cl-grid">
+                {lista.map(c => {
+                  const ap = ALERTA_PILL[c.alerta];
+                  return (
+                    <div key={c.id} className={`cf-cl-card${c.alerta ? ' al-' + c.alerta : ''}`} onClick={() => setSel(c)}>
+                      <div className="cf-cl-card-top">
+                        <div className="cf-cl-avatar" style={{ '--av': avatarColor(c.nome) }}>{inicial(c.nome)}</div>
+                        <div className="cf-cl-card-id">
+                          <div className="cf-cl-card-nmrow"><span className="cf-cl-card-name">{c.nome}</span></div>
+                          <div className="cf-cl-card-tel">{fmtTelc(c.telefone)}</div>
+                          {c.cidade && <div className="cf-cl-card-loc">{c.cidade}</div>}
+                        </div>
+                      </div>
+                      <div className="cf-cl-card-mid">
+                        <div><div className="cf-cl-fld-l">Compras</div><div className="cf-cl-fld-v">{c.total_vendas}</div></div>
+                        <div><div className="cf-cl-fld-l">Comprou</div><div className="cf-cl-fld-v muted">{fmtBRLc(c.total_gasto, 0)}</div></div>
+                        <div><div className="cf-cl-fld-l">Em aberto</div><div className={`cf-cl-fld-v ${c.alerta === 'vencido' ? 'crit' : c.total_em_aberto > 0 ? 'warn' : 'ok'}`}>{c.total_em_aberto > 0 ? fmtBRLc(c.total_em_aberto, 0) : '—'}</div></div>
+                      </div>
+                      <div className="cf-cl-card-health">
+                        <div className="cf-cl-health-top"><span><strong>{c.quitado_pct}%</strong> quitado</span>{c.parcelas_vencidas > 0 && <span style={{ color: 'var(--crit)' }}>{c.parcelas_vencidas} vencida(s)</span>}</div>
+                        <div className="cf-meter"><div className="cf-meter-track"><div className={`cf-meter-fill ${c.alerta === 'vencido' ? 'crit' : c.total_em_aberto > 0 ? 'warn' : 'ok'}`} style={{ width: c.quitado_pct + '%' }} /></div></div>
+                      </div>
+                      <div className="cf-cl-card-foot" onClick={e => e.stopPropagation()}>
+                        {ap ? <span className={`cf-pill ${ap.cls}`}>{ap.label}</span> : <span className="cf-pill ok">Em dia</span>}
+                        {c.telefone && <a className="cf-cl-wa" href={waLink(c)} target="_blank" rel="noreferrer" title="Abrir no WhatsApp"><Ic d={ICONS.wa} size={14}/> WhatsApp</a>}
+                        <button className="cf-cl-ic-btn" onClick={() => openEdit(c)} title="Editar"><Ic d={ICONS.edit} size={14}/></button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="cf-cl-table">
+                <div className="cf-cl-thead">
+                  <div className="cf-cl-th">Cliente</div>
+                  <div className="cf-cl-th r">Compras</div>
+                  <div className="cf-cl-th r">Comprou</div>
+                  <div className="cf-cl-th">Saúde / saldo</div>
+                  <div className="cf-cl-th">Status</div>
+                  <div className="cf-cl-th r">Ações</div>
+                </div>
+                {lista.map(c => {
+                  const ap = ALERTA_PILL[c.alerta];
+                  return (
+                    <div key={c.id} className="cf-cl-row" onClick={() => setSel(c)}>
+                      <div className="cf-cl-r-name">
+                        <div className="cf-cl-avatar" style={{ '--av': avatarColor(c.nome) }}>{inicial(c.nome)}</div>
+                        <div>
+                          <div className="cf-cl-r-nm">{c.nome}</div>
+                          <div className="cf-cl-r-sub">{fmtTelc(c.telefone)}{c.cidade ? ' · ' + c.cidade : ''}</div>
+                        </div>
+                      </div>
+                      <div className="cf-cl-cell r"><span className="cf-cl-r-num">{c.total_vendas}</span></div>
+                      <div className="cf-cl-cell r"><span className="cf-cl-r-num muted">{fmtBRLc(c.total_gasto, 0)}</span></div>
+                      <div className="cf-cl-cell">
+                        <div className="cf-cl-r-health">
+                          <div className="cf-cl-r-health-l">{c.total_em_aberto > 0 ? <span className={c.alerta === 'vencido' ? 'cf-cl-r-num crit' : 'cf-cl-r-num warn'} style={{ fontSize: 11.5 }}>{fmtBRLc(c.total_em_aberto, 0)} aberto</span> : <span style={{ color: 'var(--text-muted)' }}>{c.quitado_pct}% quitado</span>}</div>
+                          <div className="cf-meter"><div className="cf-meter-track"><div className={`cf-meter-fill ${c.alerta === 'vencido' ? 'crit' : c.total_em_aberto > 0 ? 'warn' : 'ok'}`} style={{ width: c.quitado_pct + '%' }} /></div></div>
+                        </div>
+                      </div>
+                      <div className="cf-cl-cell">{ap ? <span className={`cf-pill ${ap.cls}`}>{ap.label}</span> : <span className="cf-pill ok">Em dia</span>}</div>
+                      <div className="cf-cl-cell r" onClick={e => e.stopPropagation()}>
+                        <div className="cf-cl-r-actions">
+                          {c.telefone && <a className="cf-cl-ic-btn" href={waLink(c)} target="_blank" rel="noreferrer" title="WhatsApp" style={{ color: '#1ebe5a' }}><Ic d={ICONS.wa} size={14}/></a>}
+                          <button className="cf-cl-ic-btn" onClick={() => openEdit(c)} title="Editar"><Ic d={ICONS.edit} size={14}/></button>
+                          <button className="cf-cl-ic-btn danger" onClick={() => setConfirmDel(c)} title="Remover"><Ic d={ICONS.trash} size={14}/></button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {sel && (
+        <ClientePanel cli={clientes.find(c => c.id === sel.id) || sel} detalhe={detalhe} loadingDetalhe={loadingDet}
+          onClose={() => setSel(null)} onEdit={openEdit} onDelete={setConfirmDel} onToast={showToast} theme={theme} />
       )}
 
-      {/* Toast */}
-      {toast && (
-        <div className="toast">
-          <span style={{ fontSize:16 }}>{toast.icon}</span>
-          {toast.msg}
-        </div>
+      {modal && (
+        <Portal theme={theme}>
+          <div className="cf-cl-mback" onClick={e => e.target === e.currentTarget && setModal(null)}>
+            <div className="cf-cl-modal">
+              <div className="cf-cl-mhd">
+                <div><div className="cf-cl-mtitle">{modal.editId ? 'Editar cliente' : 'Novo cliente'}</div><div className="cf-cl-msub">{modal.editId ? 'Atualize os dados' : 'Cadastre um novo cliente'}</div></div>
+                <button className="cf-mclose" onClick={() => setModal(null)}><Ic d={ICONS.x} size={14}/></button>
+              </div>
+              <div className="cf-cl-mbody">
+                {formErr && <div className="cf-cl-err">⚠ {formErr}</div>}
+                <div className="cf-cl-form-sec">Dados pessoais</div>
+                <div className="cf-cl-field full"><label className="cf-cl-label">Nome completo *</label><input className="cf-cl-input" placeholder="Ex: Maria Silva" value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} /></div>
+                <div className="cf-cl-form-row">
+                  <div className="cf-cl-field"><label className="cf-cl-label">Telefone / WhatsApp</label><input className="cf-cl-input" placeholder="(11) 99999-9999" value={form.telefone} onChange={e => setForm(f => ({ ...f, telefone: e.target.value }))} /></div>
+                  <div className="cf-cl-field"><label className="cf-cl-label">CPF</label><input className="cf-cl-input" placeholder="000.000.000-00" value={form.cpf} onChange={e => setForm(f => ({ ...f, cpf: e.target.value }))} /></div>
+                </div>
+                <div className="cf-cl-field full"><label className="cf-cl-label">E-mail</label><input className="cf-cl-input" type="email" placeholder="email@exemplo.com" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></div>
+                <hr className="cf-cl-divider" />
+                <div className="cf-cl-form-sec">Endereço</div>
+                <div className="cf-cl-form-row">
+                  <div className="cf-cl-field"><label className="cf-cl-label">Endereço</label><input className="cf-cl-input" placeholder="Rua, número" value={form.endereco} onChange={e => setForm(f => ({ ...f, endereco: e.target.value }))} /></div>
+                  <div className="cf-cl-field"><label className="cf-cl-label">Cidade</label><input className="cf-cl-input" placeholder="São Paulo, SP" value={form.cidade} onChange={e => setForm(f => ({ ...f, cidade: e.target.value }))} /></div>
+                </div>
+                <div className="cf-cl-field full"><label className="cf-cl-label">CEP</label><input className="cf-cl-input" placeholder="00000-000" value={form.cep} onChange={e => setForm(f => ({ ...f, cep: e.target.value }))} /></div>
+                <div className="cf-cl-field full"><label className="cf-cl-label">Observações</label><textarea className="cf-cl-textarea" placeholder="Preferências, histórico, anotações…" value={form.observacao} onChange={e => setForm(f => ({ ...f, observacao: e.target.value }))} /></div>
+              </div>
+              <div className="cf-cl-mfoot">
+                <button className="cf-btn cf-btn-ghost" onClick={() => setModal(null)}>Cancelar</button>
+                <button className="cf-btn cf-btn-primary" onClick={salvar} disabled={salvando}>{salvando ? 'Salvando...' : (modal.editId ? 'Salvar' : 'Cadastrar')}</button>
+              </div>
+            </div>
+          </div>
+        </Portal>
       )}
-    </>
+
+      {confirmDel && (
+        <Portal theme={theme}>
+          <div className="cf-cl-mback" onClick={e => e.target === e.currentTarget && setConfirmDel(null)}>
+            <div className="cf-cl-confirm">
+              <div className="cf-cl-confirm-t">Remover cliente?</div>
+              <div className="cf-cl-confirm-x">Tem certeza que deseja remover <strong>{confirmDel.nome}</strong>? O histórico de vendas será preservado.</div>
+              <div className="cf-cl-confirm-acts">
+                <button className="cf-btn cf-btn-ghost" onClick={() => setConfirmDel(null)}>Cancelar</button>
+                <button className="cf-btn cf-btn-danger" onClick={() => remover(confirmDel)}>Remover</button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+
+      {toast && <div className="cf-toast"><span className={`cf-toast-ic ${toast.tone}`}>{toast.tone === 'ok' ? '✓' : toast.tone === 'warn' ? '↓' : '×'}</span>{toast.msg}</div>}
+    </div>
   );
 }
