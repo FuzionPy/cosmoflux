@@ -1,497 +1,820 @@
-import { useState, useEffect } from 'react';
-import { getProdutos, criarProduto, atualizarProduto, deletarProduto, getCategorias, criarCategoria, getFornecedores } from '../services/api';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 
+/* ── API ──────────────────────────────────────────────────────────────── */
 const BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000') + '/api';
-const tok = () => localStorage.getItem('token') || sessionStorage.getItem('token');
-const hh = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${tok()}` });
-const apiDel = url => fetch(BASE+url,{method:'DELETE',headers:hh()}).then(r=>r.json());
+const tok  = () => localStorage.getItem('token') || sessionStorage.getItem('token');
+const h    = () => ({ 'Content-Type':'application/json', Authorization:`Bearer ${tok()}` });
+const api  = {
+  get:  url    => fetch(BASE+url,{headers:h()}).then(async r=>{const d=await r.json().catch(()=>([]));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+  post: (u,b)  => fetch(BASE+u,{method:'POST',  headers:h(),body:JSON.stringify(b||{})}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+  put:  (u,b)  => fetch(BASE+u,{method:'PUT',   headers:h(),body:JSON.stringify(b||{})}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+  del:  url    => fetch(BASE+url,{method:'DELETE',headers:h()}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+};
+const getDocTheme = () => { try{return document.documentElement.getAttribute('data-theme')||'dark';}catch{return 'dark';} };
 
-const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=Plus Jakarta Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
-  .pag{padding:24px;display:flex;flex-direction:column;gap:20px;font-family:'Plus Jakarta Sans',sans-serif;color:#e8eaed;animation:fadeIn .3s ease both;}
-  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-  .pag-header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;}
-  .pag-title{font-size:22px;font-weight:800;color:#e8eaed;}
-  .pag-sub{font-size:12px;color:rgba(232,234,237,.35);font-family:'JetBrains Mono',monospace;margin-top:4px;}
-  .hdr-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
-  .filter-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
-  .search-field{display:flex;align-items:center;gap:8px;background:#0e1013;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px 14px;flex:1;min-width:200px;transition:border-color .2s;}
-  .search-field:focus-within{border-color:rgba(0,212,170,.4);}
-  .search-field input{background:none;border:none;outline:none;font-size:13px;color:#e8eaed;font-family:'Plus Jakarta Sans',sans-serif;width:100%;}
-  .search-field input::placeholder{color:rgba(232,234,237,.25);}
-  .filter-select{background:#0e1013;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px 14px;font-size:13px;color:rgba(232,234,237,.7);font-family:'Plus Jakarta Sans',sans-serif;outline:none;cursor:pointer;}
-  .stats-row{display:flex;gap:12px;flex-wrap:wrap;}
-  .stat-chip{background:#0e1013;border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 16px;display:flex;align-items:center;gap:10px;flex:1;min-width:140px;}
-  .stat-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
-  .stat-val{font-size:18px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#e8eaed;}
-  .stat-lbl{font-size:11px;color:rgba(232,234,237,.35);margin-top:1px;}
-  .prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;}
-  .prod-card{background:#0e1013;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;transition:border-color .2s,transform .2s,box-shadow .2s;animation:cardIn .4s cubic-bezier(.22,1,.36,1) both;cursor:pointer;position:relative;}
-  .prod-card:hover{border-color:rgba(255,255,255,.12);transform:translateY(-3px);box-shadow:0 8px 32px rgba(0,0,0,.3);}
-  .prod-card.selected{border-color:rgba(0,212,170,.4);box-shadow:0 0 0 1px rgba(0,212,170,.2);}
-  @keyframes cardIn{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:none}}
-  .prod-card-top{padding:18px 18px 14px;border-bottom:1px solid rgba(255,255,255,.05);position:relative;}
-  .prod-cat-tag{font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.3);margin-bottom:8px;}
-  .prod-name{font-size:15px;font-weight:700;color:#e8eaed;line-height:1.3;margin-bottom:6px;}
-  .prod-sku{font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.25);}
-  .prod-status-dot{position:absolute;top:18px;right:18px;width:8px;height:8px;border-radius:50%;}
-  .prod-card-mid{padding:14px 18px;display:grid;grid-template-columns:1fr 1fr;gap:12px;border-bottom:1px solid rgba(255,255,255,.05);}
-  .prod-field-lbl{font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(232,234,237,.28);font-family:'JetBrains Mono',monospace;margin-bottom:4px;}
-  .prod-field-val{font-size:14px;font-weight:700;color:#e8eaed;font-family:'JetBrains Mono',monospace;}
-  .prod-field-val.accent{color:#00d4aa;}
-  .prod-field-val.muted{color:rgba(232,234,237,.45);font-size:13px;}
-  .prod-card-bot{padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
-  .prod-stock-bar-wrap{flex:1;}
-  .prod-stock-label{display:flex;justify-content:space-between;font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.35);margin-bottom:5px;}
-  .prod-stock-track{height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;}
-  .prod-stock-fill{height:100%;border-radius:2px;transition:width .8s cubic-bezier(.22,1,.36,1);}
-  .prod-actions{display:flex;gap:6px;}
-  .icon-btn{width:30px;height:30px;border-radius:6px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;flex-shrink:0;background:rgba(255,255,255,.04);color:rgba(232,234,237,.4);}
-  .icon-btn:hover{background:rgba(255,255,255,.1);color:#e8eaed;}
-  .icon-btn.danger:hover{background:rgba(255,71,87,.15);color:#ff4757;}
-  .badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace;}
-  .b-green{background:rgba(0,212,170,.12);color:#00d4aa;}
-  .b-red{background:rgba(255,71,87,.12);color:#ff4757;}
-  .b-orange{background:rgba(255,107,53,.12);color:#ff6b35;}
-  .empty-state{grid-column:1/-1;padding:60px 20px;text-align:center;color:rgba(232,234,237,.25);}
-  .empty-icon{font-size:40px;margin-bottom:12px;opacity:.4;}
-  .skeleton{background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.07) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:6px;}
-  @keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
-  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .2s ease both;}
-  .modal{background:#0e1013;border:1px solid rgba(255,255,255,.1);border-radius:16px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;animation:modalIn .3s cubic-bezier(.22,1,.36,1) both;}
-  .modal::-webkit-scrollbar{width:4px;}
-  .modal::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:2px;}
-  .modal.sm{max-width:400px;}
-  @keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(16px)}to{opacity:1;transform:none}}
-  .modal-header{padding:24px 24px 20px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:space-between;}
-  .modal-title{font-size:16px;font-weight:800;color:#e8eaed;}
-  .modal-sub{font-size:11px;color:rgba(232,234,237,.35);font-family:'JetBrains Mono',monospace;margin-top:2px;}
-  .modal-close{width:32px;height:32px;border-radius:8px;border:none;background:rgba(255,255,255,.05);color:rgba(232,234,237,.5);cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;}
-  .modal-close:hover{background:rgba(255,71,87,.15);color:#ff4757;}
-  .modal-body{padding:24px;display:flex;flex-direction:column;gap:18px;}
-  .modal-footer{padding:16px 24px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:10px;justify-content:flex-end;}
-  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-  .form-field{display:flex;flex-direction:column;gap:6px;}
-  .form-field.full{grid-column:1/-1;}
-  .form-label{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(232,234,237,.35);font-family:'JetBrains Mono',monospace;}
-  .form-input,.form-select,.form-textarea{background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;font-size:14px;color:#e8eaed;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:border-color .2s,box-shadow .2s;width:100%;}
-  .form-input::placeholder{color:rgba(232,234,237,.2);}
-  .form-input:focus,.form-select:focus,.form-textarea:focus{border-color:rgba(0,212,170,.4);box-shadow:0 0 0 3px rgba(0,212,170,.08);}
-  .form-textarea{resize:vertical;min-height:80px;}
-  .form-select option{background:#0e1013;}
-  .form-row-cat{display:flex;gap:8px;align-items:flex-end;}
-  .btn-cat-new{background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.2);border-radius:8px;padding:10px 12px;font-size:12px;font-weight:600;color:#00d4aa;cursor:pointer;white-space:nowrap;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;flex-shrink:0;}
-  .btn-cat-new:hover{background:rgba(0,212,170,.15);}
-  .cat-list{display:flex;flex-direction:column;gap:6px;}
-  .cat-item{display:flex;align-items:center;justify-content:space-between;background:#13161a;border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 14px;}
-  .cat-item-name{font-size:13px;font-weight:600;color:#e8eaed;}
-  .cat-item-del{background:none;border:none;color:rgba(255,71,87,.5);cursor:pointer;font-size:16px;padding:2px 6px;transition:color .15s;}
-  .cat-item-del:hover{color:#ff4757;}
-  .cat-input-row{display:flex;gap:8px;}
-  .detail-panel{position:fixed;right:0;top:0;bottom:0;width:360px;background:#0e1013;border-left:1px solid rgba(255,255,255,.08);z-index:150;overflow-y:auto;animation:slideIn .3s cubic-bezier(.22,1,.36,1) both;display:flex;flex-direction:column;}
-  .detail-panel::-webkit-scrollbar{width:4px;}
-  .detail-panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:2px;}
-  @keyframes slideIn{from{transform:translateX(100%)}to{transform:none}}
-  .detail-header{padding:24px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-shrink:0;}
-  .detail-name{font-size:18px;font-weight:800;color:#e8eaed;line-height:1.3;}
-  .detail-sku{font-size:11px;font-family:'JetBrains Mono',monospace;color:rgba(232,234,237,.3);margin-top:4px;}
-  .detail-body{padding:20px 24px;flex:1;display:flex;flex-direction:column;gap:20px;}
-  .detail-section-title{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:rgba(232,234,237,.28);font-family:'JetBrains Mono',monospace;margin-bottom:12px;}
-  .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-  .detail-item-lbl{font-size:10px;color:rgba(232,234,237,.28);font-family:'JetBrains Mono',monospace;margin-bottom:3px;}
-  .detail-item-val{font-size:15px;font-weight:700;color:#e8eaed;}
-  .detail-item-val.green{color:#00d4aa;}
-  .detail-item-val.orange{color:#ff6b35;}
-  .detail-item-val.red{color:#ff4757;}
-  .detail-desc{font-size:13px;color:rgba(232,234,237,.5);line-height:1.6;background:rgba(255,255,255,.03);border-radius:8px;padding:12px;}
-  .detail-footer{padding:16px 24px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:10px;flex-shrink:0;}
-  .toast{position:fixed;bottom:24px;right:24px;background:#0e1013;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:10px;font-size:13px;color:#e8eaed;z-index:300;animation:fadeIn .3s ease both;box-shadow:0 8px 32px rgba(0,0,0,.4);min-width:240px;}
-  .confirm-dialog{background:#0e1013;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:24px;max-width:360px;width:100%;animation:modalIn .2s cubic-bezier(.22,1,.36,1) both;}
-  .confirm-title{font-size:16px;font-weight:700;color:#e8eaed;margin-bottom:8px;}
-  .confirm-text{font-size:13px;color:rgba(232,234,237,.5);line-height:1.6;margin-bottom:20px;}
-  .confirm-actions{display:flex;gap:10px;justify-content:flex-end;}
-  .btn{display:flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;border:none;font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;}
-  .btn-primary{background:#00d4aa;color:#000;}.btn-primary:hover{background:#00efc0;transform:translateY(-1px);}
-  .btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none;}
-  .btn-ghost{background:rgba(255,255,255,.05);color:rgba(232,234,237,.6);border:1px solid rgba(255,255,255,.08);}
-  .btn-ghost:hover{background:rgba(255,255,255,.09);color:#e8eaed;}
-  .btn-danger{background:rgba(255,71,87,.12);color:#ff4757;border:1px solid rgba(255,71,87,.2);}
-  .btn-danger:hover{background:rgba(255,71,87,.2);}
-  @media(max-width:768px){.pag{padding:16px;gap:14px;}.form-row{grid-template-columns:1fr;}.detail-panel{width:100%;}.prod-grid{grid-template-columns:1fr;}}
-`;
+/* ── helpers ──────────────────────────────────────────────────────────── */
+const fmtBRLp = (v, dec = 2) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+const margemPct = (p) => p.custo > 0 ? ((p.venda - p.custo) / p.custo) * 100 : 0;
+const statusOf = (p) => p.estoque === 0 ? 'esgotado' : p.estoque <= p.minimo ? 'baixo' : 'ok';
+const ST_META = {
+  ok:       { cls: 'ok',   label: 'Em estoque' },
+  baixo:    { cls: 'warn', label: 'Estoque baixo' },
+  esgotado: { cls: 'crit', label: 'Esgotado' },
+};
+const meterCls = (s) => s === 'esgotado' ? 'crit' : s === 'baixo' ? 'warn' : 'ok';
+const catColor = (i) => `var(--cat-${((i % 5) + 5) % 5})`;
 
-const fmtBRL = v => `R$ ${Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
-const stockColor = (a,m) => a===0?'#ff4757':a<=m?'#ff6b35':'#00d4aa';
-const stockPct   = (a,m) => Math.min((a/Math.max(m*3,a,1))*100,100);
-const statusLabel = p => {
-  if (p.estoque_atual===0) return {text:'ESGOTADO',cls:'b-red',dot:'#ff4757'};
-  if (p.estoque_atual<=p.estoque_minimo) return {text:'BAIXO',cls:'b-orange',dot:'#ff6b35'};
-  return {text:'OK',cls:'b-green',dot:'#00d4aa'};
+// normaliza o produto do backend (preco_venda/estoque_atual/...) para os nomes
+// curtos que o design usa (venda/estoque/...) — mantém id e categoria_id reais
+const fromApi = (p) => ({
+  id: p.id, nome: p.nome, sku: p.sku || '—', unidade: p.unidade || 'un',
+  venda: Number(p.preco_venda || 0), custo: Number(p.preco_custo || 0),
+  estoque: Number(p.estoque_atual || 0), minimo: Number(p.estoque_minimo || 5),
+  categoria: p.categoria || 'Sem categoria', categoria_id: p.categoria_id ?? null,
+  descricao: p.descricao || '',
+});
+// monta o payload que o backend espera (ProdutoSchema completo) a partir do form
+const toApi = (form, categoriaId) => ({
+  nome: form.nome.trim(),
+  sku: form.sku.trim() || null,
+  unidade: form.unidade,
+  preco_venda: parseFloat(form.venda) || 0,
+  preco_custo: parseFloat(form.custo) || 0,
+  estoque_atual: parseInt(form.estoque) || 0,
+  estoque_minimo: parseInt(form.minimo) || 5,
+  categoria_id: categoriaId,
+  descricao: form.descricao.trim() || null,
+});
+
+/* ── ícones ───────────────────────────────────────────────────────────── */
+const Ic = ({d,size=16,sw=1.8}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" style={{display:'block',flexShrink:0}}>
+    {d}
+  </svg>
+);
+const ICONS = {
+  edit:   <><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/></>,
+  trash:  <><path d="M3 6h18"/><path d="M19 6 18 20a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></>,
+  minus:  <path d="M5 12h14"/>,
+  plus:   <><path d="M12 5v14"/><path d="M5 12h14"/></>,
+  grid:   <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
+  list:   <><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></>,
+  sort:   <><path d="M3 6h12M3 12h9M3 18h6"/><path d="m18 9 3-3-3-3M21 6v12"/></>,
+  box:    <><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></>,
+  search: <><circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/></>,
+  tag:    <><path d="M20.59 13.41 11 23l-9-9 9.59-9.59a2 2 0 0 1 1.41-.41H20a2 2 0 0 1 2 2v6.18a2 2 0 0 1-.41 1.41Z"/><circle cx="16.5" cy="7.5" r="1.5"/></>,
+  bell:   <><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></>,
+  spark:  <><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5z"/></>,
+  chart:  <><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></>,
+  x:      <><path d="M18 6L6 18M6 6l12 12"/></>,
 };
 
-const FORM_EMPTY = { nome:'',descricao:'',sku:'',unidade:'un',preco_venda:'',preco_custo:'',estoque_atual:'',estoque_minimo:'5',categoria_id:'',fornecedor_id:'' };
+/* ── CSS ──────────────────────────────────────────────────────────────── */
+const S = `
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+.cf-prod-root *,.cf-prod-root *::before,.cf-prod-root *::after{box-sizing:border-box;}
+.cf-prod-root{--font-ui:'Plus Jakarta Sans',system-ui,sans-serif;--font-mono:'JetBrains Mono',monospace;--brand:#9166d8;--radius:15px;--radius-sm:10px;--gap:16px;--kpi-pad:18px;--ok:#21a06d;--warn:#e08a2a;--crit:#e2514f;font-family:var(--font-ui);padding:24px;animation:cfpIn .3s ease both;}
+@keyframes cfpIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.cf-prod-root[data-theme="dark"],.cf-prod-root:not([data-theme]){--bg:#0a0b0f;--surface:#111319;--surface-2:#171a21;--elevated:#1a1e26;--border:rgba(255,255,255,.075);--border-strong:rgba(255,255,255,.15);--track:rgba(255,255,255,.08);--text:#edeef3;--text-dim:rgba(237,238,243,.6);--text-muted:rgba(237,238,243,.34);--shadow:0 8px 28px rgba(0,0,0,.32);
+  --cat-0:#9166d8;--cat-1:#3b82f6;--cat-2:#21a06d;--cat-3:#e08a2a;--cat-4:#c75c8a;}
+.cf-prod-root[data-theme="light"]{--bg:#f3f1f5;--surface:#fff;--surface-2:#f8f6fa;--elevated:#fff;--border:rgba(28,20,36,.1);--border-strong:rgba(28,20,36,.2);--track:rgba(28,20,36,.08);--text:#1b1722;--text-dim:rgba(27,23,34,.62);--text-muted:rgba(27,23,34,.42);--shadow:0 10px 30px rgba(28,20,36,.07);
+  --cat-0:#9166d8;--cat-1:#3b82f6;--cat-2:#1a8a5d;--cat-3:#c8770f;--cat-4:#b3577f;}
+.cf-prod-root{--brand-soft:color-mix(in oklab,var(--brand) 14%,transparent);--brand-line:color-mix(in oklab,var(--brand) 32%,transparent);color:var(--text);}
+.cf-prod-portal{--font-ui:'Plus Jakarta Sans',system-ui,sans-serif;--font-mono:'JetBrains Mono',monospace;--brand:#9166d8;--radius:15px;--radius-sm:10px;--ok:#21a06d;--warn:#e08a2a;--crit:#e2514f;font-family:var(--font-ui);}
+.cf-prod-portal[data-theme="dark"],.cf-prod-portal:not([data-theme]){--bg:#0a0b0f;--surface:#111319;--surface-2:#171a21;--elevated:#1a1e26;--border:rgba(255,255,255,.075);--border-strong:rgba(255,255,255,.15);--track:rgba(255,255,255,.08);--text:#edeef3;--text-dim:rgba(237,238,243,.6);--text-muted:rgba(237,238,243,.34);--shadow:0 8px 28px rgba(0,0,0,.32);}
+.cf-prod-portal[data-theme="light"]{--bg:#f3f1f5;--surface:#fff;--surface-2:#f8f6fa;--elevated:#fff;--border:rgba(28,20,36,.1);--border-strong:rgba(28,20,36,.2);--track:rgba(28,20,36,.08);--text:#1b1722;--text-dim:rgba(27,23,34,.62);--text-muted:rgba(27,23,34,.42);--shadow:0 10px 30px rgba(28,20,36,.07);}
+.cf-prod-portal{--brand-soft:color-mix(in oklab,var(--brand) 14%,transparent);--brand-line:color-mix(in oklab,var(--brand) 32%,transparent);color:var(--text);}
+.cf-prod-portal *,.cf-prod-portal *::before,.cf-prod-portal *::after{box-sizing:border-box;}
 
-export default function Produtos() {
-  const [produtos,     setProdutos]     = useState([]);
-  const [categorias,   setCategorias]   = useState([]);
-  const [fornecedores, setFornecedores] = useState([]);
-  const [loading,      setLoading]      = useState(true);
-  const [search,       setSearch]       = useState('');
-  const [filterCat,    setFilterCat]    = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
-  const [showModal,    setShowModal]    = useState(false);
-  const [editingId,    setEditingId]    = useState(null);
-  const [form,         setForm]         = useState(FORM_EMPTY);
-  const [saving,       setSaving]       = useState(false);
-  const [formError,    setFormError]    = useState('');
-  const [selected,     setSelected]     = useState(null);
-  const [confirmDel,   setConfirmDel]   = useState(null);
-  const [toast,        setToast]        = useState(null);
+.cf-prod { display: flex; flex-direction: column; gap: var(--gap); max-width: 1480px; margin: 0 auto; }
 
-  // Categorias modal
-  const [showCatModal, setShowCatModal] = useState(false);
-  const [novaCat,      setNovaCat]      = useState('');
-  const [savingCat,    setSavingCat]    = useState(false);
+.cf-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-family:var(--font-ui);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.cf-btn:hover{border-color:var(--border-strong);}
+.cf-btn-primary{background:var(--brand);border-color:var(--brand);color:#fff;}
+.cf-btn-primary:hover{filter:brightness(1.08);}
+.cf-btn-ghost{background:transparent;}
+.cf-btn-danger{background:color-mix(in oklab,var(--crit) 10%,transparent);color:var(--crit);border-color:color-mix(in oklab,var(--crit) 28%,transparent);}
+.cf-btn.sm{padding:7px 12px;font-size:12px;}
+.cf-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700;font-family:var(--font-mono);white-space:nowrap;}
+.cf-pill.ok{background:color-mix(in oklab,var(--ok) 14%,transparent);color:var(--ok);}
+.cf-pill.warn{background:color-mix(in oklab,var(--warn) 16%,transparent);color:var(--warn);}
+.cf-pill.crit{background:color-mix(in oklab,var(--crit) 14%,transparent);color:var(--crit);}
+.cf-mclose{width:30px;height:30px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.cf-mclose:hover{color:var(--crit);border-color:color-mix(in oklab,var(--crit) 35%,transparent);}
+.cf-att-pulse{width:9px;height:9px;border-radius:50%;background:var(--crit);flex-shrink:0;animation:cfpPulse 1.8s infinite;}
+@keyframes cfpPulse{0%{box-shadow:0 0 0 0 color-mix(in oklab,var(--crit) 60%,transparent);}70%{box-shadow:0 0 0 7px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const [p,c,f] = await Promise.allSettled([getProdutos(),getCategorias(),getFornecedores()]);
-      if (p.status==='fulfilled') setProdutos(p.value);
-      if (c.status==='fulfilled') setCategorias(c.value);
-      if (f.status==='fulfilled') setFornecedores(f.value);
-    } finally { setLoading(false); }
-  };
+.cf-pd-alert{display:flex;align-items:center;gap:12px;padding:13px 18px;background:color-mix(in oklab,var(--crit) 10%,var(--surface));border:1px solid color-mix(in oklab,var(--crit) 32%,transparent);border-radius:var(--radius);}
+.cf-pd-alert-txt{font-size:13px;font-weight:500;}
+.cf-pd-alert-txt strong{color:var(--crit);font-weight:700;}
+.cf-pd-alert .cf-btn{margin-left:auto;}
 
-  useEffect(() => { load(); }, []);
+.cf-pd-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--gap);}
+.cf-pd-kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:var(--kpi-pad);position:relative;overflow:hidden;display:flex;flex-direction:column;gap:10px;}
+.cf-pd-kpi::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tone,var(--brand));}
+.cf-pd-kpi.t-brand{--tone:var(--brand);}
+.cf-pd-kpi.t-ok{--tone:var(--ok);}
+.cf-pd-kpi.t-warn{--tone:var(--warn);}
+.cf-pd-kpi.t-crit{--tone:var(--crit);}
+.cf-pd-kpi.hero{background:linear-gradient(135deg,color-mix(in oklab,var(--crit) 11%,var(--surface)),var(--surface));}
+.cf-pd-kpi-top{display:flex;align-items:center;justify-content:space-between;}
+.cf-pd-kpi-ic{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:color-mix(in oklab,var(--tone,var(--brand)) 14%,transparent);color:var(--tone,var(--brand));}
+.cf-pd-kpi-val{font-size:22px;font-weight:800;font-family:var(--font-mono);letter-spacing:-.02em;line-height:1;}
+.cf-pd-kpi-lbl{font-size:11.5px;font-weight:600;color:var(--text-dim);}
+.cf-pd-kpi-sub{font-size:10.5px;font-family:var(--font-mono);color:var(--text-muted);}
+.cf-pd-kpi-cta{align-self:flex-start;background:none;border:none;color:var(--crit);font-size:11.5px;font-weight:700;cursor:pointer;padding:0;}
 
-  const showToast = (msg,icon='✓') => { setToast({msg,icon}); setTimeout(()=>setToast(null),3000); };
+.cf-pd-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.cf-pd-srch{display:flex;align-items:center;gap:9px;flex:1;min-width:230px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 13px;color:var(--text-muted);transition:border-color .2s,box-shadow .2s;}
+.cf-pd-srch:focus-within{border-color:var(--brand-line);box-shadow:0 0 0 3px var(--brand-soft);}
+.cf-pd-srch input{flex:1;min-width:0;background:none;border:none;outline:none;font-family:var(--font-ui);font-size:13px;color:var(--text);}
+.cf-pd-srch input::placeholder{color:var(--text-muted);}
+.cf-pd-srch .x{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:17px;}
+.cf-pd-chips{display:flex;gap:6px;flex-wrap:wrap;}
+.cf-pd-chip{display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:9px;border:1px solid var(--border);background:var(--surface);color:var(--text-dim);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-ui);}
+.cf-pd-chip.on{background:var(--brand-soft);border-color:var(--brand-line);color:var(--brand);}
+.cf-pd-chip-dot{width:7px;height:7px;border-radius:50%;}
+.cf-pd-chip-n{font-family:var(--font-mono);font-size:10px;opacity:.7;}
+.cf-pd-tools-right{display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap;}
+.cf-pd-select{display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 11px;color:var(--text-muted);}
+.cf-pd-select select{background:none;border:none;outline:none;font-family:var(--font-ui);font-size:12.5px;color:var(--text);cursor:pointer;}
+.cf-pd-seg{display:flex;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px;}
+.cf-pd-seg button{width:30px;height:28px;border-radius:7px;border:none;background:transparent;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.cf-pd-seg button.on{background:var(--brand-soft);color:var(--brand);}
 
-  const filtered = produtos.filter(p => {
-    const ms = !search || p.nome.toLowerCase().includes(search.toLowerCase()) || (p.sku||'').toLowerCase().includes(search.toLowerCase()) || (p.categoria||'').toLowerCase().includes(search.toLowerCase());
-    const mc = !filterCat || p.categoria===filterCat;
-    const mst = !filterStatus || (filterStatus==='ok'&&p.estoque_atual>p.estoque_minimo) || (filterStatus==='critico'&&p.estoque_atual>0&&p.estoque_atual<=p.estoque_minimo) || (filterStatus==='esgotado'&&p.estoque_atual===0);
-    return ms&&mc&&mst;
-  });
+.cf-pd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:var(--gap);}
+.cf-pd-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;cursor:pointer;transition:all .16s;display:flex;flex-direction:column;gap:12px;border-top:3px solid var(--cat,var(--brand));}
+.cf-pd-card:hover{border-color:var(--border-strong);transform:translateY(-2px);}
+.cf-pd-card-tagrow{display:flex;}
+.cf-pd-cat{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
+.cf-pd-cat-dot{width:6px;height:6px;border-radius:50%;background:var(--cat,var(--brand));}
+.cf-pd-card-name{font-size:14.5px;font-weight:700;margin-top:6px;}
+.cf-pd-card-sku{font-size:10.5px;font-family:var(--font-mono);color:var(--text-muted);margin-top:2px;}
+.cf-pd-card-mid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.cf-pd-fld-l{font-size:9px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:2px;}
+.cf-pd-fld-v{font-size:13px;font-weight:700;font-family:var(--font-mono);}
+.cf-pd-fld-v.brand{color:var(--brand);}
+.cf-pd-fld-v.muted{color:var(--text-muted);}
+.cf-pd-card-stock{display:flex;flex-direction:column;gap:6px;}
+.cf-pd-stock-top{display:flex;justify-content:space-between;align-items:baseline;}
+.cf-pd-stock-n{font-size:15px;font-weight:800;font-family:var(--font-mono);}
+.cf-pd-stock-n .u{font-size:10px;font-weight:500;color:var(--text-muted);}
+.cf-pd-stock-min{font-size:10px;font-family:var(--font-mono);color:var(--text-muted);}
+.cf-pd-card-foot{display:flex;align-items:center;gap:8px;padding-top:10px;border-top:1px solid var(--border);}
+.cf-pd-step{display:flex;gap:5px;margin-left:auto;}
+.cf-pd-step-btn{width:26px;height:26px;border-radius:7px;border:1px solid var(--border);background:var(--surface-2);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.cf-pd-step-btn.up{color:var(--ok);}
+.cf-pd-step-btn.down{color:var(--crit);}
+.cf-pd-step-btn:disabled{opacity:.35;cursor:default;}
+.cf-pd-ic-btn{width:26px;height:26px;border-radius:7px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-dim);cursor:pointer;display:flex;align-items:center;justify-content:center;}
 
-  const stats = { total:produtos.length, ok:produtos.filter(p=>p.estoque_atual>p.estoque_minimo).length, critico:produtos.filter(p=>p.estoque_atual>0&&p.estoque_atual<=p.estoque_minimo).length, esgotado:produtos.filter(p=>p.estoque_atual===0).length };
+.cf-meter{width:100%;}
+.cf-meter-track{position:relative;height:6px;background:var(--track);border-radius:4px;overflow:visible;}
+.cf-meter-fill{height:100%;border-radius:4px;transition:width .5s;}
+.cf-meter-fill.ok{background:var(--ok);}
+.cf-meter-fill.warn{background:var(--warn);}
+.cf-meter-fill.crit{background:var(--crit);}
+.cf-meter-min{position:absolute;top:-2px;width:2px;height:10px;background:var(--text-muted);border-radius:1px;}
 
-  const openEdit = (p,e) => { e.stopPropagation(); setEditingId(p.id); setForm({ nome:p.nome||'',descricao:p.descricao||'',sku:p.sku||'',unidade:p.unidade||'un',preco_venda:p.preco_venda||'',preco_custo:p.preco_custo||'',estoque_atual:p.estoque_atual??'',estoque_minimo:p.estoque_minimo??'5',categoria_id:p.categoria_id||'',fornecedor_id:p.fornecedor_id||'' }); setFormError(''); setShowModal(true); };
+.cf-pd-table{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
+.cf-pd-thead{display:grid;grid-template-columns:2.2fr 1fr 90px 1fr 1.4fr 130px;gap:12px;padding:11px 18px;border-bottom:1px solid var(--border);}
+.cf-pd-th{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
+.cf-pd-th.r{text-align:right;}
+.cf-pd-row{display:grid;grid-template-columns:2.2fr 1fr 90px 1fr 1.4fr 130px;gap:12px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--border);border-left:3px solid var(--cat,transparent);cursor:pointer;transition:background .12s;}
+.cf-pd-row:last-child{border-bottom:none;}
+.cf-pd-row:hover{background:var(--surface-2);}
+.cf-pd-r-name{display:flex;align-items:center;gap:9px;min-width:0;}
+.cf-pd-r-catdot{width:6px;height:6px;border-radius:50%;background:var(--cat,var(--brand));flex-shrink:0;}
+.cf-pd-r-nm{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cf-pd-r-sku{font-size:10.5px;font-family:var(--font-mono);color:var(--text-muted);}
+.cf-pd-cell.r{text-align:right;}
+.cf-pd-r-price{font-size:13px;font-weight:700;font-family:var(--font-mono);display:flex;flex-direction:column;align-items:flex-end;gap:2px;}
+.cf-pd-r-price .c{font-size:10px;font-weight:500;color:var(--text-muted);}
+.cf-pd-r-margin{font-family:var(--font-mono);font-weight:700;}
+.cf-pd-r-stockwrap{display:flex;flex-direction:column;gap:5px;min-width:90px;}
+.cf-pd-r-stocknums{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:12px;}
+.cf-pd-r-stocknums .u{font-size:9.5px;color:var(--text-muted);}
+.cf-pd-r-actions{display:flex;gap:5px;justify-content:flex-end;}
+.cf-pd-empty{padding:60px 20px;text-align:center;color:var(--text-muted);display:flex;flex-direction:column;align-items:center;gap:10px;}
+.cf-pd-empty-ic{width:44px;height:44px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;color:var(--text-muted);}
+@media(max-width:1000px){.cf-pd-thead,.cf-pd-row{grid-template-columns:2fr 1fr 110px;}.cf-pd-th:nth-child(3),.cf-pd-th:nth-child(4),.cf-pd-row>:nth-child(3),.cf-pd-row>:nth-child(4){display:none;}}
 
-  const handleSave = async () => {
-    if (!form.nome||!form.preco_venda) { setFormError('Nome e preço de venda são obrigatórios.'); return; }
-    setSaving(true); setFormError('');
-    try {
-      const payload = { ...form, preco_venda:parseFloat(form.preco_venda)||0, preco_custo:parseFloat(form.preco_custo)||0, estoque_atual:parseInt(form.estoque_atual)||0, estoque_minimo:parseInt(form.estoque_minimo)||5, categoria_id:form.categoria_id?parseInt(form.categoria_id):null, fornecedor_id:form.fornecedor_id?parseInt(form.fornecedor_id):null };
-      if (editingId) { await atualizarProduto(editingId,payload); showToast('Produto atualizado!','✎'); }
-      else { await criarProduto(payload); showToast('Produto cadastrado!'); }
-      setShowModal(false); setForm(FORM_EMPTY); setEditingId(null); load();
-    } catch(e) { setFormError(e.message||'Erro ao salvar.'); }
-    finally { setSaving(false); }
-  };
+.cf-pd-ov{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;animation:cfpFade .2s ease both;}
+@keyframes cfpFade{from{opacity:0}to{opacity:1}}
+.cf-pd-panel{background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);width:100%;max-width:480px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.45);}
+.cf-pd-panel-hd{padding:20px 22px 16px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-shrink:0;}
+.cf-pd-panel-cat{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
+.cf-pd-panel-title{font-size:18px;font-weight:800;letter-spacing:-.01em;line-height:1.25;margin-top:4px;}
+.cf-pd-panel-sub{font-size:11.5px;font-family:var(--font-mono);color:var(--text-muted);margin-top:4px;}
+.cf-pd-panel-body{flex:1;overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:20px;}
+.cf-pd-panel-body::-webkit-scrollbar{width:5px;}
+.cf-pd-panel-body::-webkit-scrollbar-thumb{background:var(--track);border-radius:3px;}
+.cf-pd-sec-t{font-size:9.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:11px;}
+.cf-pd-adjust{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;}
+.cf-pd-adjust-row{display:flex;align-items:center;justify-content:space-between;gap:14px;}
+.cf-pd-adjust-big{font-size:26px;font-weight:800;font-family:var(--font-mono);}
+.cf-pd-adjust-big.ok{color:var(--ok);}
+.cf-pd-adjust-big.warn{color:var(--warn);}
+.cf-pd-adjust-big.crit{color:var(--crit);}
+.cf-pd-adjust-steps{display:flex;gap:8px;}
+.cf-pd-adjust-steps button{display:flex;align-items:center;gap:5px;padding:8px 13px;border-radius:9px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-size:12px;font-weight:600;font-family:var(--font-ui);}
+.cf-pd-adjust-steps button.up{color:var(--ok);}
+.cf-pd-adjust-steps button.down{color:var(--crit);}
+.cf-pd-adjust-steps button:disabled{opacity:.4;cursor:default;}
+.cf-pd-adjust-hint{font-size:10.5px;font-family:var(--font-mono);color:var(--text-muted);margin-top:10px;}
+.cf-pd-summary{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.cf-pd-sm-l{font-size:9px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:3px;}
+.cf-pd-sm-v{font-size:15px;font-weight:800;font-family:var(--font-mono);}
+.cf-pd-sm-v.brand{color:var(--brand);}
+.cf-pd-sm-v.ok{color:var(--ok);}
+.cf-pd-panel-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:10px;flex-shrink:0;}
 
-  const handleDelete = async id => {
-    try { await deletarProduto(id); setConfirmDel(null); setSelected(null); showToast('Produto removido.','🗑'); load(); }
-    catch { showToast('Erro ao remover.','✕'); }
-  };
+.cf-pd-mback{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);z-index:210;display:flex;align-items:center;justify-content:center;padding:20px;animation:cfpFade .2s ease both;}
+.cf-pd-modal{background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);width:100%;max-width:520px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.45);}
+.cf-pd-modal.sm{max-width:420px;}
+.cf-pd-mhd{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.cf-pd-mtitle{font-size:15px;font-weight:800;}
+.cf-pd-msub{font-size:11px;font-family:var(--font-mono);color:var(--text-muted);margin-top:2px;}
+.cf-pd-mbody{padding:18px 22px;display:flex;flex-direction:column;gap:13px;overflow-y:auto;}
+.cf-pd-mfoot{padding:13px 22px;border-top:1px solid var(--border);display:flex;gap:9px;flex-shrink:0;}
+.cf-pd-err{font-size:12px;color:var(--crit);background:color-mix(in oklab,var(--crit) 10%,transparent);border:1px solid color-mix(in oklab,var(--crit) 25%,transparent);border-radius:8px;padding:9px 13px;}
+.cf-pd-form-row{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+.cf-pd-field{display:flex;flex-direction:column;gap:5px;}
+.cf-pd-field.full{grid-column:1/-1;}
+.cf-pd-label{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
+.cf-pd-input,.cf-pd-fselect,.cf-pd-textarea{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 12px;font-size:13px;color:var(--text);font-family:var(--font-ui);outline:none;width:100%;transition:border-color .18s;}
+.cf-pd-input:focus,.cf-pd-fselect:focus,.cf-pd-textarea:focus{border-color:var(--brand-line);}
+.cf-pd-textarea{min-height:70px;resize:vertical;font-family:var(--font-ui);}
+.cf-pd-cat-row{display:flex;gap:8px;}
+.cf-pd-mini-add{width:38px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface-2);color:var(--brand);cursor:pointer;font-size:17px;flex-shrink:0;}
+.cf-pd-margin-preview{display:flex;gap:20px;background:var(--brand-soft);border:1px solid var(--brand-line);border-radius:var(--radius-sm);padding:12px 14px;}
+.cf-pd-mp-l{font-size:9px;font-family:var(--font-mono);text-transform:uppercase;color:var(--text-muted);margin-bottom:3px;}
+.cf-pd-mp-v{font-size:14px;font-weight:800;font-family:var(--font-mono);color:var(--brand);}
+.cf-pd-catlist{display:flex;flex-direction:column;gap:7px;max-height:240px;overflow-y:auto;}
+.cf-pd-catitem{display:flex;align-items:center;gap:9px;padding:9px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;}
+.cf-pd-catitem-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.cf-pd-catitem-nm{flex:1;font-size:13px;font-weight:600;}
+.cf-pd-catitem-n{font-size:10.5px;font-family:var(--font-mono);color:var(--text-muted);}
+.cf-pd-catitem-del{width:24px;height:24px;border-radius:6px;border:none;background:none;color:var(--text-muted);cursor:pointer;}
+.cf-pd-catitem-del:hover{color:var(--crit);}
+.cf-pd-confirm{background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);width:100%;max-width:380px;padding:22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 32px 80px rgba(0,0,0,.45);}
+.cf-pd-confirm-t{font-size:15px;font-weight:800;}
+.cf-pd-confirm-x{font-size:13px;color:var(--text-dim);line-height:1.5;}
+.cf-pd-confirm-acts{display:flex;gap:9px;}
+.cf-pd-confirm-acts .cf-btn{flex:1;justify-content:center;}
 
-  // ── Categorias ────────────────────────────────────────────────
-  const salvarCategoria = async () => {
-    if (!novaCat.trim()) return;
-    setSavingCat(true);
-    try {
-      await criarCategoria({ nome: novaCat.trim() });
-      setNovaCat('');
-      const c = await getCategorias();
-      setCategorias(c);
-      showToast(`Categoria "${novaCat.trim()}" criada!`);
-    } catch(e) { showToast('Erro ao criar categoria.','✕'); }
-    finally { setSavingCat(false); }
-  };
+.cf-toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--elevated);border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:12px 18px;display:flex;align-items:center;gap:10px;font-size:13px;z-index:300;box-shadow:var(--shadow);animation:cfpFade .3s ease both;white-space:nowrap;}
+.cf-toast-ic{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;background:color-mix(in oklab,var(--ok) 14%,transparent);color:var(--ok);flex-shrink:0;}
+.cf-toast-ic.warn{background:color-mix(in oklab,var(--warn) 14%,transparent);color:var(--warn);}
+.cf-toast-ic.err{background:color-mix(in oklab,var(--crit) 14%,transparent);color:var(--crit);}
 
-  const deletarCategoria = async id => {
-    try {
-      await apiDel(`/categorias/${id}`);
-      const c = await getCategorias();
-      setCategorias(c);
-      showToast('Categoria removida.','🗑');
-    } catch { showToast('Erro ao remover categoria.','✕'); }
-  };
+.cf-skel{background:linear-gradient(90deg,var(--track) 25%,var(--surface-2) 50%,var(--track) 75%);background-size:200% 100%;animation:cfpSh 1.5s infinite;border-radius:8px;}
+@keyframes cfpSh{from{background-position:200% 0}to{background-position:-200% 0}}
 
-  const uniqueCats = [...new Set(produtos.map(p=>p.categoria).filter(Boolean))];
+@media(max-width:1100px){.cf-pd-kpis{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:560px){.cf-pd-kpis{grid-template-columns:1fr;}.cf-pd-form-row{grid-template-columns:1fr;}}
+`;
 
+/* ── Portal ───────────────────────────────────────────────────────────── */
+function Portal({children, theme}) {
+  useEffect(()=>{ const p=document.body.style.overflow; document.body.style.overflow='hidden'; return()=>{ document.body.style.overflow=p; }; },[]);
+  return createPortal(<div className="cf-prod-portal" data-theme={theme}>{children}</div>, document.body);
+}
+
+/* ── componentes pequenos ─────────────────────────────────────────────── */
+function StatusPill({ s }) { const m = ST_META[s]; return <span className={`cf-pill ${m.cls}`}>{m.label}</span>; }
+
+function Meter({ p }) {
+  const s = statusOf(p);
+  const pct = Math.min((p.estoque / Math.max(p.minimo * 2.5, p.estoque, 1)) * 100, 100);
+  const minPct = Math.min((p.minimo / Math.max(p.minimo * 2.5, p.estoque, 1)) * 100, 100);
   return (
-    <>
-      <style>{styles}</style>
-      <div className="pag">
+    <div className="cf-meter">
+      <div className="cf-meter-track">
+        <div className={`cf-meter-fill ${meterCls(s)}`} style={{ width: pct + '%' }} />
+        <div className="cf-meter-min" style={{ left: minPct + '%' }} title={`mínimo ${p.minimo}`} />
+      </div>
+    </div>
+  );
+}
 
-        <div className="pag-header">
-          <div>
-            <div className="pag-title">Produtos</div>
-            <div className="pag-sub">{produtos.length} produto(s) cadastrado(s)</div>
-          </div>
-          <div className="hdr-actions">
-            <button className="btn btn-ghost" onClick={()=>setShowCatModal(true)}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-              Categorias
-            </button>
-            <button className="btn btn-primary" onClick={()=>{setForm(FORM_EMPTY);setFormError('');setEditingId(null);setShowModal(true);}}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Novo Produto
-            </button>
-          </div>
-        </div>
+const FORM_EMPTY = { nome: '', sku: '', categoria: '', unidade: 'un', venda: '', custo: '', estoque: '', minimo: '5', descricao: '' };
 
-        <div className="stats-row">
-          {[{label:'Total',val:stats.total,color:'#0099ff'},{label:'Em estoque',val:stats.ok,color:'#00d4aa'},{label:'Estoque baixo',val:stats.critico,color:'#ff6b35'},{label:'Esgotados',val:stats.esgotado,color:'#ff4757'}].map(s=>(
-            <div key={s.label} className="stat-chip"><div className="stat-dot" style={{background:s.color}}/><div><div className="stat-val">{s.val}</div><div className="stat-lbl">{s.label}</div></div></div>
-          ))}
-        </div>
-
-        <div className="filter-bar">
-          <div className="search-field">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{color:'rgba(232,234,237,.28)',flexShrink:0}}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input placeholder="Buscar por nome, SKU ou categoria..." value={search} onChange={e=>setSearch(e.target.value)}/>
-            {search && <button onClick={()=>setSearch('')} style={{background:'none',border:'none',color:'rgba(232,234,237,.3)',cursor:'pointer',fontSize:16}}>×</button>}
-          </div>
-          <select className="filter-select" value={filterCat} onChange={e=>setFilterCat(e.target.value)}>
-            <option value="">Todas categorias</option>
-            {uniqueCats.map(c=><option key={c} value={c}>{c}</option>)}
-          </select>
-          <select className="filter-select" value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}>
-            <option value="">Todos os status</option>
-            <option value="ok">Em estoque</option>
-            <option value="critico">Estoque baixo</option>
-            <option value="esgotado">Esgotado</option>
-          </select>
-        </div>
-
-        <div className="prod-grid">
-          {loading ? Array.from({length:6}).map((_,i)=>(
-            <div key={i} className="prod-card" style={{animationDelay:`${i*.05}s`}}>
-              <div style={{padding:18,display:'flex',flexDirection:'column',gap:10}}>
-                <div className="skeleton" style={{height:12,width:'50%'}}/>
-                <div className="skeleton" style={{height:18,width:'80%'}}/>
-              </div>
+/* ── Painel de detalhe (MODAL CENTRAL via Portal — corrige bug de rolagem) ── */
+function ProdPanel({ prod, catIndex, onClose, onAdjust, onEdit, onDelete, theme }) {
+  if (!prod) return null;
+  const s = statusOf(prod);
+  const m = margemPct(prod);
+  return (
+    <Portal theme={theme}>
+      <div className="cf-pd-ov" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+        <div className="cf-pd-panel">
+          <div className="cf-pd-panel-hd">
+            <div>
+              <div className="cf-pd-panel-cat"><span className="cf-pd-cat-dot" style={{ background: catColor(catIndex) }} />{prod.categoria}</div>
+              <div className="cf-pd-panel-title">{prod.nome}</div>
+              <div className="cf-pd-panel-sub">SKU {prod.sku}</div>
+              <div style={{ marginTop: 10 }}><StatusPill s={s} /></div>
             </div>
-          )) : filtered.length===0 ? (
-            <div className="empty-state"><div className="empty-icon">◫</div><div>{search?'Nenhum produto encontrado':'Cadastre seu primeiro produto'}</div></div>
-          ) : filtered.map((p,i)=>{
-            const st=statusLabel(p); const pct=stockPct(p.estoque_atual,p.estoque_minimo); const sc=stockColor(p.estoque_atual,p.estoque_minimo);
-            return (
-              <div key={p.id} className={`prod-card${selected?.id===p.id?' selected':''}`} style={{animationDelay:`${i*.04}s`}} onClick={()=>setSelected(selected?.id===p.id?null:p)}>
-                <div className="prod-card-top">
-                  <div className="prod-status-dot" style={{background:st.dot}}/>
-                  <div className="prod-cat-tag">{p.categoria||'Sem categoria'}</div>
-                  <div className="prod-name">{p.nome}</div>
-                  {p.sku&&<div className="prod-sku">SKU: {p.sku}</div>}
-                </div>
-                <div className="prod-card-mid">
-                  <div><div className="prod-field-lbl">Preço de Venda</div><div className="prod-field-val accent">{fmtBRL(p.preco_venda)}</div></div>
-                  <div><div className="prod-field-lbl">Custo</div><div className="prod-field-val muted">{fmtBRL(p.preco_custo)}</div></div>
-                  <div><div className="prod-field-lbl">Margem</div><div className="prod-field-val" style={{color:'#a855f7'}}>{p.preco_custo>0?`${(((p.preco_venda-p.preco_custo)/p.preco_custo)*100).toFixed(0)}%`:'—'}</div></div>
-                  <div><div className="prod-field-lbl">Fornecedor</div><div className="prod-field-val muted" style={{fontSize:11}}>{p.fornecedor||'—'}</div></div>
-                </div>
-                <div className="prod-card-bot">
-                  <div className="prod-stock-bar-wrap">
-                    <div className="prod-stock-label"><span>Estoque</span><span>{p.estoque_atual} {p.unidade} / mín {p.estoque_minimo}</span></div>
-                    <div className="prod-stock-track"><div className="prod-stock-fill" style={{width:`${pct}%`,background:sc}}/></div>
-                  </div>
-                  <div style={{display:'flex',gap:6}} onClick={e=>e.stopPropagation()}>
-                    <button title="Editar produto"
-                      onClick={e=>openEdit(p,e)}
-                      style={{width:32,height:32,borderRadius:7,border:'1px solid rgba(255,255,255,.1)',background:'rgba(255,255,255,.05)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',transition:'all .2s',color:'rgba(232,234,237,.7)',padding:0,flexShrink:0}}
-                      onMouseEnter={e=>{e.currentTarget.style.background='rgba(0,153,255,.15)';e.currentTarget.style.color='#0099ff';e.currentTarget.style.borderColor='rgba(0,153,255,.3)';}}
-                      onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,.05)';e.currentTarget.style.color='rgba(232,234,237,.7)';e.currentTarget.style.borderColor='rgba(255,255,255,.1)';}}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/>
-                      </svg>
-                    </button>
-                    <button title="Excluir produto"
-                      onClick={()=>setConfirmDel(p)}
-                      style={{width:32,height:32,borderRadius:7,border:'1px solid rgba(255,255,255,.1)',background:'rgba(255,255,255,.05)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',transition:'all .2s',color:'rgba(232,234,237,.7)',padding:0,flexShrink:0}}
-                      onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,71,87,.15)';e.currentTarget.style.color='#ff4757';e.currentTarget.style.borderColor='rgba(255,71,87,.3)';}}
-                      onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,.05)';e.currentTarget.style.color='rgba(232,234,237,.7)';e.currentTarget.style.borderColor='rgba(255,255,255,.1)';}}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6"/>
-                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                        <path d="M10 11v6M14 11v6"/>
-                        <path d="M9 6V4h6v2"/>
-                      </svg>
-                    </button>
+            <button className="cf-mclose" onClick={onClose}><Ic d={ICONS.x} size={14}/></button>
+          </div>
+
+          <div className="cf-pd-panel-body">
+            <section>
+              <div className="cf-pd-sec-t">Ajuste rápido de estoque</div>
+              <div className="cf-pd-adjust">
+                <div className="cf-pd-adjust-row">
+                  <div className={`cf-pd-adjust-big ${meterCls(s)}`}>{prod.estoque}<span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 500 }}> {prod.unidade}</span></div>
+                  <div className="cf-pd-adjust-steps">
+                    <button className="down" disabled={prod.estoque === 0} onClick={() => onAdjust(prod.id, -1)}><Ic d={ICONS.minus} size={14}/> Saída</button>
+                    <button className="up" onClick={() => onAdjust(prod.id, 1)}><Ic d={ICONS.plus} size={14}/> Entrada</button>
                   </div>
                 </div>
+                <div className="cf-pd-adjust-hint">mínimo definido: {prod.minimo} {prod.unidade}{s !== 'ok' ? ' · abaixo do mínimo' : ''}</div>
               </div>
-            );
-          })}
+            </section>
+
+            <section>
+              <div className="cf-pd-sec-t">Precificação</div>
+              <div className="cf-pd-summary">
+                <div><div className="cf-pd-sm-l">Preço de venda</div><div className="cf-pd-sm-v brand">{fmtBRLp(prod.venda)}</div></div>
+                <div><div className="cf-pd-sm-l">Custo</div><div className="cf-pd-sm-v">{fmtBRLp(prod.custo)}</div></div>
+                <div><div className="cf-pd-sm-l">Margem</div><div className="cf-pd-sm-v brand">{m.toFixed(0)}%</div></div>
+                <div><div className="cf-pd-sm-l">Lucro unitário</div><div className="cf-pd-sm-v ok">{fmtBRLp(prod.venda - prod.custo)}</div></div>
+              </div>
+            </section>
+
+            <section>
+              <div className="cf-pd-sec-t">Valor em estoque</div>
+              <div className="cf-pd-summary">
+                <div><div className="cf-pd-sm-l">A preço de custo</div><div className="cf-pd-sm-v">{fmtBRLp(prod.estoque * prod.custo)}</div></div>
+                <div><div className="cf-pd-sm-l">A preço de venda</div><div className="cf-pd-sm-v ok">{fmtBRLp(prod.estoque * prod.venda)}</div></div>
+              </div>
+            </section>
+
+            {prod.descricao && (
+              <section>
+                <div className="cf-pd-sec-t">Descrição</div>
+                <div className="cf-pd-confirm-x" style={{ margin: 0 }}>{prod.descricao}</div>
+              </section>
+            )}
+          </div>
+
+          <div className="cf-pd-panel-foot">
+            <button className="cf-btn cf-btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onEdit(prod)}><Ic d={ICONS.edit} size={14}/> Editar</button>
+            <button className="cf-btn cf-btn-danger" onClick={() => onDelete(prod)}><Ic d={ICONS.trash} size={14}/></button>
+          </div>
         </div>
       </div>
+    </Portal>
+  );
+}
 
-      {/* Detail Panel */}
-      {selected && (
-        <>
-          <div style={{position:'fixed',inset:0,zIndex:140}} onClick={()=>setSelected(null)}/>
-          <div className="detail-panel">
-            <div className="detail-header">
-              <div>
-                <div className="detail-name">{selected.nome}</div>
-                {selected.sku&&<div className="detail-sku">SKU: {selected.sku}</div>}
-                <div style={{marginTop:10}}><span className={`badge ${statusLabel(selected).cls}`}>{statusLabel(selected).text}</span></div>
-              </div>
-              <button className="modal-close" onClick={()=>setSelected(null)}>×</button>
-            </div>
-            <div className="detail-body">
-              <div><div className="detail-section-title">Precificação</div>
-                <div className="detail-grid">
-                  <div><div className="detail-item-lbl">Preço de Venda</div><div className="detail-item-val green">{fmtBRL(selected.preco_venda)}</div></div>
-                  <div><div className="detail-item-lbl">Custo</div><div className="detail-item-val">{fmtBRL(selected.preco_custo)}</div></div>
-                  <div><div className="detail-item-lbl">Margem</div><div className="detail-item-val green">{selected.preco_custo>0?`${(((selected.preco_venda-selected.preco_custo)/selected.preco_custo)*100).toFixed(1)}%`:'—'}</div></div>
-                  <div><div className="detail-item-lbl">Lucro Unit.</div><div className="detail-item-val green">{fmtBRL(selected.preco_venda-selected.preco_custo)}</div></div>
-                </div>
-              </div>
-              <div><div className="detail-section-title">Estoque</div>
-                <div className="detail-grid">
-                  <div><div className="detail-item-lbl">Qtd Atual</div><div className={`detail-item-val ${selected.estoque_atual===0?'red':selected.estoque_atual<=selected.estoque_minimo?'orange':'green'}`}>{selected.estoque_atual} {selected.unidade}</div></div>
-                  <div><div className="detail-item-lbl">Mínimo</div><div className="detail-item-val">{selected.estoque_minimo} {selected.unidade}</div></div>
-                  <div><div className="detail-item-lbl">Valor Custo</div><div className="detail-item-val">{fmtBRL(selected.estoque_atual*selected.preco_custo)}</div></div>
-                  <div><div className="detail-item-lbl">Valor Venda</div><div className="detail-item-val green">{fmtBRL(selected.estoque_atual*selected.preco_venda)}</div></div>
-                </div>
-              </div>
-              <div><div className="detail-section-title">Categorização</div>
-                <div className="detail-grid">
-                  <div><div className="detail-item-lbl">Categoria</div><div className="detail-item-val" style={{fontSize:13}}>{selected.categoria||'—'}</div></div>
-                  <div><div className="detail-item-lbl">Fornecedor</div><div className="detail-item-val" style={{fontSize:13}}>{selected.fornecedor||'—'}</div></div>
-                  <div><div className="detail-item-lbl">Unidade</div><div className="detail-item-val" style={{fontSize:13}}>{selected.unidade}</div></div>
-                </div>
-              </div>
-              {selected.descricao&&<div><div className="detail-section-title">Descrição</div><div className="detail-desc">{selected.descricao}</div></div>}
-            </div>
-            <div className="detail-footer">
-              <button className="btn btn-primary" style={{flex:1,justifyContent:'center'}} onClick={e=>openEdit(selected,e)}>Editar</button>
-              <button className="btn btn-danger" onClick={()=>setConfirmDel(selected)}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
-              </button>
-              <button className="btn btn-ghost" onClick={()=>setSelected(null)}>Fechar</button>
-            </div>
-          </div>
-        </>
-      )}
+/* ══ COMPONENTE PRINCIPAL ════════════════════════════════════════════════ */
+export default function Produtos() {
+  const [theme, setTheme] = useState(getDocTheme);
+  const [produtosRaw, setProdutosRaw] = useState([]);
+  const [categorias, setCategorias] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState('');
 
-      {/* Modal Categorias */}
-      {showCatModal && (
-        <div className="modal-backdrop" onClick={e=>e.target===e.currentTarget&&setShowCatModal(false)}>
-          <div className="modal sm">
-            <div className="modal-header">
-              <div><div className="modal-title">Categorias</div><div className="modal-sub">{categorias.length} categoria(s)</div></div>
-              <button className="modal-close" onClick={()=>setShowCatModal(false)}>×</button>
-            </div>
-            <div className="modal-body">
-              <div className="cat-input-row">
-                <input className="form-input" placeholder="Nome da nova categoria..." value={novaCat} onChange={e=>setNovaCat(e.target.value)}
-                  onKeyDown={e=>e.key==='Enter'&&salvarCategoria()}/>
-                <button className="btn btn-primary" onClick={salvarCategoria} disabled={savingCat||!novaCat.trim()} style={{flexShrink:0}}>
-                  {savingCat?'...':'Criar'}
-                </button>
-              </div>
-              {categorias.length === 0 ? (
-                <div style={{textAlign:'center',color:'rgba(232,234,237,.25)',fontSize:12,padding:'20px 0',fontFamily:'JetBrains Mono,monospace'}}>Nenhuma categoria ainda</div>
-              ) : (
-                <div className="cat-list">
-                  {categorias.map(c=>(
-                    <div key={c.id} className="cat-item">
-                      <span className="cat-item-name">{c.nome}</span>
-                      <button className="cat-item-del" onClick={()=>deletarCategoria(c.id)} title="Remover">×</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-ghost" onClick={()=>setShowCatModal(false)}>Fechar</button>
-            </div>
+  const [busca, setBusca] = useState('');
+  const [filtro, setFiltro] = useState('todos');
+  const [catFiltro, setCatFiltro] = useState('');
+  const [ordem, setOrdem] = useState('nome');
+  const [view, setView] = useState('grade');
+  const [sel, setSel] = useState(null);
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState(FORM_EMPTY);
+  const [formErr, setFormErr] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [catModal, setCatModal] = useState(false);
+  const [novaCat, setNovaCat] = useState('');
+  const [confirmDel, setConfirmDel] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  useEffect(()=>{
+    const obs=new MutationObserver(()=>setTheme(getDocTheme()));
+    obs.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+    return ()=>obs.disconnect();
+  },[]);
+
+  const showToast = (msg, tone = 'ok') => { setToast({ msg, tone }); setTimeout(() => setToast(null), 3000); };
+
+  const load = useCallback(async () => {
+    setLoading(true); setErro('');
+    try {
+      const [p, c] = await Promise.all([api.get('/produtos'), api.get('/categorias')]);
+      setProdutosRaw(Array.isArray(p) ? p : []);
+      setCategorias(Array.isArray(c) ? c : []);
+    } catch (e) {
+      setErro(e.message || 'Não foi possível carregar os produtos.');
+    } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const produtos = useMemo(() => produtosRaw.map(fromApi), [produtosRaw]);
+
+  const cats = useMemo(() => categorias.map(c => c.nome), [categorias]);
+  const catIdGetByNome = (nome) => categorias.find(c => c.nome === nome)?.id ?? null;
+  const catIdx = (c) => Math.max(0, cats.indexOf(c));
+
+  const counts = useMemo(() => ({
+    todos: produtos.length,
+    ok: produtos.filter(p => statusOf(p) === 'ok').length,
+    baixo: produtos.filter(p => statusOf(p) === 'baixo').length,
+    esgotado: produtos.filter(p => statusOf(p) === 'esgotado').length,
+  }), [produtos]);
+
+  const kpis = useMemo(() => {
+    const unidades = produtos.reduce((a, p) => a + p.estoque, 0);
+    const valorVenda = produtos.reduce((a, p) => a + p.estoque * p.venda, 0);
+    const valorCusto = produtos.reduce((a, p) => a + p.estoque * p.custo, 0);
+    const margens = produtos.filter(p => p.custo > 0).map(margemPct);
+    const margemMedia = margens.length ? margens.reduce((a, b) => a + b, 0) / margens.length : 0;
+    return { unidades, valorVenda, valorCusto, margemMedia, alertas: counts.baixo + counts.esgotado };
+  }, [produtos, counts]);
+
+  const lista = useMemo(() => {
+    let r = produtos.filter(p => {
+      if (filtro !== 'todos' && statusOf(p) !== filtro) return false;
+      if (catFiltro && p.categoria !== catFiltro) return false;
+      if (busca) {
+        const q = busca.toLowerCase();
+        if (!(p.nome.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.categoria.toLowerCase().includes(q))) return false;
+      }
+      return true;
+    });
+    const cmp = {
+      nome: (a, b) => a.nome.localeCompare(b.nome),
+      estoque: (a, b) => a.estoque - b.estoque,
+      margem: (a, b) => margemPct(b) - margemPct(a),
+      valor: (a, b) => (b.estoque * b.custo) - (a.estoque * a.custo),
+    }[ordem];
+    return [...r].sort(cmp);
+  }, [produtos, filtro, catFiltro, busca, ordem]);
+
+  const adjust = async (id, delta) => {
+    const prod = produtos.find(p => p.id === id);
+    if (!prod) return;
+    if (delta < 0 && prod.estoque <= 0) return;
+    try {
+      await api.post('/movimentacoes', {
+        produto_id: id, tipo: delta > 0 ? 'entrada' : 'saida',
+        quantidade: 1, motivo: 'Ajuste rápido (tela Produtos)', observacao: null,
+      });
+      const novo = Math.max(0, prod.estoque + delta);
+      setProdutosRaw(ps => ps.map(p => p.id === id ? { ...p, estoque_atual: novo } : p));
+      setSel(s => s && s.id === id ? { ...s, estoque: novo } : s);
+      showToast(`${delta > 0 ? 'Entrada' : 'Saída'} registrada · estoque agora ${novo}`, delta > 0 ? 'ok' : 'warn');
+    } catch (e) {
+      showToast(e.message || 'Erro ao ajustar estoque', 'err');
+    }
+  };
+
+  const openNovo = () => { setForm(FORM_EMPTY); setFormErr(''); setModal('novo'); };
+  const openEdit = (p) => {
+    setForm({ nome: p.nome, sku: p.sku === '—' ? '' : p.sku, categoria: p.categoria, unidade: p.unidade,
+      venda: p.venda, custo: p.custo, estoque: p.estoque, minimo: p.minimo, descricao: p.descricao || '' });
+    setFormErr(''); setModal({ editId: p.id });
+  };
+
+  const salvar = async () => {
+    if (!form.nome.trim() || !form.venda) { setFormErr('Nome e preço de venda são obrigatórios.'); return; }
+    const categoriaId = form.categoria ? catIdGetByNome(form.categoria) : null;
+    setSalvando(true); setFormErr('');
+    try {
+      const payload = toApi(form, categoriaId);
+      if (modal.editId) {
+        await api.put(`/produtos/${modal.editId}`, payload);
+        showToast('Produto atualizado');
+      } else {
+        await api.post('/produtos', payload);
+        showToast('Produto cadastrado');
+      }
+      setModal(null);
+      await load();
+    } catch (e) {
+      setFormErr(e.message || 'Erro ao salvar produto.');
+    } finally { setSalvando(false); }
+  };
+
+  const remover = async (p) => {
+    try {
+      await api.del(`/produtos/${p.id}`);
+      setConfirmDel(null); setSel(null);
+      showToast('Produto removido', 'err');
+      await load();
+    } catch (e) {
+      showToast(e.message || 'Erro ao remover produto', 'err');
+    }
+  };
+
+  const criarCat = async () => {
+    const nome = novaCat.trim();
+    if (!nome || cats.includes(nome)) return;
+    try {
+      await api.post('/categorias', { nome });
+      setForm(f => ({ ...f, categoria: nome }));
+      setNovaCat('');
+      showToast(`Categoria "${nome}" criada`);
+      await load();
+    } catch (e) {
+      showToast(e.message || 'Erro ao criar categoria', 'err');
+    }
+  };
+
+  const STATUS_CHIPS = [
+    { k: 'todos', label: 'Todos', dot: null },
+    { k: 'ok', label: 'Em estoque', dot: 'var(--ok)' },
+    { k: 'baixo', label: 'Estoque baixo', dot: 'var(--warn)' },
+    { k: 'esgotado', label: 'Esgotados', dot: 'var(--crit)' },
+  ];
+  const ORD_LABEL = { nome: 'Nome (A–Z)', estoque: 'Menor estoque', margem: 'Maior margem', valor: 'Valor em estoque' };
+
+  const KPIS = [
+    { tone: 't-brand', ic: 'box', val: produtos.length, lbl: 'Produtos cadastrados', sub: `${kpis.unidades} unidades em estoque` },
+    { tone: 't-ok', ic: 'spark', val: fmtBRLp(kpis.valorVenda, 0), lbl: 'Patrimônio (a preço de venda)', sub: `custo ${fmtBRLp(kpis.valorCusto, 0)}` },
+    { tone: 't-brand', ic: 'chart', val: kpis.margemMedia.toFixed(0) + '%', lbl: 'Margem média', sub: 'sobre o custo' },
+    { tone: 't-crit', ic: 'bell', val: kpis.alertas, lbl: 'Alertas de estoque', sub: `${counts.esgotado} esgotado(s) · ${counts.baixo} baixo(s)`, hero: kpis.alertas > 0, cta: kpis.alertas > 0 ? 'Ver alertas' : null },
+  ];
+
+  return (
+    <div className="cf-prod-root" data-theme={theme}>
+      <style>{S}</style>
+      <div className="cf-prod">
+
+        <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16,flexWrap:'wrap'}}>
+          <div>
+            <div style={{fontSize:22,fontWeight:800}}>Produtos</div>
+            <div style={{fontSize:12,color:'var(--text-muted)',fontFamily:'var(--font-mono)',marginTop:4}}>{produtos.length} produtos cadastrados</div>
           </div>
+          <button className="cf-btn cf-btn-primary" onClick={openNovo}><Ic d={ICONS.plus} size={15}/> Novo produto</button>
         </div>
-      )}
 
-      {/* Modal Produto */}
-      {showModal && (
-        <div className="modal-backdrop" onClick={e=>e.target===e.currentTarget&&setShowModal(false)}>
-          <div className="modal">
-            <div className="modal-header">
-              <div><div className="modal-title">{editingId?'Editar Produto':'Novo Produto'}</div><div className="modal-sub">{editingId?'Atualize as informações':'Preencha as informações do produto'}</div></div>
-              <button className="modal-close" onClick={()=>{setShowModal(false);setEditingId(null);}}>×</button>
-            </div>
-            <div className="modal-body">
-              {formError&&<div style={{background:'rgba(255,71,87,.1)',border:'1px solid rgba(255,71,87,.3)',borderRadius:8,padding:'10px 14px',fontSize:12,color:'#ff4757',fontFamily:'JetBrains Mono,monospace'}}>⚠ {formError}</div>}
-              <div className="form-row">
-                <div className="form-field full"><label className="form-label">Nome *</label><input className="form-input" placeholder="Nome do produto" value={form.nome} onChange={e=>setForm(f=>({...f,nome:e.target.value}))}/></div>
+        {erro && <div className="cf-pd-err">⚠ {erro}</div>}
+
+        {loading ? (
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16}}>{[1,2,3,4].map(i=><div key={i} className="cf-skel" style={{height:100}}/>)}</div>
+        ) : (
+          <>
+            {(counts.esgotado > 0 || counts.baixo > 0) && (
+              <div className="cf-pd-alert">
+                <span className="cf-att-pulse" />
+                <span className="cf-pd-alert-txt"><strong>{counts.esgotado + counts.baixo} produto(s) precisam de reposição</strong> — {counts.esgotado} esgotado(s) e {counts.baixo} abaixo do mínimo.</span>
+                <button className="cf-btn cf-btn-ghost sm" onClick={() => { setFiltro('baixo'); setCatFiltro(''); }}>Repor estoque baixo</button>
               </div>
-              <div className="form-row">
-                <div className="form-field"><label className="form-label">SKU</label><input className="form-input" placeholder="Ex: CHF-001" value={form.sku} onChange={e=>setForm(f=>({...f,sku:e.target.value}))}/></div>
-                <div className="form-field"><label className="form-label">Unidade</label>
-                  <select className="form-select" value={form.unidade} onChange={e=>setForm(f=>({...f,unidade:e.target.value}))}>
-                    <option value="un">un</option><option value="ml">ml</option><option value="g">g</option><option value="kg">kg</option><option value="cx">cx</option><option value="kit">kit</option>
+            )}
+
+            <div className="cf-pd-kpis">
+              {KPIS.map(k => (
+                <div key={k.lbl} className={`cf-pd-kpi ${k.tone}${k.hero ? ' hero' : ''}`}>
+                  <div className="cf-pd-kpi-top"><span className="cf-pd-kpi-ic"><Ic d={ICONS[k.ic]} size={16}/></span></div>
+                  <div className="cf-pd-kpi-val">{k.val}</div>
+                  <div>
+                    <div className="cf-pd-kpi-lbl">{k.lbl}</div>
+                    <div className="cf-pd-kpi-sub">{k.sub}</div>
+                  </div>
+                  {k.cta && <button className="cf-pd-kpi-cta" onClick={() => { setFiltro('esgotado'); setCatFiltro(''); }}>{k.cta} →</button>}
+                </div>
+              ))}
+            </div>
+
+            <div className="cf-pd-toolbar">
+              <div className="cf-pd-srch">
+                <Ic d={ICONS.search} size={15} />
+                <input placeholder="Buscar nome, SKU ou categoria…" value={busca} onChange={e => setBusca(e.target.value)} />
+                {busca && <button className="x" onClick={() => setBusca('')}>×</button>}
+              </div>
+              <div className="cf-pd-chips">
+                {STATUS_CHIPS.map(c => (
+                  <button key={c.k} className={`cf-pd-chip${filtro === c.k ? ' on' : ''}`} onClick={() => setFiltro(c.k)}>
+                    {c.dot && <span className="cf-pd-chip-dot" style={{ background: c.dot }} />}
+                    {c.label}<span className="cf-pd-chip-n">{counts[c.k]}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="cf-pd-tools-right">
+                <div className="cf-pd-select">
+                  <Ic d={ICONS.tag} size={14} />
+                  <select value={catFiltro} onChange={e => setCatFiltro(e.target.value)}>
+                    <option value="">Todas categorias</option>
+                    {cats.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
+                <div className="cf-pd-select">
+                  <Ic d={ICONS.sort} size={14} />
+                  <select value={ordem} onChange={e => setOrdem(e.target.value)}>
+                    {Object.entries(ORD_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  </select>
+                </div>
+                <div className="cf-pd-seg">
+                  <button className={view === 'grade' ? 'on' : ''} onClick={() => setView('grade')} title="Grade"><Ic d={ICONS.grid} size={15}/></button>
+                  <button className={view === 'lista' ? 'on' : ''} onClick={() => setView('lista')} title="Lista"><Ic d={ICONS.list} size={15}/></button>
+                </div>
+                <button className="cf-btn cf-btn-ghost sm" onClick={() => setCatModal(true)}><Ic d={ICONS.tag} size={13}/> Categorias</button>
               </div>
-              <div className="form-row">
-                <div className="form-field"><label className="form-label">Preço de Venda *</label><input className="form-input" type="number" step="0.01" min="0" placeholder="0,00" value={form.preco_venda} onChange={e=>setForm(f=>({...f,preco_venda:e.target.value}))}/></div>
-                <div className="form-field"><label className="form-label">Preço de Custo</label><input className="form-input" type="number" step="0.01" min="0" placeholder="0,00" value={form.preco_custo} onChange={e=>setForm(f=>({...f,preco_custo:e.target.value}))}/></div>
+            </div>
+
+            {lista.length === 0 ? (
+              <div className="cf-pd-table"><div className="cf-pd-empty"><div className="cf-pd-empty-ic"><Ic d={ICONS.box} size={20}/></div><div>Nenhum produto neste filtro</div></div></div>
+            ) : view === 'grade' ? (
+              <div className="cf-pd-grid">
+                {lista.map(p => {
+                  const s = statusOf(p), ci = catIdx(p.categoria);
+                  return (
+                    <div key={p.id} className="cf-pd-card" style={{ '--cat': catColor(ci) }} onClick={() => setSel(p)}>
+                      <div className="cf-pd-card-top">
+                        <div className="cf-pd-card-tagrow"><span className="cf-pd-cat"><span className="cf-pd-cat-dot" />{p.categoria}</span></div>
+                        <div className="cf-pd-card-name">{p.nome}</div>
+                        <div className="cf-pd-card-sku">SKU {p.sku}</div>
+                      </div>
+                      <div className="cf-pd-card-mid">
+                        <div><div className="cf-pd-fld-l">Venda</div><div className="cf-pd-fld-v brand">{fmtBRLp(p.venda)}</div></div>
+                        <div><div className="cf-pd-fld-l">Custo</div><div className="cf-pd-fld-v muted">{fmtBRLp(p.custo)}</div></div>
+                        <div><div className="cf-pd-fld-l">Margem</div><div className="cf-pd-fld-v">{margemPct(p).toFixed(0)}%</div></div>
+                      </div>
+                      <div className="cf-pd-card-stock">
+                        <div className="cf-pd-stock-top">
+                          <span className="cf-pd-stock-n">{p.estoque}<span className="u"> {p.unidade}</span></span>
+                          <span className="cf-pd-stock-min">mín {p.minimo}</span>
+                        </div>
+                        <Meter p={p} />
+                      </div>
+                      <div className="cf-pd-card-foot" onClick={e => e.stopPropagation()}>
+                        <StatusPill s={s} />
+                        <div className="cf-pd-step">
+                          <button className="cf-pd-step-btn down" disabled={p.estoque === 0} onClick={() => adjust(p.id, -1)} title="Saída"><Ic d={ICONS.minus} size={14}/></button>
+                          <button className="cf-pd-step-btn up" onClick={() => adjust(p.id, 1)} title="Entrada"><Ic d={ICONS.plus} size={14}/></button>
+                        </div>
+                        <button className="cf-pd-ic-btn" onClick={() => openEdit(p)} title="Editar"><Ic d={ICONS.edit} size={14}/></button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="form-row">
-                <div className="form-field"><label className="form-label">Estoque Inicial</label><input className="form-input" type="number" min="0" placeholder="0" value={form.estoque_atual} onChange={e=>setForm(f=>({...f,estoque_atual:e.target.value}))}/></div>
-                <div className="form-field"><label className="form-label">Estoque Mínimo</label><input className="form-input" type="number" min="0" placeholder="5" value={form.estoque_minimo} onChange={e=>setForm(f=>({...f,estoque_minimo:e.target.value}))}/></div>
+            ) : (
+              <div className="cf-pd-table">
+                <div className="cf-pd-thead">
+                  <div className="cf-pd-th">Produto</div>
+                  <div className="cf-pd-th r">Venda / Custo</div>
+                  <div className="cf-pd-th r">Margem</div>
+                  <div className="cf-pd-th">Status</div>
+                  <div className="cf-pd-th">Estoque</div>
+                  <div className="cf-pd-th r">Ações</div>
+                </div>
+                {lista.map(p => {
+                  const s = statusOf(p), ci = catIdx(p.categoria);
+                  return (
+                    <div key={p.id} className="cf-pd-row" style={{ '--cat': catColor(ci) }} onClick={() => setSel(p)}>
+                      <div className="cf-pd-r-name">
+                        <span className="cf-pd-r-catdot" />
+                        <div className="cf-pd-r-name-info">
+                          <div className="cf-pd-r-nm">{p.nome}</div>
+                          <div className="cf-pd-r-sku">{p.categoria} · {p.sku}</div>
+                        </div>
+                      </div>
+                      <div className="cf-pd-cell r price-c"><div className="cf-pd-r-price">{fmtBRLp(p.venda)}<span className="c">custo {fmtBRLp(p.custo)}</span></div></div>
+                      <div className="cf-pd-cell r margin-c"><span className="cf-pd-r-margin">{margemPct(p).toFixed(0)}%</span></div>
+                      <div className="cf-pd-cell"><StatusPill s={s} /></div>
+                      <div className="cf-pd-cell">
+                        <div className="cf-pd-r-stockwrap">
+                          <div className="cf-pd-r-stocknums"><strong>{p.estoque}</strong><span className="u">{p.unidade} · mín {p.minimo}</span></div>
+                          <Meter p={p} />
+                        </div>
+                      </div>
+                      <div className="cf-pd-cell r" onClick={e => e.stopPropagation()}>
+                        <div className="cf-pd-r-actions">
+                          <button className="cf-pd-step-btn down" disabled={p.estoque === 0} onClick={() => adjust(p.id, -1)} title="Saída"><Ic d={ICONS.minus} size={14}/></button>
+                          <button className="cf-pd-step-btn up" onClick={() => adjust(p.id, 1)} title="Entrada"><Ic d={ICONS.plus} size={14}/></button>
+                          <button className="cf-pd-ic-btn" onClick={() => openEdit(p)} title="Editar"><Ic d={ICONS.edit} size={14}/></button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="form-row">
-                <div className="form-field">
-                  <label className="form-label">Categoria</label>
-                  <div className="form-row-cat">
-                    <select className="form-select" value={form.categoria_id} onChange={e=>setForm(f=>({...f,categoria_id:e.target.value}))}>
-                      <option value="">Sem categoria</option>
-                      {categorias.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
+            )}
+          </>
+        )}
+      </div>
+
+      {sel && (
+        <ProdPanel
+          prod={produtos.find(p => p.id === sel.id) || sel}
+          catIndex={catIdx((produtos.find(p => p.id === sel.id) || sel).categoria)}
+          onClose={() => setSel(null)} onAdjust={adjust} onEdit={openEdit} onDelete={setConfirmDel}
+          theme={theme}
+        />
+      )}
+
+      {modal && (
+        <Portal theme={theme}>
+          <div className="cf-pd-mback" onClick={e => e.target === e.currentTarget && setModal(null)}>
+            <div className="cf-pd-modal">
+              <div className="cf-pd-mhd">
+                <div><div className="cf-pd-mtitle">{modal.editId ? 'Editar produto' : 'Novo produto'}</div><div className="cf-pd-msub">{modal.editId ? 'Atualize as informações' : 'Preencha os dados do produto'}</div></div>
+                <button className="cf-mclose" onClick={() => setModal(null)}><Ic d={ICONS.x} size={14}/></button>
+              </div>
+              <div className="cf-pd-mbody">
+                {formErr && <div className="cf-pd-err">⚠ {formErr}</div>}
+                <div className="cf-pd-form-row">
+                  <div className="cf-pd-field full"><label className="cf-pd-label">Nome *</label><input className="cf-pd-input" placeholder="Nome do produto" value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} /></div>
+                </div>
+                <div className="cf-pd-form-row">
+                  <div className="cf-pd-field"><label className="cf-pd-label">SKU</label><input className="cf-pd-input" placeholder="Ex: SKN-VC30" value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} /></div>
+                  <div className="cf-pd-field"><label className="cf-pd-label">Unidade</label>
+                    <select className="cf-pd-fselect" value={form.unidade} onChange={e => setForm(f => ({ ...f, unidade: e.target.value }))}>
+                      {['un', 'ml', 'g', 'kg', 'cx', 'kit'].map(u => <option key={u} value={u}>{u}</option>)}
                     </select>
-                    <button className="btn-cat-new" onClick={()=>setShowCatModal(true)} title="Gerenciar categorias">+</button>
                   </div>
                 </div>
-                <div className="form-field"><label className="form-label">Fornecedor</label>
-                  <select className="form-select" value={form.fornecedor_id} onChange={e=>setForm(f=>({...f,fornecedor_id:e.target.value}))}>
-                    <option value="">Sem fornecedor</option>
-                    {fornecedores.map(f=><option key={f.id} value={f.id}>{f.nome}</option>)}
-                  </select>
+                <div className="cf-pd-form-row">
+                  <div className="cf-pd-field"><label className="cf-pd-label">Preço de venda *</label><input className="cf-pd-input" type="number" step="0.01" min="0" placeholder="0,00" value={form.venda} onChange={e => setForm(f => ({ ...f, venda: e.target.value }))} /></div>
+                  <div className="cf-pd-field"><label className="cf-pd-label">Preço de custo</label><input className="cf-pd-input" type="number" step="0.01" min="0" placeholder="0,00" value={form.custo} onChange={e => setForm(f => ({ ...f, custo: e.target.value }))} /></div>
+                </div>
+                <div className="cf-pd-form-row">
+                  <div className="cf-pd-field"><label className="cf-pd-label">Estoque atual</label><input className="cf-pd-input" type="number" min="0" placeholder="0" value={form.estoque} onChange={e => setForm(f => ({ ...f, estoque: e.target.value }))} /></div>
+                  <div className="cf-pd-field"><label className="cf-pd-label">Estoque mínimo</label><input className="cf-pd-input" type="number" min="0" placeholder="5" value={form.minimo} onChange={e => setForm(f => ({ ...f, minimo: e.target.value }))} /></div>
+                </div>
+                <div className="cf-pd-field full"><label className="cf-pd-label">Categoria</label>
+                  <div className="cf-pd-cat-row">
+                    <select className="cf-pd-fselect" value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}>
+                      <option value="">Selecione…</option>
+                      {cats.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <button className="cf-pd-mini-add" onClick={() => setCatModal(true)} title="Gerenciar categorias">+</button>
+                  </div>
+                </div>
+                <div className="cf-pd-field full"><label className="cf-pd-label">Descrição</label><textarea className="cf-pd-textarea" placeholder="Descreva o produto…" value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))} /></div>
+                {form.venda && parseFloat(form.custo) > 0 && (
+                  <div className="cf-pd-margin-preview">
+                    <div><div className="cf-pd-mp-l">Margem</div><div className="cf-pd-mp-v">{(((parseFloat(form.venda) - parseFloat(form.custo)) / parseFloat(form.custo)) * 100).toFixed(1)}%</div></div>
+                    <div><div className="cf-pd-mp-l">Lucro unitário</div><div className="cf-pd-mp-v">{fmtBRLp(parseFloat(form.venda) - parseFloat(form.custo))}</div></div>
+                  </div>
+                )}
+              </div>
+              <div className="cf-pd-mfoot">
+                <button className="cf-btn cf-btn-ghost" onClick={() => setModal(null)}>Cancelar</button>
+                <button className="cf-btn cf-btn-primary" onClick={salvar} disabled={salvando}>{salvando ? 'Salvando...' : (modal.editId ? 'Salvar' : 'Cadastrar')}</button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+
+      {catModal && (
+        <Portal theme={theme}>
+          <div className="cf-pd-mback" onClick={e => e.target === e.currentTarget && setCatModal(false)}>
+            <div className="cf-pd-modal sm">
+              <div className="cf-pd-mhd">
+                <div><div className="cf-pd-mtitle">Categorias</div><div className="cf-pd-msub">{cats.length} categoria(s)</div></div>
+                <button className="cf-mclose" onClick={() => setCatModal(false)}><Ic d={ICONS.x} size={14}/></button>
+              </div>
+              <div className="cf-pd-mbody">
+                <div className="cf-pd-cat-row">
+                  <input className="cf-pd-input" placeholder="Nome da nova categoria…" value={novaCat} onChange={e => setNovaCat(e.target.value)} onKeyDown={e => e.key === 'Enter' && criarCat()} />
+                  <button className="cf-btn cf-btn-primary" onClick={criarCat} disabled={!novaCat.trim()}>Criar</button>
+                </div>
+                <div className="cf-pd-catlist">
+                  {categorias.map((c, i) => (
+                    <div key={c.id} className="cf-pd-catitem">
+                      <span className="cf-pd-catitem-dot" style={{ background: catColor(i) }} />
+                      <span className="cf-pd-catitem-nm">{c.nome}</span>
+                      <span className="cf-pd-catitem-n">{produtos.filter(p => p.categoria === c.nome).length} produto(s)</span>
+                      <button className="cf-pd-catitem-del" title="Remover categoria"
+                        onClick={async()=>{ try{ await api.del(`/categorias/${c.id}`); showToast('Categoria removida'); await load(); }catch(e){ showToast(e.message,'err'); } }}>
+                        <Ic d={ICONS.trash} size={13}/>
+                      </button>
+                    </div>
+                  ))}
+                  {categorias.length===0 && <div style={{fontSize:12,color:'var(--text-muted)',textAlign:'center',padding:'10px 0'}}>Nenhuma categoria cadastrada</div>}
                 </div>
               </div>
-              <div className="form-field"><label className="form-label">Descrição</label><textarea className="form-textarea" placeholder="Descreva o produto..." value={form.descricao} onChange={e=>setForm(f=>({...f,descricao:e.target.value}))}/></div>
-              {form.preco_venda&&form.preco_custo&&parseFloat(form.preco_custo)>0&&(
-                <div style={{background:'rgba(0,212,170,.06)',border:'1px solid rgba(0,212,170,.15)',borderRadius:8,padding:'12px 16px',display:'flex',gap:24}}>
-                  <div><div style={{fontSize:10,color:'rgba(232,234,237,.35)',fontFamily:'JetBrains Mono,monospace'}}>MARGEM</div><div style={{fontSize:16,fontWeight:800,color:'#00d4aa',fontFamily:'JetBrains Mono,monospace'}}>{(((parseFloat(form.preco_venda)-parseFloat(form.preco_custo))/parseFloat(form.preco_custo))*100).toFixed(1)}%</div></div>
-                  <div><div style={{fontSize:10,color:'rgba(232,234,237,.35)',fontFamily:'JetBrains Mono,monospace'}}>LUCRO UNIT.</div><div style={{fontSize:16,fontWeight:800,color:'#00d4aa',fontFamily:'JetBrains Mono,monospace'}}>{fmtBRL(parseFloat(form.preco_venda)-parseFloat(form.preco_custo))}</div></div>
-                </div>
-              )}
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-ghost" onClick={()=>{setShowModal(false);setEditingId(null);}}>Cancelar</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?'Salvando...':editingId?'Salvar':'Cadastrar'}</button>
+              <div className="cf-pd-mfoot"><button className="cf-btn cf-btn-ghost" onClick={() => setCatModal(false)}>Fechar</button></div>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
 
-      {/* Confirm Delete */}
-      {confirmDel&&(
-        <div className="modal-backdrop" onClick={e=>e.target===e.currentTarget&&setConfirmDel(null)}>
-          <div className="confirm-dialog">
-            <div className="confirm-title">Remover produto?</div>
-            <div className="confirm-text">Tem certeza que deseja remover <strong style={{color:'#e8eaed'}}>{confirmDel.nome}</strong>?</div>
-            <div className="confirm-actions">
-              <button className="btn btn-ghost" onClick={()=>setConfirmDel(null)}>Cancelar</button>
-              <button className="btn btn-danger" onClick={()=>handleDelete(confirmDel.id)}>Remover</button>
+      {confirmDel && (
+        <Portal theme={theme}>
+          <div className="cf-pd-mback" onClick={e => e.target === e.currentTarget && setConfirmDel(null)}>
+            <div className="cf-pd-confirm">
+              <div className="cf-pd-confirm-t">Remover produto?</div>
+              <div className="cf-pd-confirm-x">Tem certeza que deseja remover <strong>{confirmDel.nome}</strong>? Esta ação não pode ser desfeita.</div>
+              <div className="cf-pd-confirm-acts">
+                <button className="cf-btn cf-btn-ghost" onClick={() => setConfirmDel(null)}>Cancelar</button>
+                <button className="cf-btn cf-btn-danger" onClick={() => remover(confirmDel)}>Remover</button>
+              </div>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
 
-      {toast&&<div className="toast"><span style={{fontSize:16}}>{toast.icon}</span>{toast.msg}</div>}
-    </>
+      {toast && <div className="cf-toast"><span className={`cf-toast-ic ${toast.tone}`}>{toast.tone === 'ok' ? '✓' : toast.tone === 'warn' ? '↓' : '×'}</span>{toast.msg}</div>}
+    </div>
   );
 }
