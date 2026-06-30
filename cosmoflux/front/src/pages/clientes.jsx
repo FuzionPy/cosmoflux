@@ -278,9 +278,8 @@ function Portal({children, theme}) {
 }
 
 /* ── Painel de detalhe (MODAL CENTRAL via Portal) — somente leitura de vendas ── */
-function ClientePanel({ cli, detalhe, loadingDetalhe, onClose, onEdit, onDelete, onToast, theme }) {
+function ClientePanel({ cli, detalhe, loadingDetalhe, onClose, onEdit, onDelete, onToast, onNavigate, theme }) {
   if (!cli) return null;
-  const navigate = useNavigate();
   const ap = ALERTA_PILL[cli.alerta];
   const copiar = (t, label) => { navigator.clipboard && navigator.clipboard.writeText(t); onToast(`${label} copiado`); };
   const d = detalhe || {};
@@ -367,7 +366,7 @@ function ClientePanel({ cli, detalhe, loadingDetalhe, onClose, onEdit, onDelete,
                     {(pend || v.pedido_id) && (
                       <div className="cf-cl-venda-foot">
                         {v.pedido_id ? (
-                          <button className="cf-cl-gerenciar" onClick={()=>navigate(`/vendas?abrir=${v.pedido_id}`)}>
+                          <button className="cf-cl-gerenciar" onClick={()=>onNavigate(`/vendas?abrir=${v.pedido_id}`)}>
                             Gerenciar em Vendas →
                           </button>
                         ) : (
@@ -400,6 +399,7 @@ function ClientePanel({ cli, detalhe, loadingDetalhe, onClose, onEdit, onDelete,
 
 /* ══ COMPONENTE PRINCIPAL ════════════════════════════════════════════════ */
 export default function Clientes() {
+  const navigate = useNavigate();
   const [theme, setTheme] = useState(getDocTheme);
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -684,7 +684,7 @@ export default function Clientes() {
 
       {sel && (
         <ClientePanel cli={clientes.find(c => c.id === sel.id) || sel} detalhe={detalhe} loadingDetalhe={loadingDet}
-          onClose={() => setSel(null)} onEdit={openEdit} onDelete={setConfirmDel} onToast={showToast} theme={theme} />
+          onClose={() => setSel(null)} onEdit={openEdit} onDelete={setConfirmDel} onToast={showToast} onNavigate={navigate} theme={theme} />
       )}
 
       {modal && (
