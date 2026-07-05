@@ -357,7 +357,7 @@ function ClientePanel({ cli, detalhe, loadingDetalhe, onClose, onEdit, onDelete,
                 return (
                   <div key={v.id} className={`cf-cl-venda${canc ? ' canc' : ''}`}>
                     <div className="cf-cl-venda-top">
-                      <div className="cf-cl-venda-desc">#{v.id} <VPill v={v} /></div>
+                      <div className="cf-cl-venda-desc">#{v.pedido_id || v.id} <VPill v={v} /></div>
                       <div className="cf-cl-venda-total">{fmtBRLc(v.valor_total)}</div>
                     </div>
                     <div className="cf-cl-venda-meta">

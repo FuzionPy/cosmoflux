@@ -347,7 +347,7 @@ export default function Vendas() {
     setLoading(true);
     try {
       const [ped,cli,prod] = await Promise.allSettled([
-        api.get('/pedidos?limite=200'), api.get('/clientes'), api.get('/produtos')
+        api.get('/pedidos?limite=1000'), api.get('/clientes'), api.get('/produtos')
       ]);
       if (ped.status==='fulfilled')  setPedidos(Array.isArray(ped.value)?ped.value:[]);
       if (cli.status==='fulfilled')  setClientes(Array.isArray(cli.value)?cli.value:[]);
@@ -460,7 +460,7 @@ export default function Vendas() {
   // recarrega o pedido selecionado após mudança em parcelas
   const reloadSelected = async (pedidoId) => {
     try {
-      const lista = await api.get('/pedidos?limite=200');
+      const lista = await api.get('/pedidos?limite=1000');
       setPedidos(Array.isArray(lista)?lista:[]);
       const novo = (Array.isArray(lista)?lista:[]).find(x=>x.id===pedidoId);
       if (novo) setSelected(novo);
