@@ -60,6 +60,17 @@ def auto_migrate():
                WHERE pedido_id IS NULL
                  AND descricao ~ '^Pedido #\\d+$'
                  AND CAST(regexp_replace(descricao, '\\D', '', 'g') AS INTEGER) IN (SELECT id FROM pedidos)""",
+            # retrofit: vendas em aberto SEM NENHUMA parcela ganham 1 parcela com o
+            # saldo total — sem isso é impossível pagar/abater essas vendas antigas
+            # (o backend antigo só criava parcelas quando havia data_vencimento).
+            # Idempotente: NOT EXISTS garante que só age em quem não tem parcela.
+            """INSERT INTO parcelas (venda_id, numero, valor, valor_pago, vencimento, pago)
+               SELECT v.id, 1, v.valor_total, 0,
+                      COALESCE(v.data_vencimento, (v.criado_em + INTERVAL '30 days')::date),
+                      FALSE
+               FROM vendas v
+               WHERE v.status_pagamento NOT IN ('pago', 'cancelado')
+                 AND NOT EXISTS (SELECT 1 FROM parcelas p WHERE p.venda_id = v.id)""",
         ]
         with engine.connect() as conn:
             for sql in migrações:
