@@ -4,137 +4,85 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 const BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000') + '/api';
 const tok  = () => localStorage.getItem('token') || sessionStorage.getItem('token');
 const h    = () => ({ 'Content-Type':'application/json', Authorization:`Bearer ${tok()}` });
-const api  = {
-  get: url => fetch(BASE+url,{headers:h()}).then(async r=>{const d=await r.json().catch(()=>([]));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
-};
+const api  = { get: url => fetch(BASE+url,{headers:h()}).then(async r=>{const d=await r.json().catch(()=>([]));if(!r.ok)throw new Error(d.detail||'Erro');return d;}) };
 const getDocTheme = () => { try{return document.documentElement.getAttribute('data-theme')||'dark';}catch{return 'dark';} };
 
 /* ── helpers ──────────────────────────────────────────────────────────── */
 const fmtBRL = (v, dec = 2) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 const fmtNum = (v) => Number(v || 0).toLocaleString('pt-BR');
-const fmtPctR = (v) => Math.round(Number(v || 0)) + '%';
 const inicial = (n) => (n || '?').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase();
-const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const iso = (d) => d.toISOString().slice(0, 10);
+const monthLabel = (d) => d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
-const ENT_META = {
-  entregue:         { cls: 'ok',   label: 'Entregue',  color: 'var(--ok)' },
-  pendente_entrega: { cls: 'warn', label: 'Pendente',  color: 'var(--warn)' },
-  concluido:        { cls: 'ok',   label: 'Concluído', color: 'var(--ok)' },
-  pendente:         { cls: 'warn', label: 'Pendente',  color: 'var(--warn)' },
-  cancelado:        { cls: 'crit', label: 'Cancelado', color: 'var(--crit)' },
+const fmtDelta = (v) => {
+  if (v == null) return null;
+  const s = v > 0 ? '+' : '';
+  return `${s}${v.toFixed(1).replace('.', ',')}%`;
 };
-const PAG_META = {
-  pago:      { cls: 'ok',   label: 'Pago',      color: 'var(--ok)' },
-  em_aberto: { cls: 'warn', label: 'Em aberto', color: 'var(--warn)' },
-  vencido:   { cls: 'crit', label: 'Vencido',   color: 'var(--crit)' },
-  cancelado: { cls: 'info', label: 'Cancelado', color: 'var(--brand)' },
+const toneOf = (v, invert=false) => {
+  if (v == null || v === 0) return 'neutro';
+  const positivo = invert ? v < 0 : v > 0;
+  return positivo ? 'ok' : 'crit';
+};
+
+const waLink = (nome, tel, valor, dias) => {
+  const digits = (tel || '').replace(/\D/g, '');
+  const primeiro = nome.split(' ')[0];
+  const msg = dias > 0
+    ? `Oi, ${primeiro}! Tudo bem? Passando pra lembrar do saldo de ${fmtBRL(valor)} aqui na loja, com ${dias} dia(s) em atraso. Quando puder, me avisa pra gente acertar!`
+    : `Oi, ${primeiro}! Tudo bem? Só um lembrete do saldo de ${fmtBRL(valor)} aqui na loja. Qualquer dúvida me chama!`;
+  return `https://wa.me/55${digits}?text=${encodeURIComponent(msg)}`;
 };
 
 /* ── ícones ───────────────────────────────────────────────────────────── */
 const Ic = ({d,size=16,sw=1.8}) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" style={{display:'block',flexShrink:0}}>
-    {d}
-  </svg>
+    strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" style={{display:'block',flexShrink:0}}>{d}</svg>
 );
 const ICONS = {
-  grid:    <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
-  cart:    <><circle cx="9" cy="21" r="1.5"/><circle cx="18" cy="21" r="1.5"/><path d="M2 3h3l3 12h12l2-8H6"/></>,
-  layers:  <><path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></>,
+  compare: <><path d="M9 3v18M15 3v18"/><path d="M3 9h6M15 9h6M3 15h6M15 15h6"/></>,
+  wallet:  <><path d="M20 12V8H4a2 2 0 0 1 0-4h12v4"/><path d="M4 6v14a2 2 0 0 0 2 2h14v-4"/><path d="M20 12v4h-4a2 2 0 0 1 0-4h4Z"/></>,
   box:     <><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></>,
-  chart:   <><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></>,
-  spark:   <path d="M12 2.5 14.2 9 21 11l-6.8 2L12 19.5 9.8 13 3 11l6.8-2L12 2.5Z"/>,
-  bell:    <><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></>,
-  tag:     <><path d="M20.59 13.41 11 23l-9-9 9.59-9.59a2 2 0 0 1 1.41-.41H20a2 2 0 0 1 2 2v6.18a2 2 0 0 1-.41 1.41Z"/><circle cx="16.5" cy="7.5" r="1.5"/></>,
-  arrowIn: <><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></>,
-  arrowOut:<><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></>,
+  up:      <><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></>,
+  down:    <><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></>,
+  wa:      <path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2Zm5.3 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7a11.6 11.6 0 0 1-4.8-4.3c-.4-.6-.9-1.5-.9-2.4 0-.9.5-1.3.7-1.5.2-.2.4-.3.6-.3h.5c.2 0 .4 0 .6.5l.7 1.7c.1.2.1.4 0 .5l-.3.5-.3.3c-.1.1-.3.3-.1.5.2.4.8 1.2 1.6 1.9 1 .9 1.8 1.1 2 1.2.2.1.4.1.5-.1l.7-.8c.2-.2.3-.2.5-.1l1.6.8c.2.1.4.2.4.3.1.1.1.6-.1 1.1Z"/>,
+  cal:     <><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></>,
+  alert:   <><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></>,
+  clock:   <><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></>,
+  gem:     <><path d="M6 3h12l4 6-10 12L2 9Z"/><path d="M11 3 8 9l4 12 4-12-3-6"/><path d="M2 9h20"/></>,
+  target:  <><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></>,
 };
 
-/* ── sparkline ────────────────────────────────────────────────────────── */
-function Spark({ data, color }) {
-  if (!data || data.length < 2 || !data.some(v => v > 0)) return null;
-  const w = 64, ht = 26, max = Math.max(...data, 1), min = Math.min(...data, 0);
-  const range = max - min || 1;
-  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${ht - ((v - min) / range) * (ht - 3) - 1.5}`).join(' ');
-  return <svg width={w} height={ht} viewBox={`0 0 ${w} ${ht}`} style={{ display: 'block', overflow: 'visible' }}>
-    <polyline points={pts} fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" opacity=".85" />
-  </svg>;
-}
+/* ── date helpers ─────────────────────────────────────────────────────── */
+const startOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+const endOfMonth = (d) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
+const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d; };
+const PRESETS = [
+  { key: 'mes_atual_vs_anterior', label: 'Este mês vs anterior' },
+  { key: 'ultimos_30_vs_anteriores', label: 'Últimos 30d vs 30d antes' },
+  { key: 'ultimos_7_vs_anteriores',  label: 'Últimos 7d vs 7d antes' },
+  { key: 'ano_atual_vs_anterior',    label: 'Este ano vs ano passado' },
+];
 
-/* ── bar chart mensal ─────────────────────────────────────────────────── */
-function BarChart({ data, mesAtual }) {
-  const max = Math.max(...data.map(m => m.total), 1);
-  return (
-    <div style={{display:'flex',alignItems:'flex-end',gap:6,height:170}}>
-      {data.map((m, i) => {
-        const h = Math.max((m.total / max) * 100, m.total > 0 ? 2 : 0);
-        const now = i === mesAtual;
-        return (
-          <div key={i} style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',alignItems:'center',gap:8,height:'100%'}}>
-            <div style={{flex:1,width:'100%',display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-              <div title={`${MESES[i]}: ${fmtBRL(m.total,0)}`}
-                style={{width:'80%',maxWidth:34,height:`${h}%`,borderRadius:'5px 5px 0 0',
-                background: now ? 'var(--brand)' : 'color-mix(in oklab, var(--brand) 45%, transparent)',
-                transition:'height .7s cubic-bezier(.22,1,.36,1)',transitionDelay:`${i*0.03}s`}}/>
-            </div>
-            <div style={{fontSize:9.5,fontFamily:'var(--font-mono)',color: now ? 'var(--brand)' : 'var(--text-muted)', fontWeight: now ? 700 : 400}}>{MESES[i]}</div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ── donut de categorias ──────────────────────────────────────────────── */
-function Donut({ items, size = 148 }) {
-  const total = items.reduce((a, x) => a + x.valor, 0);
-  if (total === 0) return <div style={{width:size,height:size,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-muted)',fontSize:11}}>sem dados</div>;
-  const cx = size/2, cy = size/2, r = size/2 - 12, sw = 20;
-  let acc = 0;
-  const segs = items.map((it, i) => {
-    const frac = it.valor / total;
-    const start = acc * 2 * Math.PI - Math.PI/2;
-    const end = (acc + frac) * 2 * Math.PI - Math.PI/2;
-    const large = frac > 0.5 ? 1 : 0;
-    const x1 = cx + r*Math.cos(start), y1 = cy + r*Math.sin(start);
-    const x2 = cx + r*Math.cos(end),   y2 = cy + r*Math.sin(end);
-    acc += frac;
-    return { d:`M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`, color: `var(--cat-${i%5})`, i };
-  });
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--track)" strokeWidth={sw}/>
-      {segs.map(s => <path key={s.i} d={s.d} fill="none" stroke={s.color} strokeWidth={sw} strokeLinecap="butt"/>)}
-      <text x={cx} y={cy-4} textAnchor="middle" style={{fontSize:11,fill:'var(--text-muted)',fontFamily:'var(--font-mono)'}}>total</text>
-      <text x={cx} y={cy+13} textAnchor="middle" style={{fontSize:14,fontWeight:800,fill:'var(--text)',fontFamily:'var(--font-mono)'}}>{fmtBRL(total,0)}</text>
-    </svg>
-  );
-}
-
-/* ── mini barra horizontal ────────────────────────────────────────────── */
-function MiniBar({ label, val, max, color, right }) {
-  return (
-    <div style={{display:'flex',alignItems:'center',gap:12}}>
-      <div style={{fontSize:12,fontWeight:600,color:'var(--text-dim)',minWidth:96}}>{label}</div>
-      <div style={{flex:1,height:8,background:'var(--track)',borderRadius:4,overflow:'hidden'}}>
-        <div style={{height:'100%',borderRadius:4,background:color,width:`${(val/max)*100}%`,transition:'width .8s cubic-bezier(.22,1,.36,1)'}}/>
-      </div>
-      <div style={{fontFamily:'var(--font-mono)',fontSize:11.5,color:'var(--text-muted)',minWidth:96,textAlign:'right'}}>{right}</div>
-    </div>
-  );
-}
-
-/* ── pill ─────────────────────────────────────────────────────────────── */
-const Pill = ({ s, meta }) => { const m = meta[s] || Object.values(meta)[0]; return <span className={`cf-pill ${m.cls}`}>{m.label}</span>; };
-
-/* ── medidor de estoque ───────────────────────────────────────────────── */
-function StockMeter({ atual, minimo }) {
-  const st = atual === 0 ? 'crit' : atual <= minimo ? 'warn' : 'ok';
-  const pct = Math.min((atual / Math.max(minimo * 2.5, atual, 1)) * 100, 100);
-  const cor = st === 'crit' ? 'var(--crit)' : st === 'warn' ? 'var(--warn)' : 'var(--ok)';
-  return <div style={{width:74,height:5,background:'var(--track)',borderRadius:3,overflow:'hidden'}}>
-    <div style={{height:'100%',background:cor,width:pct+'%',borderRadius:3,transition:'width .5s'}}/>
-  </div>;
+function computePreset(key) {
+  const hoje = new Date();
+  if (key === 'mes_atual_vs_anterior') {
+    const a_ini = startOfMonth(hoje), a_fim = hoje;
+    const mesAnt = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+    const b_ini = mesAnt, b_fim = endOfMonth(mesAnt);
+    return { a_ini, a_fim, b_ini, b_fim, labelA: monthLabel(hoje), labelB: monthLabel(mesAnt) };
+  }
+  if (key === 'ultimos_30_vs_anteriores') {
+    return { a_ini: daysAgo(29), a_fim: hoje, b_ini: daysAgo(59), b_fim: daysAgo(30), labelA: 'Últimos 30 dias', labelB: '30 dias anteriores' };
+  }
+  if (key === 'ultimos_7_vs_anteriores') {
+    return { a_ini: daysAgo(6), a_fim: hoje, b_ini: daysAgo(13), b_fim: daysAgo(7), labelA: 'Últimos 7 dias', labelB: '7 dias anteriores' };
+  }
+  // ano vs ano
+  const anoIni = new Date(hoje.getFullYear(), 0, 1);
+  const anoAntIni = new Date(hoje.getFullYear() - 1, 0, 1);
+  const anoAntFim = new Date(hoje.getFullYear() - 1, hoje.getMonth(), hoje.getDate());
+  return { a_ini: anoIni, a_fim: hoje, b_ini: anoAntIni, b_fim: anoAntFim, labelA: `${hoje.getFullYear()} (até hoje)`, labelB: `${hoje.getFullYear()-1} (mesmo período)` };
 }
 
 /* ── CSS ──────────────────────────────────────────────────────────────── */
@@ -150,15 +98,14 @@ const S = `
 
 .cf-rel{display:flex;flex-direction:column;gap:var(--gap);max-width:1480px;margin:0 auto;}
 .cf-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
-.cf-card.glow{background:linear-gradient(150deg,color-mix(in oklab,var(--brand) 7%,var(--surface)),var(--surface));}
-.cf-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:var(--card-pad) var(--card-pad) 10px;}
+.cf-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:var(--card-pad) var(--card-pad) 10px;flex-wrap:wrap;}
 .cf-card-title{font-size:14px;font-weight:800;}
 .cf-card-sub{font-size:10.5px;font-family:var(--font-mono);color:var(--text-muted);margin-top:3px;}
 .cf-card-pad{padding:14px var(--card-pad) var(--card-pad);}
 .cf-row{display:grid;gap:var(--gap);}
-.cf-row-2-1{grid-template-columns:2fr 1fr;}
 .cf-row-1-1{grid-template-columns:1fr 1fr;}
-@media(max-width:1000px){.cf-row-2-1,.cf-row-1-1{grid-template-columns:1fr;}}
+.cf-row-2-1{grid-template-columns:2fr 1fr;}
+@media(max-width:1000px){.cf-row-1-1,.cf-row-2-1{grid-template-columns:1fr;}}
 .cf-rel-err{font-size:12px;color:var(--crit);background:color-mix(in oklab,var(--crit) 10%,transparent);border:1px solid color-mix(in oklab,var(--crit) 25%,transparent);border-radius:8px;padding:9px 13px;}
 .cf-skel{background:linear-gradient(90deg,var(--track) 25%,var(--surface-2) 50%,var(--track) 75%);background-size:200% 100%;animation:cfrSh 1.5s infinite;border-radius:8px;}
 @keyframes cfrSh{from{background-position:200% 0}to{background-position:-200% 0}}
@@ -170,543 +117,627 @@ const S = `
 .cf-rp-tabs button{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:8px;border:none;background:none;cursor:pointer;font-family:var(--font-ui);font-size:12.5px;font-weight:600;color:var(--text-muted);transition:all .15s;}
 .cf-rp-tabs button:hover:not(.on){color:var(--text);}
 .cf-rp-tabs button.on{background:var(--brand-soft);color:var(--brand);}
-.cf-rel-root[data-theme="light"] .cf-rp-tabs button.on{color:color-mix(in oklab,var(--brand) 78%,#000);}
-
-.cf-rp-chips{display:flex;gap:6px;flex-wrap:wrap;}
-.cf-rp-chip{padding:7px 14px;border-radius:20px;border:1px solid var(--border);background:var(--surface);font-family:var(--font-ui);font-size:12px;font-weight:600;color:var(--text-muted);cursor:pointer;transition:all .15s;}
-.cf-rp-chip:hover:not(.on){color:var(--text);border-color:var(--border-strong);}
-.cf-rp-chip.on{background:var(--brand-soft);border-color:var(--brand-line);color:var(--brand);}
-
-.cf-rp-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--gap);}
-.cf-kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:var(--card-pad);position:relative;overflow:hidden;display:flex;flex-direction:column;gap:10px;}
-.cf-kpi::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tone,var(--brand));}
-.cf-kpi.tone-info{--tone:#3b82f6;}
-.cf-kpi.tone-warn{--tone:var(--warn);}
-.cf-kpi.tone-crit{--tone:var(--crit);}
-.cf-kpi.tone-brand{--tone:var(--brand);}
-.cf-kpi.tone-ok{--tone:var(--ok);}
-.cf-kpi-top{display:flex;align-items:center;justify-content:space-between;}
-.cf-kpi-ic{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:color-mix(in oklab,var(--tone,var(--brand)) 14%,transparent);color:var(--tone,var(--brand));}
-.cf-kpi-val{font-size:22px;font-weight:800;font-family:var(--font-mono);letter-spacing:-.02em;line-height:1;}
-.cf-kpi-lbl{font-size:11.5px;font-weight:600;color:var(--text-dim);}
-.cf-kpi-sub{font-size:10.5px;font-family:var(--font-mono);color:var(--text-muted);margin-top:2px;}
 
 .cf-rp-body{display:flex;flex-direction:column;gap:var(--gap);animation:cfrUp .35s cubic-bezier(.22,1,.36,1);}
+.cf-rp-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:var(--card-pad);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.cf-rp-chips{display:flex;gap:6px;flex-wrap:wrap;}
+.cf-rp-chip{padding:7px 14px;border-radius:20px;border:1px solid var(--border);background:var(--surface-2);font-family:var(--font-ui);font-size:12px;font-weight:600;color:var(--text-muted);cursor:pointer;transition:all .15s;}
+.cf-rp-chip:hover:not(.on){color:var(--text);border-color:var(--border-strong);}
+.cf-rp-chip.on{background:var(--brand-soft);border-color:var(--brand-line);color:var(--brand);}
+.cf-rp-date{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:7px 11px;font-family:var(--font-mono);font-size:12px;color:var(--text);}
+.cf-rp-date-l{font-size:9px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:3px;}
 
-.cf-rp-totais{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px var(--card-pad) var(--card-pad);}
-.cf-rp-tot{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;position:relative;overflow:hidden;}
-.cf-rp-tot::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tot,var(--brand));opacity:.85;}
-.cf-rp-tot-l{font-size:9.5px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.1em;color:var(--text-muted);margin-bottom:7px;}
-.cf-rp-tot-v{font-size:24px;font-weight:800;font-family:var(--font-mono);letter-spacing:-.02em;line-height:1;}
+/* KPI comparativo (usado em Comparar) */
+.cf-cmp-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--gap);}
+.cf-cmp-kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;position:relative;overflow:hidden;display:flex;flex-direction:column;gap:8px;}
+.cf-cmp-kpi::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tone,var(--brand));}
+.cf-cmp-kpi.t-brand{--tone:var(--brand);}
+.cf-cmp-kpi.t-ok{--tone:var(--ok);}
+.cf-cmp-kpi.t-warn{--tone:var(--warn);}
+.cf-cmp-kpi.t-info{--tone:#3b82f6;}
+.cf-cmp-lbl{font-size:11px;font-weight:600;color:var(--text-dim);}
+.cf-cmp-val{font-size:22px;font-weight:800;font-family:var(--font-mono);letter-spacing:-.02em;line-height:1;}
+.cf-cmp-vs{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);}
+.cf-cmp-vs-v{font-family:var(--font-mono);}
+.cf-cmp-delta{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;font-family:var(--font-mono);font-size:11px;font-weight:700;}
+.cf-cmp-delta.ok{background:color-mix(in oklab,var(--ok) 15%,transparent);color:var(--ok);}
+.cf-cmp-delta.crit{background:color-mix(in oklab,var(--crit) 14%,transparent);color:var(--crit);}
+.cf-cmp-delta.neutro{background:var(--surface-2);color:var(--text-muted);}
+@media(max-width:1100px){.cf-cmp-kpis{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:560px){.cf-cmp-kpis{grid-template-columns:1fr;}}
 
-.cf-rp-mini{display:flex;flex-direction:column;gap:11px;padding:14px var(--card-pad) var(--card-pad);}
-.cf-rp-subhead{padding:14px var(--card-pad) 0;border-top:1px solid var(--border);margin-top:4px;}
-.cf-rp-subhead-t{font-size:12px;font-weight:700;}
+/* gráfico de linhas sobrepostas */
+.cf-lchart{height:220px;position:relative;}
+.cf-lchart svg{width:100%;height:100%;overflow:visible;}
+.cf-lchart-legend{display:flex;gap:16px;justify-content:center;margin-top:8px;flex-wrap:wrap;}
+.cf-lchart-leg{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text-dim);}
+.cf-lchart-leg-dot{width:12px;height:3px;border-radius:2px;}
 
-.cf-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700;font-family:var(--font-mono);white-space:nowrap;}
-.cf-pill.ok{background:color-mix(in oklab,var(--ok) 14%,transparent);color:var(--ok);}
-.cf-pill.warn{background:color-mix(in oklab,var(--warn) 16%,transparent);color:var(--warn);}
-.cf-pill.crit{background:color-mix(in oklab,var(--crit) 14%,transparent);color:var(--crit);}
-.cf-pill.info{background:var(--brand-soft);color:var(--brand);}
+/* mover / subir / cair */
+.cf-mov-list{display:flex;flex-direction:column;}
+.cf-mov-row{display:flex;align-items:center;gap:12px;padding:11px var(--card-pad);border-bottom:1px solid var(--border);}
+.cf-mov-row:last-child{border-bottom:none;}
+.cf-mov-icb{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.cf-mov-icb.up{background:color-mix(in oklab,var(--ok) 15%,transparent);color:var(--ok);}
+.cf-mov-icb.dn{background:color-mix(in oklab,var(--crit) 14%,transparent);color:var(--crit);}
+.cf-mov-nm{flex:1;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cf-mov-vals{display:flex;flex-direction:column;align-items:flex-end;gap:1px;}
+.cf-mov-vals-r{font-family:var(--font-mono);font-size:12px;font-weight:700;}
+.cf-mov-vals-r.up{color:var(--ok);}
+.cf-mov-vals-r.dn{color:var(--crit);}
+.cf-mov-vals-s{font-family:var(--font-mono);font-size:10px;color:var(--text-muted);}
 
-.cf-rp-table{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
-.cf-rp-table-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:var(--card-pad) var(--card-pad) 14px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
-.cf-rp-thead,.cf-rp-row{display:grid;align-items:center;gap:12px;padding:0 18px;}
-.cf-rp-thead{height:42px;border-bottom:1px solid var(--border);}
-.cf-rp-th{font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
-.cf-rp-th.r,.cf-rp-cell.r{text-align:right;justify-self:end;}
-.cf-rp-row{min-height:56px;border-bottom:1px solid var(--border);transition:background .12s;}
-.cf-rp-row:last-child{border-bottom:none;}
-.cf-rp-row:hover{background:color-mix(in oklab,var(--text) 3%,transparent);}
-.cf-rp-num{font-family:var(--font-mono);font-size:12.5px;color:var(--text-dim);}
-.cf-rp-num.r{text-align:right;justify-self:end;}
-.cf-rp-num.ok{color:var(--ok);font-weight:700;}
-.cf-rp-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.cf-rp-name-sub{font-size:10px;font-family:var(--font-mono);color:var(--text-muted);margin-top:2px;}
-.cf-rp-id{font-family:var(--font-mono);font-size:12px;color:var(--text-muted);}
+/* aba A Receber */
+.cf-rec-hero{display:grid;grid-template-columns:1fr 3fr;gap:var(--gap);}
+.cf-rec-total{background:linear-gradient(150deg,color-mix(in oklab,var(--crit) 14%,var(--surface)),var(--surface));border:1px solid color-mix(in oklab,var(--crit) 32%,transparent);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px;display:flex;flex-direction:column;justify-content:center;gap:6px;}
+.cf-rec-total-l{font-size:11px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.1em;color:var(--text-muted);}
+.cf-rec-total-v{font-size:30px;font-weight:800;font-family:var(--font-mono);color:var(--crit);letter-spacing:-.02em;}
+.cf-rec-total-s{font-size:11px;color:var(--text-dim);}
+.cf-rec-buckets{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;}
+.cf-rec-bucket{padding:12px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);position:relative;overflow:hidden;background:var(--surface-2);}
+.cf-rec-bucket::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tone,var(--brand));opacity:.85;}
+.cf-rec-bucket.t-ok{--tone:var(--ok);}
+.cf-rec-bucket.t-warn{--tone:var(--warn);}
+.cf-rec-bucket.t-crit{--tone:var(--crit);}
+.cf-rec-bucket.t-dark{--tone:#8b0000;}
+.cf-rec-bucket-l{font-size:9.5px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:4px;}
+.cf-rec-bucket-v{font-size:16px;font-weight:800;font-family:var(--font-mono);}
+.cf-rec-bucket-p{font-size:10px;font-family:var(--font-mono);color:var(--text-muted);margin-top:2px;}
+@media(max-width:1000px){.cf-rec-hero{grid-template-columns:1fr;}.cf-rec-buckets{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:560px){.cf-rec-buckets{grid-template-columns:1fr;}}
+
+.cf-rec-table{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
+.cf-rec-thead,.cf-rec-row{display:grid;grid-template-columns:2.4fr 1fr 100px 130px 110px;gap:12px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--border);}
+.cf-rec-row:last-child{border-bottom:none;}
+.cf-rec-th{font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
+.cf-rec-th.r,.cf-rec-cell.r{text-align:right;justify-self:end;}
+.cf-rec-row{cursor:default;transition:background .12s;}
+.cf-rec-row:hover{background:color-mix(in oklab,var(--text) 3%,transparent);}
+.cf-rec-cli{display:flex;align-items:center;gap:10px;min-width:0;}
+.cf-rec-avatar{width:32px;height:32px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;background:linear-gradient(140deg,color-mix(in oklab,var(--brand) 72%,#7a4df0),var(--brand));}
+.cf-rec-nm{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cf-rec-nm-sub{font-size:10px;font-family:var(--font-mono);color:var(--text-muted);margin-top:2px;}
+.cf-rec-atraso{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-family:var(--font-mono);font-size:10.5px;font-weight:700;}
+.cf-rec-atraso.ok{background:color-mix(in oklab,var(--ok) 14%,transparent);color:var(--ok);}
+.cf-rec-atraso.warn{background:color-mix(in oklab,var(--warn) 16%,transparent);color:var(--warn);}
+.cf-rec-atraso.crit{background:color-mix(in oklab,var(--crit) 14%,transparent);color:var(--crit);}
+.cf-rec-saldo{font-family:var(--font-mono);font-size:14px;font-weight:800;}
+.cf-rec-wa{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:9px;background:color-mix(in oklab,#25d366 12%,transparent);color:#1ebe5a;border:1px solid color-mix(in oklab,#25d366 28%,transparent);font-size:11px;font-weight:700;cursor:pointer;text-decoration:none;}
+.cf-rec-wa:hover{background:color-mix(in oklab,#25d366 20%,transparent);}
 .cf-rp-empty{padding:48px 20px;text-align:center;color:var(--text-muted);font-family:var(--font-mono);font-size:12px;}
-.cf-rp-table.vendas .cf-rp-thead,.cf-rp-table.vendas .cf-rp-row{grid-template-columns:52px minmax(160px,1.5fr) 0.6fr 96px 96px 0.9fr 108px;}
-.cf-rp-table.estoque .cf-rp-thead,.cf-rp-table.estoque .cf-rp-row{grid-template-columns:minmax(190px,1.8fr) 0.9fr 80px 120px 1fr 96px;}
-.cf-rp-stock{display:flex;align-items:center;gap:10px;}
-.cf-rp-stock-n{font-family:var(--font-mono);font-size:12.5px;font-weight:700;min-width:40px;}
-.cf-rp-cli{display:flex;align-items:center;gap:10px;min-width:0;}
-.cf-rp-avatar{width:30px;height:30px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;background:linear-gradient(140deg,color-mix(in oklab,var(--brand) 72%,#7a4df0),var(--brand));}
-.cf-rp-avatar.balcao{background:var(--surface-2);color:var(--text-muted);border:1px dashed var(--border-strong);}
+@media(max-width:1000px){.cf-rec-thead{display:none;}.cf-rec-row{grid-template-columns:1fr auto;grid-auto-rows:auto;gap:5px 12px;padding:14px 16px;}.cf-rec-cell:nth-child(2),.cf-rec-cell:nth-child(3){display:none;}}
 
-.cf-top-row{display:flex;align-items:center;gap:12px;padding:11px var(--card-pad);border-bottom:1px solid var(--border);}
+/* aba Produtos */
+.cf-pr-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--gap);}
+.cf-pr-kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;position:relative;overflow:hidden;display:flex;flex-direction:column;gap:8px;}
+.cf-pr-kpi::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tone,var(--brand));}
+.cf-pr-kpi.t-brand{--tone:var(--brand);}
+.cf-pr-kpi.t-ok{--tone:var(--ok);}
+.cf-pr-kpi.t-info{--tone:#3b82f6;}
+.cf-pr-kpi.t-warn{--tone:var(--warn);}
+.cf-pr-kpi-lbl{font-size:11px;font-weight:600;color:var(--text-dim);}
+.cf-pr-kpi-val{font-size:22px;font-weight:800;font-family:var(--font-mono);letter-spacing:-.02em;line-height:1;}
+.cf-pr-kpi-sub{font-size:10.5px;font-family:var(--font-mono);color:var(--text-muted);}
+@media(max-width:1100px){.cf-pr-kpis{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:560px){.cf-pr-kpis{grid-template-columns:1fr;}}
+
+.cf-top-row{display:flex;align-items:center;gap:12px;padding:10px var(--card-pad);border-bottom:1px solid var(--border);}
 .cf-top-row:last-child{border-bottom:none;}
 .cf-rank{font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--brand);min-width:18px;}
 .cf-top-main{flex:1;min-width:0;}
 .cf-top-name{font-size:12.5px;font-weight:600;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.cf-top-bar{height:5px;background:var(--track);border-radius:3px;overflow:hidden;}
+.cf-top-cat{font-size:10px;font-family:var(--font-mono);color:var(--text-muted);}
+.cf-top-bar{height:5px;background:var(--track);border-radius:3px;overflow:hidden;margin-top:3px;}
 .cf-top-fill{height:100%;background:var(--brand);border-radius:3px;transition:width .8s cubic-bezier(.22,1,.36,1);}
-.cf-top-val{font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted);white-space:nowrap;}
-.cf-mov-row{display:flex;align-items:center;gap:11px;padding:11px var(--card-pad);border-bottom:1px solid var(--border);}
-.cf-mov-row:last-child{border-bottom:none;}
-.cf-mov-ic{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.cf-mov-ic.entrada{background:color-mix(in oklab,var(--ok) 15%,transparent);color:var(--ok);}
-.cf-mov-ic.saida{background:color-mix(in oklab,var(--crit) 15%,transparent);color:var(--crit);}
-.cf-mov-ic.ajuste{background:color-mix(in oklab,var(--warn) 15%,transparent);color:var(--warn);}
-.cf-mov-main{flex:1;min-width:0;}
-.cf-mov-prod{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.cf-mov-meta{font-size:10px;font-family:var(--font-mono);color:var(--text-muted);margin-top:2px;}
-.cf-mov-qty{font-family:var(--font-mono);font-size:12.5px;font-weight:700;}
-.cf-mov-qty.entrada{color:var(--ok);}
-.cf-mov-qty.saida{color:var(--crit);}
-.cf-mov-qty.ajuste{color:var(--warn);}
+.cf-top-fill.ok{background:var(--ok);}
+.cf-top-val{font-family:var(--font-mono);font-size:12px;font-weight:700;white-space:nowrap;text-align:right;min-width:70px;}
 
-.cf-donut-wrap{display:flex;gap:20px;padding:14px var(--card-pad) var(--card-pad);align-items:center;flex-wrap:wrap;}
-.cf-cat-legend{flex:1;min-width:220px;display:flex;flex-direction:column;gap:8px;}
-.cf-cat-row{display:grid;grid-template-columns:14px 1fr auto auto;gap:9px;align-items:center;font-size:12px;}
-.cf-cat-dot{width:9px;height:9px;border-radius:3px;}
-.cf-cat-name{color:var(--text-dim);}
-.cf-cat-pct{font-family:var(--font-mono);font-size:10.5px;color:var(--text-muted);}
-.cf-cat-val{font-family:var(--font-mono);font-size:11.5px;font-weight:700;}
+.cf-pr-table{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
+.cf-pr-thead,.cf-pr-trow{display:grid;grid-template-columns:44px 2.2fr 1fr 90px 1fr 1fr 1fr 90px;gap:12px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--border);}
+.cf-pr-trow:last-child{border-bottom:none;}
+.cf-pr-th{font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
+.cf-pr-th.r,.cf-pr-cell.r{text-align:right;justify-self:end;}
+.cf-pr-num{font-family:var(--font-mono);font-size:12px;color:var(--text-dim);}
+.cf-pr-num.ok{color:var(--ok);font-weight:700;}
+.cf-pr-num.warn{color:var(--warn);}
+.cf-pr-margin{display:inline-flex;padding:2px 9px;border-radius:7px;font-family:var(--font-mono);font-size:10.5px;font-weight:700;}
+.cf-pr-margin.high{background:color-mix(in oklab,var(--ok) 15%,transparent);color:var(--ok);}
+.cf-pr-margin.mid{background:color-mix(in oklab,var(--warn) 16%,transparent);color:var(--warn);}
+.cf-pr-margin.low{background:color-mix(in oklab,var(--crit) 15%,transparent);color:var(--crit);}
+.cf-pr-trow.oport{background:color-mix(in oklab,var(--brand) 5%,transparent);}
+.cf-pr-oport-tag{display:inline-flex;align-items:center;gap:4px;font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.06em;}
+@media(max-width:1100px){.cf-pr-thead{display:none;}.cf-pr-trow{grid-template-columns:1fr auto;grid-auto-rows:auto;gap:5px 12px;padding:12px 16px;}.cf-pr-cell:nth-child(1),.cf-pr-cell:nth-child(3),.cf-pr-cell:nth-child(4),.cf-pr-cell:nth-child(5){display:none;}}
 
-@media(max-width:1200px){.cf-rp-kpis{grid-template-columns:repeat(2,1fr);}}
-@media(max-width:560px){.cf-rp-kpis{grid-template-columns:1fr;}}
+.cf-pr-oport{background:linear-gradient(135deg,color-mix(in oklab,var(--brand) 8%,var(--surface)),var(--surface));border:1px solid var(--brand-line);border-radius:var(--radius);padding:14px 18px;display:flex;align-items:center;gap:12px;box-shadow:var(--shadow);}
+.cf-pr-oport-ic{width:34px;height:34px;border-radius:9px;background:var(--brand-soft);color:var(--brand);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.cf-pr-oport-t{font-size:13px;font-weight:800;}
+.cf-pr-oport-s{font-size:11px;color:var(--text-dim);margin-top:2px;}
 `;
 
-/* ══════════ ABA · GERAL ══════════ */
-function TabGeral({ resumo, mensal }) {
-  const cad = resumo?.cadastros || {};
-  const fin = resumo?.financeiro || {};
-  const topProdutos = resumo?.top_produtos || [];
-  const movs = (resumo?.movimentacoes_recentes || []).slice(0, 8);
-  const sparkFat = mensal.map(m => m.total || 0);
-  const maxTop = Math.max(...topProdutos.map(p => p.qtd_vendida || p.qtd || 0), 1);
-  const mesAtual = new Date().getMonth();
-  const movIc = { entrada: 'arrowIn', saida: 'arrowOut', ajuste: 'layers' };
+/* ── LineChart sobreposto (2 séries) ──────────────────────────────────── */
+function LineChart({ serieA, serieB, labelA, labelB }) {
+  const n = Math.max(serieA.length, serieB.length);
+  if (n < 2) return <div className="cf-rp-empty">Sem dados suficientes</div>;
+  const w = 720, ht = 200, pad = 26;
+  const all = [...serieA, ...serieB];
+  const max = Math.max(...all, 1);
+  const pts = (arr) => arr.map((v, i) => `${pad + (i / (n - 1)) * (w - pad*2)},${ht - pad - (v / max) * (ht - pad*2)}`).join(' ');
+  // grid horizontal (4 linhas)
+  const grid = [0.25, 0.5, 0.75, 1].map((f, i) => ({
+    y: ht - pad - f * (ht - pad*2),
+    v: Math.round(max * f),
+    i,
+  }));
+  return (
+    <div>
+      <div className="cf-lchart">
+        <svg viewBox={`0 0 ${w} ${ht}`} preserveAspectRatio="none">
+          {grid.map(g => <g key={g.i}>
+            <line x1={pad} y1={g.y} x2={w-pad} y2={g.y} stroke="var(--track)" strokeWidth="1" strokeDasharray="3 4"/>
+            <text x={pad-4} y={g.y+3} textAnchor="end" style={{fontSize:9, fill:'var(--text-muted)', fontFamily:'var(--font-mono)'}}>{fmtBRL(g.v, 0).replace('R$ ','')}</text>
+          </g>)}
+          {/* período B (referência, mais claro, tracejado) */}
+          <polyline points={pts(serieB.length===n?serieB:[...serieB, ...Array(n-serieB.length).fill(0)])}
+            fill="none" stroke="color-mix(in oklab, var(--text) 35%, transparent)" strokeWidth="2" strokeDasharray="4 4" strokeLinecap="round" strokeLinejoin="round"/>
+          {/* período A (destaque) */}
+          <polyline points={pts(serieA.length===n?serieA:[...serieA, ...Array(n-serieA.length).fill(0)])}
+            fill="none" stroke="var(--brand)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </div>
+      <div className="cf-lchart-legend">
+        <div className="cf-lchart-leg"><span className="cf-lchart-leg-dot" style={{background:'var(--brand)'}}/>{labelA}</div>
+        <div className="cf-lchart-leg"><span className="cf-lchart-leg-dot" style={{background:'color-mix(in oklab, var(--text) 35%, transparent)'}}/>{labelB}</div>
+      </div>
+    </div>
+  );
+}
 
+/* ══════════ ABA · COMPARAR ══════════ */
+function TabComparar() {
+  const [preset, setPreset] = useState('mes_atual_vs_anterior');
+  const [dados, setDados] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState('');
+
+  const params = useMemo(() => computePreset(preset), [preset]);
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      setLoading(true); setErro('');
+      try {
+        const q = `?inicio_a=${iso(params.a_ini)}&fim_a=${iso(params.a_fim)}&inicio_b=${iso(params.b_ini)}&fim_b=${iso(params.b_fim)}`;
+        const d = await api.get(`/relatorios/comparar-periodos${q}`);
+        if (!cancel) setDados(d);
+      } catch (e) {
+        if (!cancel) setErro(e.message || 'Erro ao comparar períodos');
+      } finally {
+        if (!cancel) setLoading(false);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [preset, params]);
+
+  if (loading) return (
+    <>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16}}>{[1,2,3,4].map(i=><div key={i} className="cf-skel" style={{height:100}}/>)}</div>
+      <div className="cf-skel" style={{height:280}}/>
+    </>
+  );
+  if (erro) return <div className="cf-rel-err">⚠ {erro}</div>;
+  if (!dados) return null;
+
+  const A = dados.periodo_a, B = dados.periodo_b, V = dados.variacao;
   const KPIS = [
-    { tone: 'tone-brand', ic: 'chart', val: fmtBRL(fin.receita_total, 0), lbl: 'Receita total', sub: `${fmtNum(cad.pedidos)} pedido(s)`, spark: sparkFat },
-    { tone: 'tone-ok',    ic: 'spark', val: fmtBRL(fin.lucro_total, 0), lbl: 'Lucro total', sub: `margem ${fmtPctR(fin.margem)}` },
-    { tone: 'tone-info',  ic: 'cart',  val: fmtBRL(fin.ticket_medio, 0), lbl: 'Ticket médio', sub: 'por pedido' },
-    { tone: 'tone-warn',  ic: 'layers',val: fmtBRL(fin.valor_estoque, 0), lbl: 'Valor em estoque', sub: `venda ${fmtBRL(fin.valor_estoque_venda, 0)}` },
+    { tone: 't-brand', lbl: 'Receita',       val: fmtBRL(A.receita, 0), vs: fmtBRL(B.receita, 0), delta: V.receita_pct },
+    { tone: 't-ok',    lbl: 'Lucro',         val: fmtBRL(A.lucro, 0),   vs: fmtBRL(B.lucro, 0),   delta: V.lucro_pct },
+    { tone: 't-info',  lbl: 'Pedidos',       val: fmtNum(A.pedidos),    vs: fmtNum(B.pedidos),    delta: V.pedidos_pct },
+    { tone: 't-warn',  lbl: 'Ticket médio',  val: fmtBRL(A.ticket, 0),  vs: fmtBRL(B.ticket, 0),  delta: V.ticket_pct },
   ];
 
-  const TOTAIS = [
-    { l: 'Clientes',     v: fmtNum(cad.clientes),     c: 'var(--cat-0)' },
-    { l: 'Produtos',     v: fmtNum(cad.produtos),     c: 'var(--cat-1)' },
-    { l: 'Fornecedores', v: fmtNum(cad.fornecedores), c: 'var(--cat-2)' },
-    { l: 'Pedidos',      v: fmtNum(cad.pedidos),      c: 'var(--cat-3)' },
-  ];
-
-  return (<>
-    <div className="cf-rp-kpis">
-      {KPIS.map(k => (
-        <div key={k.lbl} className={`cf-kpi ${k.tone}`}>
-          <div className="cf-kpi-top">
-            <span className="cf-kpi-ic"><Ic d={ICONS[k.ic]} size={16}/></span>
-            {k.spark && <Spark data={k.spark} color="var(--tone, var(--brand))"/>}
-          </div>
-          <div className="cf-kpi-val">{k.val}</div>
-          <div><div className="cf-kpi-lbl">{k.lbl}</div><div className="cf-kpi-sub">{k.sub}</div></div>
+  return (
+    <>
+      <div className="cf-rp-toolbar">
+        <div className="cf-rp-chips">
+          {PRESETS.map(p => <button key={p.key} className={`cf-rp-chip${preset===p.key?' on':''}`} onClick={()=>setPreset(p.key)}>{p.label}</button>)}
         </div>
-      ))}
-    </div>
-
-    <div className="cf-row cf-row-2-1">
-      <div className="cf-card glow">
-        <div className="cf-card-head">
-          <div><div className="cf-card-title">Faturamento mensal</div><div className="cf-card-sub">{new Date().getFullYear()} · 12 meses</div></div>
-          <div style={{display:'flex',gap:20}}>
-            <div style={{textAlign:'right'}}>
-              <div style={{fontSize:10,fontFamily:'var(--font-mono)',color:'var(--text-muted)'}}>Melhor mês</div>
-              <div style={{fontSize:12,fontFamily:'var(--font-mono)',fontWeight:700}}>{fmtBRL(Math.max(...sparkFat, 0), 0)}</div>
-            </div>
-            <div style={{textAlign:'right'}}>
-              <div style={{fontSize:10,fontFamily:'var(--font-mono)',color:'var(--text-muted)'}}>Média</div>
-              <div style={{fontSize:12,fontFamily:'var(--font-mono)',fontWeight:700}}>{fmtBRL(sparkFat.reduce((a,b)=>a+b,0)/Math.max(sparkFat.length,1), 0)}</div>
-            </div>
-          </div>
-        </div>
-        <div className="cf-card-pad"><BarChart data={mensal.map(m=>({total:m.total||0}))} mesAtual={mesAtual}/></div>
-      </div>
-
-      <div className="cf-card">
-        <div className="cf-card-head"><div><div className="cf-card-title">Totais do sistema</div><div className="cf-card-sub">cadastros ativos</div></div></div>
-        <div className="cf-rp-totais">
-          {TOTAIS.map(t => (
-            <div key={t.l} className="cf-rp-tot" style={{ '--tot': t.c }}>
-              <div className="cf-rp-tot-l">{t.l}</div>
-              <div className="cf-rp-tot-v">{t.v}</div>
-            </div>
-          ))}
+        <div style={{marginLeft:'auto',display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+          <div className="cf-rp-date"><div className="cf-rp-date-l">Período A</div>{params.labelA}</div>
+          <div style={{fontSize:11,color:'var(--text-muted)'}}>vs</div>
+          <div className="cf-rp-date"><div className="cf-rp-date-l">Período B</div>{params.labelB}</div>
         </div>
       </div>
-    </div>
 
-    <div className="cf-row cf-row-1-1">
-      <div className="cf-card">
-        <div className="cf-card-head"><div><div className="cf-card-title">Top 5 produtos</div><div className="cf-card-sub">por quantidade vendida</div></div></div>
-        {topProdutos.length === 0 ? <div className="cf-rp-empty">Sem vendas ainda</div> : topProdutos.slice(0,5).map((p, i) => {
-          const qtd = p.qtd_vendida || p.qtd || 0;
+      <div className="cf-cmp-kpis">
+        {KPIS.map(k => {
+          const tone = toneOf(k.delta);
           return (
-            <div key={p.id || i} className="cf-top-row">
-              <span className="cf-rank">{i + 1}</span>
-              <div className="cf-top-main">
-                <div className="cf-top-name">{p.nome}</div>
-                <div className="cf-top-bar"><div className="cf-top-fill" style={{ width: `${(qtd / maxTop) * 100}%` }} /></div>
+            <div key={k.lbl} className={`cf-cmp-kpi ${k.tone}`}>
+              <div className="cf-cmp-lbl">{k.lbl}</div>
+              <div className="cf-cmp-val">{k.val}</div>
+              <div className="cf-cmp-vs">
+                <span className={`cf-cmp-delta ${tone}`}>
+                  {k.delta==null ? '—' : k.delta > 0 ? <Ic d={ICONS.up} size={11}/> : k.delta < 0 ? <Ic d={ICONS.down} size={11}/> : null}
+                  {k.delta==null ? '' : fmtDelta(k.delta)}
+                </span>
+                <span className="cf-cmp-vs-v">vs {k.vs}</span>
               </div>
-              <div className="cf-top-val">{qtd} un.</div>
             </div>
           );
         })}
       </div>
 
       <div className="cf-card">
-        <div className="cf-card-head"><div><div className="cf-card-title">Movimentações recentes</div><div className="cf-card-sub">entradas, saídas e ajustes</div></div></div>
-        {movs.length === 0 ? <div className="cf-rp-empty">Nenhuma movimentação recente</div> : movs.map((m, i) => (
-          <div key={i} className="cf-mov-row">
-            <span className={`cf-mov-ic ${m.tipo}`}><Ic d={ICONS[movIc[m.tipo] || 'layers']} size={14}/></span>
-            <div className="cf-mov-main">
-              <div className="cf-mov-prod">{m.produto || 'Produto'}</div>
-              <div className="cf-mov-meta">{m.motivo || '—'} · {m.data || '—'}</div>
-            </div>
-            <div className={`cf-mov-qty ${m.tipo}`}>{m.tipo === 'entrada' ? '+' : m.tipo === 'saida' ? '−' : '±'}{m.quantidade}</div>
+        <div className="cf-card-head">
+          <div>
+            <div className="cf-card-title">Curva de receita — período A vs B</div>
+            <div className="cf-card-sub">receita por dia · {A.dias} dia(s) em A · {B.dias} dia(s) em B</div>
           </div>
-        ))}
+        </div>
+        <div className="cf-card-pad">
+          <LineChart serieA={dados.serie_a} serieB={dados.serie_b} labelA={params.labelA} labelB={params.labelB}/>
+        </div>
       </div>
-    </div>
-  </>);
+
+      <div className="cf-row cf-row-1-1">
+        <div className="cf-card">
+          <div className="cf-card-head">
+            <div>
+              <div className="cf-card-title">Produtos que mais cresceram</div>
+              <div className="cf-card-sub">variação de receita entre os períodos</div>
+            </div>
+          </div>
+          {dados.produtos_subiram.length === 0 ? <div className="cf-rp-empty">Nenhum produto subiu no período</div> :
+            <div className="cf-mov-list">
+              {dados.produtos_subiram.map(p => (
+                <div key={p.id} className="cf-mov-row">
+                  <span className="cf-mov-icb up"><Ic d={ICONS.up} size={14}/></span>
+                  <div className="cf-mov-nm">{p.nome}</div>
+                  <div className="cf-mov-vals">
+                    <span className="cf-mov-vals-r up">+{fmtBRL(p.delta_valor, 0)}</span>
+                    <span className="cf-mov-vals-s">{p.qtd_a} un · antes {p.qtd_b} un</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          }
+        </div>
+
+        <div className="cf-card">
+          <div className="cf-card-head">
+            <div>
+              <div className="cf-card-title">Produtos que mais caíram</div>
+              <div className="cf-card-sub">merecem atenção</div>
+            </div>
+          </div>
+          {dados.produtos_cairam.length === 0 ? <div className="cf-rp-empty">Nenhum produto caiu no período</div> :
+            <div className="cf-mov-list">
+              {dados.produtos_cairam.map(p => (
+                <div key={p.id} className="cf-mov-row">
+                  <span className="cf-mov-icb dn"><Ic d={ICONS.down} size={14}/></span>
+                  <div className="cf-mov-nm">{p.nome}</div>
+                  <div className="cf-mov-vals">
+                    <span className="cf-mov-vals-r dn">{fmtBRL(p.delta_valor, 0)}</span>
+                    <span className="cf-mov-vals-s">{p.qtd_a} un · antes {p.qtd_b} un</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          }
+        </div>
+      </div>
+    </>
+  );
 }
 
-/* ══════════ ABA · VENDAS ══════════ */
-function TabVendas({ vendas, resumo }) {
+/* ══════════ ABA · A RECEBER ══════════ */
+function TabAReceber() {
+  const [dados, setDados] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState('');
   const [filtro, setFiltro] = useState('todos');
 
-  const totalVendas = vendas.length;
-  const faturamento = vendas.reduce((a,v)=>a+(v.total||0), 0);
-  const lucroEstimado = vendas.reduce((a,v)=>a+(v.lucro||0), 0);
-  const ticket = totalVendas ? faturamento / totalVendas : 0;
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      setLoading(true); setErro('');
+      try { const d = await api.get('/relatorios/a-receber'); if (!cancel) setDados(d); }
+      catch (e) { if (!cancel) setErro(e.message || 'Erro'); }
+      finally { if (!cancel) setLoading(false); }
+    })();
+    return () => { cancel = true; };
+  }, []);
 
-  const porEntrega = ['concluido', 'pendente', 'cancelado'].map(s => ({
-    key: s, ...(ENT_META[s]||ENT_META.pendente), val: vendas.filter(v => v.status_entrega === s).length,
-  }));
-  const porPag = ['pago', 'em_aberto', 'vencido'].map(s => ({
-    key: s, ...PAG_META[s], val: vendas.filter(v => v.status_pagamento === s).length,
-  }));
-  const modosSet = [...new Set(vendas.map(v => v.modo_pagamento).filter(Boolean))];
-  const porModo = modosSet.map(m => ({
-    label: m, val: vendas.filter(v => v.modo_pagamento === m).length,
-    receita: vendas.filter(v => v.modo_pagamento === m).reduce((a, v) => a + (v.total||0), 0),
-  })).sort((a, b) => b.val - a.val);
+  if (loading) return (
+    <>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 3fr',gap:16}}>
+        <div className="cf-skel" style={{height:120}}/>
+        <div className="cf-skel" style={{height:120}}/>
+      </div>
+      <div className="cf-skel" style={{height:280}}/>
+    </>
+  );
+  if (erro) return <div className="cf-rel-err">⚠ {erro}</div>;
+  if (!dados) return null;
 
-  const maxEnt = Math.max(...porEntrega.map(x => x.val), 1);
-  const maxPag = Math.max(...porPag.map(x => x.val), 1);
-  const maxModo = Math.max(...porModo.map(x => x.val), 1);
+  const T = dados.totais;
+  const total = T.geral || 0;
+  const pct = (v) => total > 0 ? Math.round((v/total)*100) : 0;
+  const devedores = dados.devedores || [];
 
-  const FILTROS = [
-    { k: 'todos',     label: 'Todos',     n: vendas.length },
-    { k: 'pago',      label: 'Pagos',     n: vendas.filter(v => v.status_pagamento === 'pago').length },
-    { k: 'em_aberto', label: 'Em aberto', n: vendas.filter(v => v.status_pagamento === 'em_aberto').length },
-    { k: 'vencido',   label: 'Vencidos',  n: vendas.filter(v => v.status_pagamento === 'vencido').length },
+  const BUCKETS = [
+    { k: 'a_vencer',        cls: 't-ok',   lbl: 'A vencer',        v: T.a_vencer },
+    { k: 'vencido_30',      cls: 't-warn', lbl: 'Vencido até 30d', v: T.vencido_30 },
+    { k: 'vencido_60',      cls: 't-crit', lbl: 'Vencido 30–60d',  v: T.vencido_60 },
+    { k: 'vencido_60_mais', cls: 't-dark', lbl: 'Vencido +60d',    v: T.vencido_60_mais },
   ];
-  const lista = filtro === 'todos' ? vendas : vendas.filter(v => v.status_pagamento === filtro);
 
-  const KPIS = [
-    { tone: 'tone-info',  ic: 'cart',  val: fmtNum(totalVendas), lbl: 'Pedidos', sub: 'no período' },
-    { tone: 'tone-brand', ic: 'chart', val: fmtBRL(faturamento, 0), lbl: 'Receita', sub: 'faturamento bruto' },
-    { tone: 'tone-ok',    ic: 'spark', val: fmtBRL(lucroEstimado, 0), lbl: 'Lucro', sub: `margem ${fmtPctR(faturamento?lucroEstimado/faturamento*100:0)}` },
-    { tone: 'tone-warn',  ic: 'tag',   val: fmtBRL(ticket, 0), lbl: 'Ticket médio', sub: 'por pedido' },
+  const filtrados = devedores.filter(d => {
+    if (filtro === 'todos') return true;
+    if (filtro === 'em_dia') return d.atraso_max === 0;
+    if (filtro === 'atrasado_30') return d.atraso_max > 0 && d.atraso_max <= 30;
+    if (filtro === 'atrasado_60') return d.atraso_max > 30 && d.atraso_max <= 60;
+    if (filtro === 'atrasado_60_mais') return d.atraso_max > 60;
+    return true;
+  });
+
+  const CHIPS = [
+    { k: 'todos',            lbl: 'Todos',        n: devedores.length },
+    { k: 'em_dia',           lbl: 'A vencer',     n: devedores.filter(d => d.atraso_max === 0).length },
+    { k: 'atrasado_30',      lbl: 'Até 30 dias',  n: devedores.filter(d => d.atraso_max > 0 && d.atraso_max <= 30).length },
+    { k: 'atrasado_60',      lbl: '30–60 dias',   n: devedores.filter(d => d.atraso_max > 30 && d.atraso_max <= 60).length },
+    { k: 'atrasado_60_mais', lbl: 'Mais de 60d',  n: devedores.filter(d => d.atraso_max > 60).length },
   ];
 
-  return (<>
-    <div className="cf-rp-kpis">
-      {KPIS.map(k => (
-        <div key={k.lbl} className={`cf-kpi ${k.tone}`}>
-          <div className="cf-kpi-top"><span className="cf-kpi-ic"><Ic d={ICONS[k.ic]} size={16}/></span></div>
-          <div className="cf-kpi-val">{k.val}</div>
-          <div><div className="cf-kpi-lbl">{k.lbl}</div><div className="cf-kpi-sub">{k.sub}</div></div>
+  return (
+    <>
+      <div className="cf-rec-hero">
+        <div className="cf-rec-total">
+          <div className="cf-rec-total-l">Total a receber</div>
+          <div className="cf-rec-total-v">{fmtBRL(total)}</div>
+          <div className="cf-rec-total-s">{devedores.length} cliente(s) com saldo aberto</div>
         </div>
-      ))}
-    </div>
-
-    <div className="cf-row cf-row-1-1">
-      <div className="cf-card">
-        <div className="cf-card-head"><div><div className="cf-card-title">Status dos pedidos</div><div className="cf-card-sub">entrega e pagamento</div></div></div>
-        <div className="cf-rp-mini">
-          {porEntrega.map(r => <MiniBar key={r.key} label={r.label} val={r.val} max={maxEnt} color={r.color} right={<span><strong>{r.val}</strong> {r.val===1?'pedido':'pedidos'}</span>}/>)}
-        </div>
-        <div className="cf-rp-subhead"><div className="cf-rp-subhead-t">Pagamento</div></div>
-        <div className="cf-rp-mini">
-          {porPag.map(r => <MiniBar key={r.key} label={r.label} val={r.val} max={maxPag} color={r.color} right={<span><strong>{r.val}</strong> {r.val===1?'pedido':'pedidos'}</span>}/>)}
-        </div>
-      </div>
-
-      <div className="cf-card">
-        <div className="cf-card-head"><div><div className="cf-card-title">Formas de pagamento</div><div className="cf-card-sub">por nº de pedidos e receita</div></div></div>
-        {porModo.length === 0 ? <div className="cf-rp-empty">Sem dados</div> : (
-          <div className="cf-rp-mini">
-            {porModo.map((r, i) => <MiniBar key={r.label} label={r.label} val={r.val} max={maxModo} color={`var(--cat-${i%5})`} right={<span><strong>{r.val}×</strong> · {fmtBRL(r.receita, 0)}</span>}/>)}
-          </div>
-        )}
-      </div>
-    </div>
-
-    <div className="cf-rp-table vendas">
-      <div className="cf-rp-table-head">
-        <div><div className="cf-card-title">Pedidos do período</div><div className="cf-card-sub">{lista.length} resultado(s)</div></div>
-        <div className="cf-rp-chips">
-          {FILTROS.map(f => <button key={f.k} className={`cf-rp-chip${filtro===f.k?' on':''}`} onClick={()=>setFiltro(f.k)}>{f.label} · {f.n}</button>)}
-        </div>
-      </div>
-      <div className="cf-rp-thead">
-        <div className="cf-rp-th">#</div><div className="cf-rp-th">Cliente</div><div className="cf-rp-th">Itens</div>
-        <div className="cf-rp-th">Entrega</div><div className="cf-rp-th">Pagamento</div><div className="cf-rp-th">Forma</div>
-        <div className="cf-rp-th r">Total</div>
-      </div>
-      {lista.length === 0 ? <div className="cf-rp-empty">Nenhum pedido neste filtro</div> : lista.map(v => {
-        const balcao = /balc/i.test(v.cliente);
-        return (
-          <div key={v.id} className="cf-rp-row">
-            <div className="cf-rp-id">#{v.id}</div>
-            <div className="cf-rp-cli">
-              <span className={`cf-rp-avatar${balcao?' balcao':''}`}>{balcao?'•':inicial(v.cliente)}</span>
-              <div style={{minWidth:0}}>
-                <div className="cf-rp-name">{v.cliente}</div>
-                <div className="cf-rp-name-sub">{v.data}</div>
-              </div>
+        <div className="cf-rec-buckets">
+          {BUCKETS.map(b => (
+            <div key={b.k} className={`cf-rec-bucket ${b.cls}`}>
+              <div className="cf-rec-bucket-l">{b.lbl}</div>
+              <div className="cf-rec-bucket-v">{fmtBRL(b.v, 0)}</div>
+              <div className="cf-rec-bucket-p">{pct(b.v)}% do total</div>
             </div>
-            <div className="cf-rp-num">{v.itens}</div>
-            <div><Pill s={v.status_entrega} meta={ENT_META}/></div>
-            <div><Pill s={v.status_pagamento} meta={PAG_META}/></div>
-            <div className="cf-rp-num">{v.modo_pagamento || '—'}</div>
-            <div className="cf-rp-num ok r">{fmtBRL(v.total, 2)}</div>
-          </div>
-        );
-      })}
-    </div>
-  </>);
-}
-
-/* ══════════ ABA · ESTOQUE ══════════ */
-function TabEstoque({ produtos }) {
-  const ordenado = [...produtos].sort((a, b) => (b.valor_estoque||0) - (a.valor_estoque||0));
-  const valorTotal = produtos.reduce((a,p)=>a+(p.valor_estoque||0),0);
-  const valorVenda = produtos.reduce((a,p)=>a+((p.preco_venda||0)*(p.estoque_atual||0)),0);
-  const esgotados = produtos.filter(p => p.status === 'esgotado').length;
-  const criticos  = produtos.filter(p => p.status === 'critico').length;
-
-  const KPIS = [
-    { tone: 'tone-info',  ic: 'box',    val: produtos.length, lbl: 'Produtos', sub: 'ativos no sistema' },
-    { tone: 'tone-brand', ic: 'layers', val: fmtBRL(valorTotal, 0), lbl: 'Valor em estoque', sub: `venda ${fmtBRL(valorVenda, 0)}` },
-    { tone: 'tone-warn',  ic: 'bell',   val: criticos, lbl: 'Críticos', sub: 'abaixo do mínimo' },
-    { tone: 'tone-crit',  ic: 'arrowOut', val: esgotados, lbl: 'Esgotados', sub: 'sem estoque' },
-  ];
-
-  return (<>
-    <div className="cf-rp-kpis">
-      {KPIS.map(k => (
-        <div key={k.lbl} className={`cf-kpi ${k.tone}`}>
-          <div className="cf-kpi-top"><span className="cf-kpi-ic"><Ic d={ICONS[k.ic]} size={16}/></span></div>
-          <div className="cf-kpi-val">{k.val}</div>
-          <div><div className="cf-kpi-lbl">{k.lbl}</div><div className="cf-kpi-sub">{k.sub}</div></div>
+          ))}
         </div>
-      ))}
-    </div>
+      </div>
 
-    <div className="cf-rp-table estoque">
-      <div className="cf-rp-table-head">
-        <div><div className="cf-card-title">Snapshot do estoque</div><div className="cf-card-sub">ordenado por valor a preço de custo</div></div>
-      </div>
-      <div className="cf-rp-thead">
-        <div className="cf-rp-th">Produto</div><div className="cf-rp-th">Categoria</div><div className="cf-rp-th r">Custo</div>
-        <div className="cf-rp-th">Estoque</div><div className="cf-rp-th r">Valor estoque</div><div className="cf-rp-th">Status</div>
-      </div>
-      {ordenado.length === 0 ? <div className="cf-rp-empty">Nenhum produto cadastrado</div> : ordenado.map(p => (
-        <div key={p.id} className="cf-rp-row">
-          <div style={{minWidth:0}}>
-            <div className="cf-rp-name">{p.nome}</div>
-            <div className="cf-rp-name-sub">{p.sku || '—'}</div>
-          </div>
-          <div className="cf-rp-num">{p.categoria || 'Sem categoria'}</div>
-          <div className="cf-rp-num r">{fmtBRL(p.preco_custo)}</div>
-          <div className="cf-rp-stock">
-            <span className="cf-rp-stock-n">{p.estoque_atual} {p.unidade || 'un'}</span>
-            <StockMeter atual={p.estoque_atual||0} minimo={p.estoque_minimo||5}/>
-          </div>
-          <div className="cf-rp-num ok r">{fmtBRL(p.valor_estoque, 0)}</div>
-          <div><Pill s={p.status === 'critico' ? 'em_aberto' : p.status === 'esgotado' ? 'vencido' : 'pago'} meta={{
-            pago:{cls:'ok',label:'OK'}, em_aberto:{cls:'warn',label:'Baixo'}, vencido:{cls:'crit',label:'Esgotado'}
-          }}/></div>
+      <div className="cf-rp-toolbar">
+        <div className="cf-rp-chips">
+          {CHIPS.map(c => <button key={c.k} className={`cf-rp-chip${filtro===c.k?' on':''}`} onClick={()=>setFiltro(c.k)}>{c.lbl} · {c.n}</button>)}
         </div>
-      ))}
-    </div>
-  </>);
+      </div>
+
+      <div className="cf-rec-table">
+        <div className="cf-rec-thead">
+          <div className="cf-rec-th">Cliente</div>
+          <div className="cf-rec-th r">Parcelas</div>
+          <div className="cf-rec-th r">Atraso</div>
+          <div className="cf-rec-th r">Saldo</div>
+          <div className="cf-rec-th r">Ação</div>
+        </div>
+        {filtrados.length === 0 ? <div className="cf-rp-empty">Nenhum cliente neste filtro</div> :
+          filtrados.map(d => {
+            const atrasoCls = d.atraso_max === 0 ? 'ok' : d.atraso_max <= 30 ? 'warn' : 'crit';
+            return (
+              <div key={d.id} className="cf-rec-row">
+                <div className="cf-rec-cli">
+                  <span className="cf-rec-avatar">{inicial(d.nome)}</span>
+                  <div style={{minWidth:0}}>
+                    <div className="cf-rec-nm">{d.nome}</div>
+                    <div className="cf-rec-nm-sub">{d.telefone || '—'}{d.primeira_vencida ? ` · desde ${d.primeira_vencida}` : ''}</div>
+                  </div>
+                </div>
+                <div className="cf-rec-cell r"><span style={{fontFamily:'var(--font-mono)',fontSize:12,color:'var(--text-dim)'}}>{d.parcelas_abertas} aberta(s)</span></div>
+                <div className="cf-rec-cell r">
+                  <span className={`cf-rec-atraso ${atrasoCls}`}>
+                    {d.atraso_max === 0 ? 'em dia' : `${d.atraso_max}d`}
+                  </span>
+                </div>
+                <div className="cf-rec-cell r"><span className="cf-rec-saldo">{fmtBRL(d.saldo_total, 0)}</span></div>
+                <div className="cf-rec-cell r">
+                  {d.telefone ? (
+                    <a className="cf-rec-wa" href={waLink(d.nome, d.telefone, d.saldo_total, d.atraso_max)} target="_blank" rel="noreferrer">
+                      <Ic d={ICONS.wa} size={13}/> Cobrar
+                    </a>
+                  ) : <span style={{fontSize:10,color:'var(--text-muted)',fontFamily:'var(--font-mono)'}}>sem tel</span>}
+                </div>
+              </div>
+            );
+          })
+        }
+      </div>
+    </>
+  );
 }
 
 /* ══════════ ABA · PRODUTOS ══════════ */
-function TabProdutos({ topProdutos, dias, setDias }) {
+function TabProdutos() {
+  const [dias, setDias] = useState('30');
+  const [produtos, setProdutos] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState('');
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      setLoading(true); setErro('');
+      try { const p = await api.get(`/relatorios/produtos-mais-vendidos?dias=${dias}`); if (!cancel) setProdutos(Array.isArray(p) ? p : []); }
+      catch (e) { if (!cancel) setErro(e.message || 'Erro'); }
+      finally { if (!cancel) setLoading(false); }
+    })();
+    return () => { cancel = true; };
+  }, [dias]);
+
   const PERIODOS = [['7', '7 dias'], ['30', '30 dias'], ['90', '90 dias'], ['365', '1 ano']];
-  const porQtd = [...topProdutos].sort((a, b) => (b.qtd_vendida||0) - (a.qtd_vendida||0));
-  const porRec = [...topProdutos].sort((a, b) => (b.receita||0) - (a.receita||0));
-  const maxQtd = Math.max(...topProdutos.map(p => p.qtd_vendida||0), 1);
-  const maxRec = Math.max(...topProdutos.map(p => p.receita||0), 1);
-  const totalUn = topProdutos.reduce((a, p) => a + (p.qtd_vendida||0), 0);
-  const totalRec = topProdutos.reduce((a, p) => a + (p.receita||0), 0);
 
-  // agrupa por categoria a partir do topProdutos (não temos endpoint dedicado, calculamos aqui)
-  const catMap = {};
-  topProdutos.forEach(p => {
-    const c = p.categoria || 'Sem categoria';
-    if (!catMap[c]) catMap[c] = { nome: c, valor: 0 };
-    catMap[c].valor += (p.receita || 0);
-  });
-  const categorias = Object.values(catMap).sort((a,b) => b.valor - a.valor);
-  const totalCat = categorias.reduce((a,x) => a + x.valor, 0);
+  const totalUn = produtos.reduce((a, p) => a + (p.qtd_vendida||0), 0);
+  const totalRec = produtos.reduce((a, p) => a + (p.receita||0), 0);
+  const totalLucro = produtos.reduce((a, p) => a + (p.lucro||0), 0);
+  const porQtd = [...produtos].sort((a, b) => (b.qtd_vendida||0) - (a.qtd_vendida||0));
+  const porLucro = [...produtos].sort((a, b) => (b.lucro||0) - (a.lucro||0));
+  const maxQtd = Math.max(...porQtd.map(p => p.qtd_vendida||0), 1);
+  const maxLucro = Math.max(...porLucro.map(p => p.lucro||0), 1);
 
+  // "Oportunidades" — margem alta (>=40%) mas venda abaixo da mediana em quantidade
+  const medQtd = (() => {
+    if (produtos.length === 0) return 0;
+    const arr = [...produtos].map(p => p.qtd_vendida||0).sort((a,b)=>a-b);
+    return arr[Math.floor(arr.length/2)];
+  })();
+  const oportunidades = produtos
+    .filter(p => (p.margem||0) >= 40 && (p.qtd_vendida||0) < medQtd)
+    .sort((a,b) => (b.margem||0) - (a.margem||0));
+
+  const margemCls = (m) => m >= 40 ? 'high' : m >= 20 ? 'mid' : 'low';
   const KPIS = [
-    { tone: 'tone-brand', ic: 'box',   val: topProdutos.length, lbl: 'Produtos vendidos', sub: 'com saída no período' },
-    { tone: 'tone-info',  ic: 'layers',val: fmtNum(totalUn), lbl: 'Unidades saídas', sub: 'total de itens' },
-    { tone: 'tone-ok',    ic: 'chart', val: fmtBRL(totalRec, 0), lbl: 'Receita gerada', sub: 'pelo top produtos' },
-    { tone: 'tone-warn',  ic: 'spark', val: (porQtd[0]?.qtd_vendida || 0), lbl: 'Mais vendido', sub: porQtd[0]?.nome || '—' },
+    { tone: 't-brand', lbl: 'Produtos vendidos',  val: produtos.length,        sub: 'com saída no período' },
+    { tone: 't-info',  lbl: 'Unidades vendidas',  val: fmtNum(totalUn),        sub: 'total de itens' },
+    { tone: 't-ok',    lbl: 'Receita gerada',     val: fmtBRL(totalRec, 0),    sub: `lucro ${fmtBRL(totalLucro, 0)}` },
+    { tone: 't-warn',  lbl: 'Mais vendido',       val: porQtd[0]?.qtd_vendida || 0, sub: porQtd[0]?.nome || '—' },
   ];
 
-  return (<>
-    <div className="cf-rp-head" style={{marginBottom:2}}>
-      <div className="cf-rp-chips">
-        {PERIODOS.map(([v, l]) => <button key={v} className={`cf-rp-chip${dias===v?' on':''}`} onClick={()=>setDias(v)}>{l}</button>)}
-      </div>
-    </div>
-
-    <div className="cf-rp-kpis">
-      {KPIS.map(k => (
-        <div key={k.lbl} className={`cf-kpi ${k.tone}`}>
-          <div className="cf-kpi-top"><span className="cf-kpi-ic"><Ic d={ICONS[k.ic]} size={16}/></span></div>
-          <div className="cf-kpi-val">{k.val}</div>
-          <div><div className="cf-kpi-lbl">{k.lbl}</div><div className="cf-kpi-sub">{k.sub}</div></div>
+  return (
+    <>
+      <div className="cf-rp-toolbar">
+        <div className="cf-rp-chips">
+          {PERIODOS.map(([v, l]) => <button key={v} className={`cf-rp-chip${dias===v?' on':''}`} onClick={()=>setDias(v)}>{l}</button>)}
         </div>
-      ))}
-    </div>
-
-    <div className="cf-row cf-row-1-1">
-      <div className="cf-card">
-        <div className="cf-card-head"><div><div className="cf-card-title">Mais vendidos · quantidade</div><div className="cf-card-sub">unidades saídas</div></div></div>
-        {porQtd.length === 0 ? <div className="cf-rp-empty">Sem vendas no período</div> : porQtd.slice(0, 10).map((p, i) => (
-          <div key={p.id} className="cf-top-row">
-            <span className="cf-rank">{i + 1}</span>
-            <div className="cf-top-main">
-              <div className="cf-top-name">{p.nome}</div>
-              <div className="cf-top-bar"><div className="cf-top-fill" style={{ width: `${(p.qtd_vendida / maxQtd) * 100}%` }} /></div>
-            </div>
-            <div className="cf-top-val">{p.qtd_vendida} un.</div>
-          </div>
-        ))}
       </div>
 
-      <div className="cf-card">
-        <div className="cf-card-head"><div><div className="cf-card-title">Mais vendidos · receita</div><div className="cf-card-sub">valor gerado</div></div></div>
-        {porRec.length === 0 ? <div className="cf-rp-empty">Sem vendas no período</div> : porRec.slice(0, 10).map((p, i) => (
-          <div key={p.id} className="cf-top-row">
-            <span className="cf-rank">{i + 1}</span>
-            <div className="cf-top-main">
-              <div className="cf-top-name">{p.nome}</div>
-              <div className="cf-top-bar"><div className="cf-top-fill" style={{ width: `${(p.receita / maxRec) * 100}%` }} /></div>
-            </div>
-            <div className="cf-top-val">{fmtBRL(p.receita, 0)}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-
-    <div className="cf-card">
-      <div className="cf-card-head"><div><div className="cf-card-title">Distribuição por categoria</div><div className="cf-card-sub">participação nas vendas</div></div></div>
-      {categorias.length === 0 ? <div className="cf-rp-empty">Sem dados de categoria</div> : (
-        <div className="cf-donut-wrap">
-          <Donut items={categorias} size={148}/>
-          <div className="cf-cat-legend">
-            {categorias.map((c, i) => (
-              <div key={c.nome} className="cf-cat-row">
-                <span className="cf-cat-dot" style={{ background: `var(--cat-${i%5})` }}/>
-                <span className="cf-cat-name">{c.nome}</span>
-                <span className="cf-cat-pct">{fmtPctR((c.valor / totalCat) * 100)}</span>
-                <span className="cf-cat-val">{fmtBRL(c.valor, 0)}</span>
+      {loading ? (
+        <>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16}}>{[1,2,3,4].map(i=><div key={i} className="cf-skel" style={{height:100}}/>)}</div>
+          <div className="cf-skel" style={{height:280}}/>
+        </>
+      ) : erro ? <div className="cf-rel-err">⚠ {erro}</div> : (
+        <>
+          <div className="cf-pr-kpis">
+            {KPIS.map(k => (
+              <div key={k.lbl} className={`cf-pr-kpi ${k.tone}`}>
+                <div className="cf-pr-kpi-lbl">{k.lbl}</div>
+                <div className="cf-pr-kpi-val">{k.val}</div>
+                <div className="cf-pr-kpi-sub">{k.sub}</div>
               </div>
             ))}
           </div>
-        </div>
+
+          {oportunidades.length > 0 && (
+            <div className="cf-pr-oport">
+              <span className="cf-pr-oport-ic"><Ic d={ICONS.gem} size={17}/></span>
+              <div style={{flex:1,minWidth:0}}>
+                <div className="cf-pr-oport-t">Oportunidade: {oportunidades.length} produto(s) com margem alta e pouca venda</div>
+                <div className="cf-pr-oport-s">Produtos com margem ≥ 40% que vendem abaixo da mediana — potencial de crescimento com promoção ou destaque na vitrine.</div>
+              </div>
+            </div>
+          )}
+
+          <div className="cf-row cf-row-1-1">
+            <div className="cf-card">
+              <div className="cf-card-head">
+                <div>
+                  <div className="cf-card-title">Mais vendidos <span style={{color:'var(--text-muted)',fontWeight:500}}>· quantidade</span></div>
+                  <div className="cf-card-sub">o que sai mais rápido do estoque</div>
+                </div>
+              </div>
+              {porQtd.length === 0 ? <div className="cf-rp-empty">Sem vendas no período</div> : porQtd.slice(0, 8).map((p, i) => (
+                <div key={p.id} className="cf-top-row">
+                  <span className="cf-rank">{i + 1}</span>
+                  <div className="cf-top-main">
+                    <div className="cf-top-name">{p.nome}</div>
+                    <div className="cf-top-cat">{p.categoria || 'Sem categoria'}</div>
+                    <div className="cf-top-bar"><div className="cf-top-fill" style={{ width: `${(p.qtd_vendida / maxQtd) * 100}%` }}/></div>
+                  </div>
+                  <div className="cf-top-val">{p.qtd_vendida} un</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="cf-card">
+              <div className="cf-card-head">
+                <div>
+                  <div className="cf-card-title">Mais lucrativos <span style={{color:'var(--text-muted)',fontWeight:500}}>· lucro absoluto</span></div>
+                  <div className="cf-card-sub">o que mais gera lucro no total</div>
+                </div>
+              </div>
+              {porLucro.length === 0 ? <div className="cf-rp-empty">Sem vendas no período</div> : porLucro.slice(0, 8).map((p, i) => (
+                <div key={p.id} className="cf-top-row">
+                  <span className="cf-rank">{i + 1}</span>
+                  <div className="cf-top-main">
+                    <div className="cf-top-name">{p.nome}</div>
+                    <div className="cf-top-cat">margem {Number(p.margem||0).toFixed(0)}%</div>
+                    <div className="cf-top-bar"><div className="cf-top-fill ok" style={{ width: `${(p.lucro / maxLucro) * 100}%` }}/></div>
+                  </div>
+                  <div className="cf-top-val" style={{color:'var(--ok)'}}>{fmtBRL(p.lucro, 0)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="cf-pr-table">
+            <div className="cf-card-head" style={{borderBottom:'1px solid var(--border)'}}>
+              <div>
+                <div className="cf-card-title">Detalhamento por produto</div>
+                <div className="cf-card-sub">{produtos.length} produto(s) com vendas · ordenados por lucro absoluto</div>
+              </div>
+            </div>
+            <div className="cf-pr-thead">
+              <div className="cf-pr-th">#</div>
+              <div className="cf-pr-th">Produto</div>
+              <div className="cf-pr-th">Categoria</div>
+              <div className="cf-pr-th r">Qtd</div>
+              <div className="cf-pr-th r">Receita</div>
+              <div className="cf-pr-th r">Custo</div>
+              <div className="cf-pr-th r">Lucro</div>
+              <div className="cf-pr-th r">Margem</div>
+            </div>
+            {porLucro.length === 0 ? <div className="cf-rp-empty">Nenhum produto com vendas</div> : porLucro.map((p, i) => {
+              const oport = (p.margem||0) >= 40 && (p.qtd_vendida||0) < medQtd;
+              return (
+                <div key={p.id} className={`cf-pr-trow${oport?' oport':''}`}>
+                  <div className="cf-pr-cell"><span className="cf-pr-num" style={{fontWeight:700,color:i<3?'var(--brand)':'var(--text-muted)'}}>{i + 1}</span></div>
+                  <div className="cf-pr-cell" style={{minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.nome}</div>
+                    {oport && <div className="cf-pr-oport-tag"><Ic d={ICONS.gem} size={10}/> oportunidade</div>}
+                  </div>
+                  <div className="cf-pr-num">{p.categoria || 'Sem cat.'}</div>
+                  <div className="cf-pr-num r">{p.qtd_vendida}</div>
+                  <div className="cf-pr-num r">{fmtBRL(p.receita, 0)}</div>
+                  <div className="cf-pr-num r warn">{fmtBRL(p.custo, 0)}</div>
+                  <div className="cf-pr-num r ok">{fmtBRL(p.lucro, 0)}</div>
+                  <div className="cf-pr-cell r"><span className={`cf-pr-margin ${margemCls(p.margem)}`}>{Number(p.margem||0).toFixed(1)}%</span></div>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
-    </div>
-  </>);
+    </>
+  );
 }
 
 /* ══ COMPONENTE PRINCIPAL ════════════════════════════════════════════════ */
 const TABS = [
-  { key: 'geral',    label: 'Resumo geral', ic: 'grid' },
-  { key: 'vendas',   label: 'Vendas',       ic: 'cart' },
-  { key: 'estoque',  label: 'Estoque',      ic: 'layers' },
-  { key: 'produtos', label: 'Produtos',     ic: 'box' },
+  { key: 'comparar',  label: 'Comparar',  ic: 'compare' },
+  { key: 'a_receber', label: 'A Receber', ic: 'wallet' },
+  { key: 'produtos',  label: 'Produtos',  ic: 'box' },
 ];
 
 export default function Relatorios() {
   const [theme, setTheme] = useState(getDocTheme);
-  const [aba, setAba] = useState('geral');
-
-  const [resumo, setResumo] = useState(null);
-  const [mensal, setMensal] = useState([]);
-  const [vendas, setVendas] = useState([]);
-  const [produtosEst, setProdutosEst] = useState([]);
-  const [topProdutos, setTopProdutos] = useState([]);
-  const [dias, setDias] = useState('30');
-
-  const [loadingGeral, setLoadingGeral] = useState(false);
-  const [loadingVendas, setLoadingVendas] = useState(false);
-  const [loadingEstoque, setLoadingEstoque] = useState(false);
-  const [loadingProdutos, setLoadingProdutos] = useState(false);
-  const [erro, setErro] = useState('');
+  const [aba, setAba] = useState('comparar');
 
   useEffect(()=>{
     const obs=new MutationObserver(()=>setTheme(getDocTheme()));
     obs.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
     return ()=>obs.disconnect();
   },[]);
-
-  const loadGeral = useCallback(async () => {
-    setLoadingGeral(true); setErro('');
-    try {
-      const [r, m] = await Promise.all([
-        api.get('/relatorios/resumo-geral'),
-        api.get('/dashboard/vendas-por-mes'),
-      ]);
-      setResumo(r);
-      setMensal(Array.isArray(m) ? m : []);
-    } catch (e) { setErro(e.message || 'Erro ao carregar resumo geral'); }
-    finally { setLoadingGeral(false); }
-  }, []);
-
-  const loadVendas = useCallback(async () => {
-    setLoadingVendas(true); setErro('');
-    try { const v = await api.get('/relatorios/vendas-periodo'); setVendas(Array.isArray(v) ? v : []); }
-    catch (e) { setErro(e.message || 'Erro ao carregar vendas'); }
-    finally { setLoadingVendas(false); }
-  }, []);
-
-  const loadEstoque = useCallback(async () => {
-    setLoadingEstoque(true); setErro('');
-    try { const p = await api.get('/relatorios/estoque-snapshot'); setProdutosEst(Array.isArray(p) ? p : []); }
-    catch (e) { setErro(e.message || 'Erro ao carregar estoque'); }
-    finally { setLoadingEstoque(false); }
-  }, []);
-
-  const loadProdutos = useCallback(async (d = dias) => {
-    setLoadingProdutos(true); setErro('');
-    try { const p = await api.get(`/relatorios/produtos-mais-vendidos?dias=${d}`); setTopProdutos(Array.isArray(p) ? p : []); }
-    catch (e) { setErro(e.message || 'Erro ao carregar produtos'); }
-    finally { setLoadingProdutos(false); }
-  }, [dias]);
-
-  // carrega dados sob demanda por aba
-  useEffect(() => {
-    if (aba === 'geral' && !resumo) loadGeral();
-    if (aba === 'vendas' && vendas.length === 0) loadVendas();
-    if (aba === 'estoque' && produtosEst.length === 0) loadEstoque();
-    if (aba === 'produtos') loadProdutos(dias);
-  // eslint-disable-next-line
-  }, [aba, dias]);
-
-  const loading = (aba==='geral'&&loadingGeral)||(aba==='vendas'&&loadingVendas)||(aba==='estoque'&&loadingEstoque)||(aba==='produtos'&&loadingProdutos);
 
   return (
     <div className="cf-rel-root" data-theme={theme}>
@@ -716,7 +747,7 @@ export default function Relatorios() {
         <div className="cf-rp-head">
           <div>
             <div className="cf-rp-head-t">Relatórios & análises</div>
-            <div className="cf-rp-head-sub">visão consolidada do negócio · {TABS.find(t => t.key === aba)?.label.toLowerCase()}</div>
+            <div className="cf-rp-head-sub">decisões rápidas para a revisão semanal · {TABS.find(t => t.key === aba)?.label.toLowerCase()}</div>
           </div>
           <div className="cf-rp-tabs">
             {TABS.map(t => (
@@ -727,21 +758,11 @@ export default function Relatorios() {
           </div>
         </div>
 
-        {erro && <div className="cf-rel-err">⚠ {erro}</div>}
-
-        {loading ? (
-          <>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16}}>{[1,2,3,4].map(i=><div key={i} className="cf-skel" style={{height:110}}/>)}</div>
-            <div className="cf-skel" style={{height:280}}/>
-          </>
-        ) : (
-          <div className="cf-rp-body" key={aba}>
-            {aba === 'geral'    && <TabGeral resumo={resumo} mensal={mensal}/>}
-            {aba === 'vendas'   && <TabVendas vendas={vendas} resumo={resumo}/>}
-            {aba === 'estoque'  && <TabEstoque produtos={produtosEst}/>}
-            {aba === 'produtos' && <TabProdutos topProdutos={topProdutos} dias={dias} setDias={setDias}/>}
-          </div>
-        )}
+        <div className="cf-rp-body" key={aba}>
+          {aba === 'comparar'  && <TabComparar/>}
+          {aba === 'a_receber' && <TabAReceber/>}
+          {aba === 'produtos'  && <TabProdutos/>}
+        </div>
       </div>
     </div>
   );

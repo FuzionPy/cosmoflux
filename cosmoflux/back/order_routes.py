@@ -752,12 +752,208 @@ def produtos_mais_vendidos(dias: int = Query(30), ctx: dict = Depends(get_ctx), 
         for it in p.itens:
             pid = it.produto_id
             if pid not in contagem:
-                nome = it.produto_rel.nome if it.produto_rel else f"Produto #{pid}"
-                contagem[pid] = {"id": pid, "nome": nome, "qtd_vendida": 0, "receita": 0.0}
+                prod = it.produto_rel
+                nome = prod.nome if prod else f"Produto #{pid}"
+                categoria = prod.categoria_rel.nome if (prod and prod.categoria_rel) else "Sem categoria"
+                contagem[pid] = {
+                    "id": pid, "nome": nome, "categoria": categoria,
+                    "qtd_vendida": 0, "receita": 0.0, "custo": 0.0, "lucro": 0.0,
+                }
+            preco_custo = (it.produto_rel.preco_custo or 0) if it.produto_rel else 0
             contagem[pid]["qtd_vendida"] += it.quantidade
             contagem[pid]["receita"]     += round(it.quantidade * it.preco_unitario, 2)
+            contagem[pid]["custo"]       += round(it.quantidade * preco_custo, 2)
 
-    resultado = sorted(contagem.values(), key=lambda x: x["qtd_vendida"], reverse=True)
-    for r in resultado:
+    for r in contagem.values():
+        r["lucro"]  = round(r["receita"] - r["custo"], 2)
+        r["margem"] = round((r["lucro"] / r["receita"]) * 100, 1) if r["receita"] else 0
         r["receita"] = round(r["receita"], 2)
-    return resultado
+        r["custo"]   = round(r["custo"], 2)
+
+    return sorted(contagem.values(), key=lambda x: x["qtd_vendida"], reverse=True)
+
+
+@order_router.get("/relatorios/comparar-periodos")
+def comparar_periodos(
+    inicio_a: str = Query(..., description="YYYY-MM-DD"),
+    fim_a:    str = Query(..., description="YYYY-MM-DD"),
+    inicio_b: str = Query(..., description="YYYY-MM-DD"),
+    fim_b:    str = Query(..., description="YYYY-MM-DD"),
+    ctx: dict = Depends(get_ctx), db: Session = Depends(get_db),
+):
+    """Compara métricas e produtos entre dois períodos arbitrários (A vs B).
+    Usado pela aba 'Comparar' para mês vs mês, ano vs ano etc."""
+    from datetime import timedelta
+
+    def parse_range(ini, fim):
+        di = datetime.strptime(ini, "%Y-%m-%d")
+        df = datetime.strptime(fim, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+        return di, df
+
+    def periodo(ini_dt, fim_dt):
+        pedidos = tf(db.query(Pedido), Pedido, ctx).filter(
+            Pedido.status != "cancelado",
+            Pedido.criado_em >= ini_dt, Pedido.criado_em <= fim_dt,
+        ).all()
+        receita = sum(p.total for p in pedidos)
+        custo = 0.0
+        prod_qtd = {}
+        prod_receita = {}
+        prod_nome = {}
+        for p in pedidos:
+            for it in p.itens:
+                cu = (it.produto_rel.preco_custo or 0) if it.produto_rel else 0
+                custo += it.quantidade * cu
+                prod_qtd[it.produto_id]    = prod_qtd.get(it.produto_id, 0) + it.quantidade
+                prod_receita[it.produto_id] = prod_receita.get(it.produto_id, 0) + it.quantidade * it.preco_unitario
+                if it.produto_id not in prod_nome:
+                    prod_nome[it.produto_id] = it.produto_rel.nome if it.produto_rel else f"Produto #{it.produto_id}"
+        lucro = receita - custo
+        return {
+            "receita": round(receita, 2),
+            "custo":   round(custo, 2),
+            "lucro":   round(lucro, 2),
+            "margem":  round(lucro/receita*100, 1) if receita else 0,
+            "pedidos": len(pedidos),
+            "ticket":  round(receita/len(pedidos), 2) if pedidos else 0,
+            "_prod_qtd": prod_qtd, "_prod_receita": prod_receita, "_prod_nome": prod_nome,
+        }
+
+    def dias_no_range(ini_dt, fim_dt):
+        return max(1, (fim_dt.date() - ini_dt.date()).days + 1)
+
+    def serie_diaria(ini_dt, fim_dt):
+        """Receita agregada por dia (do 1º ao último) — normalizada em 'offset dias'
+        para permitir sobrepor períodos de tamanhos parecidos no mesmo eixo."""
+        n = dias_no_range(ini_dt, fim_dt)
+        pedidos = tf(db.query(Pedido), Pedido, ctx).filter(
+            Pedido.status != "cancelado",
+            Pedido.criado_em >= ini_dt, Pedido.criado_em <= fim_dt,
+        ).all()
+        serie = [0.0] * n
+        for p in pedidos:
+            off = (p.criado_em.date() - ini_dt.date()).days
+            if 0 <= off < n:
+                serie[off] += p.total
+        return [round(v, 2) for v in serie]
+
+    dia_a, dfa = parse_range(inicio_a, fim_a)
+    dib, dfb = parse_range(inicio_b, fim_b)
+    A = periodo(dia_a, dfa)
+    B = periodo(dib, dfb)
+
+    def delta_pct(a, b):
+        if not b: return None if not a else 100.0
+        return round((a - b) / b * 100, 1)
+
+    # top 5 que mais cresceram e 5 que mais caíram (por receita)
+    todos_ids = set(A["_prod_qtd"]) | set(B["_prod_qtd"])
+    variacoes = []
+    for pid in todos_ids:
+        rec_a = A["_prod_receita"].get(pid, 0)
+        rec_b = B["_prod_receita"].get(pid, 0)
+        variacoes.append({
+            "id": pid,
+            "nome": A["_prod_nome"].get(pid) or B["_prod_nome"].get(pid) or f"Produto #{pid}",
+            "qtd_a": A["_prod_qtd"].get(pid, 0), "qtd_b": B["_prod_qtd"].get(pid, 0),
+            "receita_a": round(rec_a, 2), "receita_b": round(rec_b, 2),
+            "delta_valor": round(rec_a - rec_b, 2),
+            "delta_pct":   delta_pct(rec_a, rec_b),
+        })
+
+    sobem = sorted([v for v in variacoes if v["delta_valor"] > 0], key=lambda x: -x["delta_valor"])[:5]
+    caem  = sorted([v for v in variacoes if v["delta_valor"] < 0], key=lambda x:  x["delta_valor"])[:5]
+
+    def limpar(p):
+        return {k: v for k, v in p.items() if not k.startswith("_")}
+
+    return {
+        "periodo_a": {"inicio": inicio_a, "fim": fim_a, "dias": dias_no_range(dia_a, dfa), **limpar(A)},
+        "periodo_b": {"inicio": inicio_b, "fim": fim_b, "dias": dias_no_range(dib, dfb), **limpar(B)},
+        "variacao": {
+            "receita_pct": delta_pct(A["receita"], B["receita"]),
+            "lucro_pct":   delta_pct(A["lucro"],   B["lucro"]),
+            "pedidos_pct": delta_pct(A["pedidos"], B["pedidos"]),
+            "ticket_pct":  delta_pct(A["ticket"],  B["ticket"]),
+        },
+        "serie_a": serie_diaria(dia_a, dfa),
+        "serie_b": serie_diaria(dib, dfb),
+        "produtos_subiram": sobem,
+        "produtos_cairam":  caem,
+    }
+
+
+@order_router.get("/relatorios/a-receber")
+def relatorio_a_receber(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    """Aging report: quem deve, quanto e há quanto tempo, agrupado em faixas.
+    Usado pela aba 'A Receber'."""
+    from models import Venda, Parcela
+    from datetime import date as _date
+
+    hoje = _date.today()
+
+    def faixa(dias_atraso):
+        if dias_atraso < 0:   return "a_vencer"       # ainda não venceu
+        if dias_atraso <= 30: return "vencido_30"
+        if dias_atraso <= 60: return "vencido_60"
+        return "vencido_60_mais"
+
+    # todas as parcelas em aberto de vendas ativas
+    parcelas = db.query(Parcela).join(Parcela.venda_rel).filter(
+        Parcela.pago == False,
+        Venda.status_pagamento != "cancelado",
+    )
+    if not ctx["admin"] and ctx["tenant_id"] is not None:
+        parcelas = parcelas.filter(Venda.tenant_id == ctx["tenant_id"])
+    parcelas = parcelas.all()
+
+    por_cliente = {}
+    totais_faixa = {"a_vencer": 0.0, "vencido_30": 0.0, "vencido_60": 0.0, "vencido_60_mais": 0.0}
+
+    for p in parcelas:
+        venda = p.venda_rel
+        if not venda or not venda.cliente_rel: continue
+        cli = venda.cliente_rel
+        saldo = round(p.valor - (p.valor_pago or 0), 2)
+        if saldo <= 0.01: continue
+
+        dias_atraso = (hoje - p.vencimento).days if p.vencimento else 0
+        fx = faixa(dias_atraso)
+        totais_faixa[fx] += saldo
+
+        if cli.id not in por_cliente:
+            por_cliente[cli.id] = {
+                "id": cli.id, "nome": cli.nome, "telefone": cli.telefone,
+                "saldo_total": 0.0, "parcelas_abertas": 0,
+                "atraso_max": 0, "vencidas": 0, "a_vencer": 0,
+                "primeira_vencida": None,
+            }
+        c = por_cliente[cli.id]
+        c["saldo_total"] += saldo
+        c["parcelas_abertas"] += 1
+        if dias_atraso > 0:
+            c["vencidas"] += 1
+            c["atraso_max"] = max(c["atraso_max"], dias_atraso)
+            if p.vencimento and (c["primeira_vencida"] is None or p.vencimento < c["primeira_vencida"]):
+                c["primeira_vencida"] = p.vencimento
+        else:
+            c["a_vencer"] += 1
+
+    for c in por_cliente.values():
+        c["saldo_total"] = round(c["saldo_total"], 2)
+        c["primeira_vencida"] = c["primeira_vencida"].strftime("%d/%m/%Y") if c["primeira_vencida"] else None
+
+    devedores = sorted(por_cliente.values(), key=lambda x: (-x["atraso_max"], -x["saldo_total"]))
+
+    total = sum(totais_faixa.values())
+    return {
+        "totais": {
+            "geral": round(total, 2),
+            "a_vencer":        round(totais_faixa["a_vencer"], 2),
+            "vencido_30":      round(totais_faixa["vencido_30"], 2),
+            "vencido_60":      round(totais_faixa["vencido_60"], 2),
+            "vencido_60_mais": round(totais_faixa["vencido_60_mais"], 2),
+        },
+        "n_devedores": len(devedores),
+        "devedores": devedores,
+    }
