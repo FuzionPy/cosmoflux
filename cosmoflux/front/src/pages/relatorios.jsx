@@ -57,20 +57,38 @@ const ICONS = {
 const startOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
 const endOfMonth = (d) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
 const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d; };
+const MES_NOMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+// gera opções dos últimos 12 meses (do atual pra trás)
+const listarMesesRecentes = (n = 12) => {
+  const hoje = new Date();
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+    out.push({ mes: d.getMonth() + 1, ano: d.getFullYear(), label: `${MES_NOMES[d.getMonth()]} ${d.getFullYear()}` });
+  }
+  return out;
+};
 const PRESETS = [
-  { key: 'mes_atual_vs_anterior', label: 'Este mês vs anterior' },
-  { key: 'ultimos_30_vs_anteriores', label: 'Últimos 30d vs 30d antes' },
-  { key: 'ultimos_7_vs_anteriores',  label: 'Últimos 7d vs 7d antes' },
-  { key: 'ano_atual_vs_anterior',    label: 'Este ano vs ano passado' },
+  { key: 'mes_especifico',           label: 'Mês específico vs anterior', tipo: 'mes' },
+  { key: 'ultimos_30_vs_anteriores', label: 'Últimos 30d vs 30d antes',   tipo: 'fixo' },
+  { key: 'ultimos_7_vs_anteriores',  label: 'Últimos 7d vs 7d antes',     tipo: 'fixo' },
+  { key: 'ano_atual_vs_anterior',    label: 'Este ano vs ano passado',    tipo: 'fixo' },
 ];
 
-function computePreset(key) {
+function computePreset(key, mesEscolhido) {
   const hoje = new Date();
-  if (key === 'mes_atual_vs_anterior') {
-    const a_ini = startOfMonth(hoje), a_fim = hoje;
-    const mesAnt = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
-    const b_ini = mesAnt, b_fim = endOfMonth(mesAnt);
-    return { a_ini, a_fim, b_ini, b_fim, labelA: monthLabel(hoje), labelB: monthLabel(mesAnt) };
+  if (key === 'mes_especifico') {
+    // mesEscolhido = {mes, ano} — mês âncora escolhido pelo usuário
+    const m = (mesEscolhido?.mes ?? (hoje.getMonth() + 1)) - 1;
+    const y = mesEscolhido?.ano ?? hoje.getFullYear();
+    const inicio = new Date(y, m, 1);
+    const isMesAtualDoAno = (y === hoje.getFullYear() && m === hoje.getMonth());
+    const fim = isMesAtualDoAno ? hoje : new Date(y, m + 1, 0);
+    const antIni = new Date(y, m - 1, 1);
+    const antFim = new Date(y, m, 0);
+    return { a_ini: inicio, a_fim: fim, b_ini: antIni, b_fim: antFim,
+             labelA: `${MES_NOMES[m]} ${y}`, labelB: `${MES_NOMES[antIni.getMonth()]} ${antIni.getFullYear()}` };
   }
   if (key === 'ultimos_30_vs_anteriores') {
     return { a_ini: daysAgo(29), a_fim: hoje, b_ini: daysAgo(59), b_fim: daysAgo(30), labelA: 'Últimos 30 dias', labelB: '30 dias anteriores' };
@@ -78,7 +96,6 @@ function computePreset(key) {
   if (key === 'ultimos_7_vs_anteriores') {
     return { a_ini: daysAgo(6), a_fim: hoje, b_ini: daysAgo(13), b_fim: daysAgo(7), labelA: 'Últimos 7 dias', labelB: '7 dias anteriores' };
   }
-  // ano vs ano
   const anoIni = new Date(hoje.getFullYear(), 0, 1);
   const anoAntIni = new Date(hoje.getFullYear() - 1, 0, 1);
   const anoAntFim = new Date(hoje.getFullYear() - 1, hoje.getMonth(), hoje.getDate());
@@ -126,6 +143,17 @@ const S = `
 .cf-rp-chip.on{background:var(--brand-soft);border-color:var(--brand-line);color:var(--brand);}
 .cf-rp-date{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:7px 11px;font-family:var(--font-mono);font-size:12px;color:var(--text);}
 .cf-rp-date-l{font-size:9px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:3px;}
+.cf-rp-select{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:7px 11px;font-family:var(--font-ui);font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;outline:none;transition:border-color .15s;}
+.cf-rp-select:hover{border-color:var(--border-strong);}
+.cf-rp-select:focus{border-color:var(--brand-line);box-shadow:0 0 0 3px var(--brand-soft);}
+.cf-rp-search{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:6px 11px;flex:1;min-width:200px;max-width:320px;transition:border-color .15s,box-shadow .15s;}
+.cf-rp-search:focus-within{border-color:var(--brand-line);box-shadow:0 0 0 3px var(--brand-soft);}
+.cf-rp-search input{flex:1;min-width:0;background:none;border:none;outline:none;font-family:var(--font-ui);font-size:12.5px;color:var(--text);}
+.cf-rp-search input::placeholder{color:var(--text-muted);}
+.cf-rp-search .x{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0 2px;}
+.cf-rp-minval{display:flex;align-items:center;gap:7px;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:6px 11px;}
+.cf-rp-minval-l{font-size:10.5px;color:var(--text-muted);font-family:var(--font-mono);white-space:nowrap;}
+.cf-rp-minval input{width:78px;background:none;border:none;outline:none;font-family:var(--font-mono);font-size:12px;color:var(--text);text-align:right;}
 
 /* KPI comparativo (usado em Comparar) */
 .cf-cmp-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--gap);}
@@ -294,12 +322,14 @@ function LineChart({ serieA, serieB, labelA, labelB }) {
 
 /* ══════════ ABA · COMPARAR ══════════ */
 function TabComparar() {
-  const [preset, setPreset] = useState('mes_atual_vs_anterior');
+  const meses = useMemo(() => listarMesesRecentes(12), []);
+  const [preset, setPreset] = useState('mes_especifico');
+  const [mesEscolhido, setMesEscolhido] = useState(meses[0]); // mês atual por padrão
   const [dados, setDados] = useState(null);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState('');
 
-  const params = useMemo(() => computePreset(preset), [preset]);
+  const params = useMemo(() => computePreset(preset, mesEscolhido), [preset, mesEscolhido]);
 
   useEffect(() => {
     let cancel = false;
@@ -341,6 +371,16 @@ function TabComparar() {
         <div className="cf-rp-chips">
           {PRESETS.map(p => <button key={p.key} className={`cf-rp-chip${preset===p.key?' on':''}`} onClick={()=>setPreset(p.key)}>{p.label}</button>)}
         </div>
+        {preset === 'mes_especifico' && (
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <span style={{fontSize:11,color:'var(--text-muted)',fontFamily:'var(--font-mono)'}}>Mês:</span>
+            <select className="cf-rp-select"
+              value={`${mesEscolhido.ano}-${mesEscolhido.mes}`}
+              onChange={e => { const [ano,mes] = e.target.value.split('-').map(Number); setMesEscolhido(meses.find(m=>m.ano===ano&&m.mes===mes) || meses[0]); }}>
+              {meses.map(m => <option key={`${m.ano}-${m.mes}`} value={`${m.ano}-${m.mes}`}>{m.label}</option>)}
+            </select>
+          </div>
+        )}
         <div style={{marginLeft:'auto',display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
           <div className="cf-rp-date"><div className="cf-rp-date-l">Período A</div>{params.labelA}</div>
           <div style={{fontSize:11,color:'var(--text-muted)'}}>vs</div>
@@ -436,6 +476,8 @@ function TabAReceber() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
   const [filtro, setFiltro] = useState('todos');
+  const [busca, setBusca] = useState('');
+  const [valorMin, setValorMin] = useState('');
 
   useEffect(() => {
     let cancel = false;
@@ -473,11 +515,13 @@ function TabAReceber() {
   ];
 
   const filtrados = devedores.filter(d => {
-    if (filtro === 'todos') return true;
-    if (filtro === 'em_dia') return d.atraso_max === 0;
-    if (filtro === 'atrasado_30') return d.atraso_max > 0 && d.atraso_max <= 30;
-    if (filtro === 'atrasado_60') return d.atraso_max > 30 && d.atraso_max <= 60;
-    if (filtro === 'atrasado_60_mais') return d.atraso_max > 60;
+    if (filtro === 'em_dia' && d.atraso_max !== 0) return false;
+    if (filtro === 'atrasado_30' && !(d.atraso_max > 0 && d.atraso_max <= 30)) return false;
+    if (filtro === 'atrasado_60' && !(d.atraso_max > 30 && d.atraso_max <= 60)) return false;
+    if (filtro === 'atrasado_60_mais' && !(d.atraso_max > 60)) return false;
+    if (busca && !d.nome.toLowerCase().includes(busca.toLowerCase())) return false;
+    const min = parseFloat(valorMin) || 0;
+    if (min > 0 && d.saldo_total < min) return false;
     return true;
   });
 
@@ -511,6 +555,15 @@ function TabAReceber() {
       <div className="cf-rp-toolbar">
         <div className="cf-rp-chips">
           {CHIPS.map(c => <button key={c.k} className={`cf-rp-chip${filtro===c.k?' on':''}`} onClick={()=>setFiltro(c.k)}>{c.lbl} · {c.n}</button>)}
+        </div>
+        <div className="cf-rp-search">
+          <Ic d={ICONS.target} size={14}/>
+          <input placeholder="Buscar por nome…" value={busca} onChange={e => setBusca(e.target.value)}/>
+          {busca && <button className="x" onClick={()=>setBusca('')}>×</button>}
+        </div>
+        <div className="cf-rp-minval">
+          <span className="cf-rp-minval-l">Saldo ≥ R$</span>
+          <input type="number" min="0" step="10" placeholder="0" value={valorMin} onChange={e => setValorMin(e.target.value)}/>
         </div>
       </div>
 
@@ -559,45 +612,74 @@ function TabAReceber() {
 
 /* ══════════ ABA · PRODUTOS ══════════ */
 function TabProdutos() {
+  const meses = useMemo(() => listarMesesRecentes(12), []);
+  const [modo, setModo] = useState('dias'); // 'dias' | 'mes'
   const [dias, setDias] = useState('30');
+  const [mesEscolhido, setMesEscolhido] = useState(meses[0]);
   const [produtos, setProdutos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState('');
+
+  const [busca, setBusca] = useState('');
+  const [catFiltro, setCatFiltro] = useState('');
+  const [valorMin, setValorMin] = useState('');
 
   useEffect(() => {
     let cancel = false;
     (async () => {
       setLoading(true); setErro('');
-      try { const p = await api.get(`/relatorios/produtos-mais-vendidos?dias=${dias}`); if (!cancel) setProdutos(Array.isArray(p) ? p : []); }
-      catch (e) { if (!cancel) setErro(e.message || 'Erro'); }
+      try {
+        const q = modo === 'mes'
+          ? `?mes=${mesEscolhido.mes}&ano=${mesEscolhido.ano}`
+          : `?dias=${dias}`;
+        const p = await api.get(`/relatorios/produtos-mais-vendidos${q}`);
+        if (!cancel) setProdutos(Array.isArray(p) ? p : []);
+      } catch (e) { if (!cancel) setErro(e.message || 'Erro'); }
       finally { if (!cancel) setLoading(false); }
     })();
     return () => { cancel = true; };
-  }, [dias]);
+  }, [modo, dias, mesEscolhido]);
 
   const PERIODOS = [['7', '7 dias'], ['30', '30 dias'], ['90', '90 dias'], ['365', '1 ano']];
 
-  const totalUn = produtos.reduce((a, p) => a + (p.qtd_vendida||0), 0);
-  const totalRec = produtos.reduce((a, p) => a + (p.receita||0), 0);
-  const totalLucro = produtos.reduce((a, p) => a + (p.lucro||0), 0);
-  const porQtd = [...produtos].sort((a, b) => (b.qtd_vendida||0) - (a.qtd_vendida||0));
-  const porLucro = [...produtos].sort((a, b) => (b.lucro||0) - (a.lucro||0));
+  // aplica filtros locais em cima do que voltou do backend
+  const produtosFiltrados = useMemo(() => {
+    const min = parseFloat(valorMin) || 0;
+    const b = busca.trim().toLowerCase();
+    return produtos.filter(p => {
+      if (catFiltro && (p.categoria || 'Sem categoria') !== catFiltro) return false;
+      if (min > 0 && (p.receita || 0) < min) return false;
+      if (b && !((p.nome || '').toLowerCase().includes(b) || (p.sku || '').toLowerCase().includes(b))) return false;
+      return true;
+    });
+  }, [produtos, busca, catFiltro, valorMin]);
+
+  const categoriasDisponiveis = useMemo(() => {
+    const set = new Set(produtos.map(p => p.categoria || 'Sem categoria'));
+    return [...set].sort();
+  }, [produtos]);
+
+  const totalUn = produtosFiltrados.reduce((a, p) => a + (p.qtd_vendida||0), 0);
+  const totalRec = produtosFiltrados.reduce((a, p) => a + (p.receita||0), 0);
+  const totalLucro = produtosFiltrados.reduce((a, p) => a + (p.lucro||0), 0);
+  const porQtd = [...produtosFiltrados].sort((a, b) => (b.qtd_vendida||0) - (a.qtd_vendida||0));
+  const porLucro = [...produtosFiltrados].sort((a, b) => (b.lucro||0) - (a.lucro||0));
   const maxQtd = Math.max(...porQtd.map(p => p.qtd_vendida||0), 1);
   const maxLucro = Math.max(...porLucro.map(p => p.lucro||0), 1);
 
   // "Oportunidades" — margem alta (>=40%) mas venda abaixo da mediana em quantidade
   const medQtd = (() => {
-    if (produtos.length === 0) return 0;
-    const arr = [...produtos].map(p => p.qtd_vendida||0).sort((a,b)=>a-b);
+    if (produtosFiltrados.length === 0) return 0;
+    const arr = [...produtosFiltrados].map(p => p.qtd_vendida||0).sort((a,b)=>a-b);
     return arr[Math.floor(arr.length/2)];
   })();
-  const oportunidades = produtos
+  const oportunidades = produtosFiltrados
     .filter(p => (p.margem||0) >= 40 && (p.qtd_vendida||0) < medQtd)
     .sort((a,b) => (b.margem||0) - (a.margem||0));
 
   const margemCls = (m) => m >= 40 ? 'high' : m >= 20 ? 'mid' : 'low';
   const KPIS = [
-    { tone: 't-brand', lbl: 'Produtos vendidos',  val: produtos.length,        sub: 'com saída no período' },
+    { tone: 't-brand', lbl: 'Produtos vendidos',  val: produtosFiltrados.length, sub: 'com saída no período' },
     { tone: 't-info',  lbl: 'Unidades vendidas',  val: fmtNum(totalUn),        sub: 'total de itens' },
     { tone: 't-ok',    lbl: 'Receita gerada',     val: fmtBRL(totalRec, 0),    sub: `lucro ${fmtBRL(totalLucro, 0)}` },
     { tone: 't-warn',  lbl: 'Mais vendido',       val: porQtd[0]?.qtd_vendida || 0, sub: porQtd[0]?.nome || '—' },
@@ -607,7 +689,34 @@ function TabProdutos() {
     <>
       <div className="cf-rp-toolbar">
         <div className="cf-rp-chips">
-          {PERIODOS.map(([v, l]) => <button key={v} className={`cf-rp-chip${dias===v?' on':''}`} onClick={()=>setDias(v)}>{l}</button>)}
+          <button className={`cf-rp-chip${modo==='dias'?' on':''}`} onClick={()=>setModo('dias')}>Últimos dias</button>
+          <button className={`cf-rp-chip${modo==='mes'?' on':''}`} onClick={()=>setModo('mes')}>Mês específico</button>
+        </div>
+        {modo === 'dias' ? (
+          <div className="cf-rp-chips">
+            {PERIODOS.map(([v, l]) => <button key={v} className={`cf-rp-chip${dias===v?' on':''}`} onClick={()=>setDias(v)}>{l}</button>)}
+          </div>
+        ) : (
+          <select className="cf-rp-select"
+            value={`${mesEscolhido.ano}-${mesEscolhido.mes}`}
+            onChange={e => { const [ano,mes] = e.target.value.split('-').map(Number); setMesEscolhido(meses.find(m=>m.ano===ano&&m.mes===mes) || meses[0]); }}>
+            {meses.map(m => <option key={`${m.ano}-${m.mes}`} value={`${m.ano}-${m.mes}`}>{m.label}</option>)}
+          </select>
+        )}
+        <div className="cf-rp-search">
+          <Ic d={ICONS.target} size={14}/>
+          <input placeholder="Buscar produto ou SKU…" value={busca} onChange={e => setBusca(e.target.value)}/>
+          {busca && <button className="x" onClick={()=>setBusca('')}>×</button>}
+        </div>
+        {categoriasDisponiveis.length > 0 && (
+          <select className="cf-rp-select" value={catFiltro} onChange={e => setCatFiltro(e.target.value)}>
+            <option value="">Todas categorias</option>
+            {categoriasDisponiveis.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
+        <div className="cf-rp-minval">
+          <span className="cf-rp-minval-l">Receita ≥ R$</span>
+          <input type="number" min="0" step="50" placeholder="0" value={valorMin} onChange={e => setValorMin(e.target.value)}/>
         </div>
       </div>
 

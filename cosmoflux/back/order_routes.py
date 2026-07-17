@@ -739,13 +739,23 @@ def estoque_snapshot(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)
         "status":       "esgotado" if p.estoque_atual==0 else "critico" if p.estoque_atual<=p.estoque_minimo else "ok",
     } for p in produtos]
 @order_router.get("/relatorios/produtos-mais-vendidos")
-def produtos_mais_vendidos(dias: int = Query(30), ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+def produtos_mais_vendidos(
+    dias: int = Query(30),
+    mes:  Optional[int] = Query(None, ge=1, le=12),
+    ano:  Optional[int] = Query(None),
+    ctx: dict = Depends(get_ctx), db: Session = Depends(get_db),
+):
+    """Se `mes` e `ano` vierem, filtra por aquele mês exato; senão usa `dias`
+    a partir de hoje (comportamento antigo, para os presets 7/30/90/365)."""
     from datetime import timedelta
-    corte = datetime.utcnow() - timedelta(days=dias)
-    pedidos = tf(db.query(Pedido), Pedido, ctx).filter(
-        Pedido.status != "cancelado",
-        Pedido.criado_em >= corte
-    ).all()
+    q = tf(db.query(Pedido), Pedido, ctx).filter(Pedido.status != "cancelado")
+    if mes and ano:
+        q = q.filter(func.extract('year', Pedido.criado_em) == ano,
+                     func.extract('month', Pedido.criado_em) == mes)
+    else:
+        corte = datetime.utcnow() - timedelta(days=dias)
+        q = q.filter(Pedido.criado_em >= corte)
+    pedidos = q.all()
 
     contagem = {}
     for p in pedidos:
@@ -957,3 +967,50 @@ def relatorio_a_receber(ctx: dict = Depends(get_ctx), db: Session = Depends(get_
         "n_devedores": len(devedores),
         "devedores": devedores,
     }
+
+
+@order_router.get("/relatorios/impacto-retroativos")
+def impacto_retroativos(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    """Quantifica quanto do lucro mensal vem de pedidos RETROATIVOS (sem itens,
+    custo=0, margem 100%) vs pedidos NORMAIS (com itens e custo real).
+    Endpoint de diagnóstico para investigar 'lucros excessivos' em meses históricos."""
+    ano = datetime.utcnow().year
+    resultado = []
+    for mes in range(1, 13):
+        pedidos = tf(db.query(Pedido), Pedido, ctx).filter(
+            func.extract('year', Pedido.criado_em) == ano,
+            func.extract('month', Pedido.criado_em) == mes,
+            Pedido.status != "cancelado",
+        ).all()
+
+        # separa retroativos (marcados por observação) de normais
+        retro = [p for p in pedidos if p.observacao and p.observacao.startswith("[Retroativo]")]
+        norm  = [p for p in pedidos if not (p.observacao and p.observacao.startswith("[Retroativo]"))]
+
+        def bloco(lista):
+            receita = sum(p.total for p in lista)
+            custo   = sum(sum(custo_item(it, db) for it in p.itens) for p in lista)
+            lucro   = receita - custo
+            return {
+                "n_pedidos": len(lista),
+                "receita":   round(receita, 2),
+                "custo":     round(custo, 2),
+                "lucro":     round(lucro, 2),
+                "margem":    round(lucro/receita*100, 1) if receita else 0,
+            }
+
+        b_retro = bloco(retro)
+        b_norm  = bloco(norm)
+        b_tot = {
+            "n_pedidos": b_retro["n_pedidos"] + b_norm["n_pedidos"],
+            "receita":   round(b_retro["receita"] + b_norm["receita"], 2),
+            "custo":     round(b_retro["custo"]   + b_norm["custo"],   2),
+            "lucro":     round(b_retro["lucro"]   + b_norm["lucro"],   2),
+        }
+        b_tot["margem"] = round(b_tot["lucro"]/b_tot["receita"]*100, 1) if b_tot["receita"] else 0
+        # % do lucro que vem de retroativos (custo zero)
+        b_tot["lucro_vindo_de_retroativos_pct"] = round(b_retro["lucro"]/b_tot["lucro"]*100, 1) if b_tot["lucro"] else 0
+
+        resultado.append({"mes": mes, "retroativos": b_retro, "normais": b_norm, "total": b_tot})
+
+    return resultado
