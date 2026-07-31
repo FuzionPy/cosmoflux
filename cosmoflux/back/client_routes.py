@@ -202,7 +202,10 @@ def listar_clientes(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db))
         for v in vendas_ativas:
             for p in v.parcelas:
                 if not p.pago:
-                    total_em_aberto += p.valor
+                    # saldo real = valor da parcela - o que já foi abatido nela
+                    # (sem isso, abatimentos parciais não reduzem o total do cliente)
+                    saldo = max(round(p.valor - (p.valor_pago or 0), 2), 0)
+                    total_em_aberto += saldo
                     if p.vencimento < hoje:            parcelas_vencidas += 1
                     elif (p.vencimento - hoje).days <= 5: parcelas_proximas += 1
         total_recebido = max(total_gasto - total_em_aberto, 0)
