@@ -87,7 +87,7 @@ def dashboard_kpis(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
 
     receita_mes = sum(p.total for p in q_mes)
     lucro_mes   = sum(
-        sum((it.preco_unitario - (it.produto_rel.preco_custo or 0)) * it.quantidade for it in p.itens)
+        sum((it.preco_unitario * it.quantidade) - custo_item(it, db) for it in p.itens)
         for p in q_mes
     )
     pedidos_hoje = tf(db.query(Pedido), Pedido, ctx).filter(
@@ -583,7 +583,7 @@ def resumo_geral(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
 
     todos_pedidos = tf(db.query(Pedido), Pedido, ctx).filter(Pedido.status != "cancelado").all()
     receita_total = sum(p.total for p in todos_pedidos)
-    custo_total   = sum(sum((it.produto_rel.preco_custo or 0)*it.quantidade for it in p.itens) for p in todos_pedidos)
+    custo_total   = sum(sum(custo_item(it, db) for it in p.itens) for p in todos_pedidos)
     lucro_total   = receita_total - custo_total
 
     # valor em estoque
@@ -680,7 +680,7 @@ def vendas_periodo(
     for p in pedidos:
         try:
             lucro = round(sum(
-                (it.preco_unitario - (it.produto_rel.preco_custo or 0)) * it.quantidade
+                (it.preco_unitario * it.quantidade) - custo_item(it, db)
                 for it in p.itens if it.produto_rel
             ), 2)
         except Exception:
@@ -769,10 +769,11 @@ def produtos_mais_vendidos(
                     "id": pid, "nome": nome, "categoria": categoria,
                     "qtd_vendida": 0, "receita": 0.0, "custo": 0.0, "lucro": 0.0,
                 }
-            preco_custo = (it.produto_rel.preco_custo or 0) if it.produto_rel else 0
+            # usa custo médio ponderado das entradas reais (mesmo cálculo dos outros
+            # endpoints de lucro) — sem isso a margem aqui divergia da tela Lucros
             contagem[pid]["qtd_vendida"] += it.quantidade
             contagem[pid]["receita"]     += round(it.quantidade * it.preco_unitario, 2)
-            contagem[pid]["custo"]       += round(it.quantidade * preco_custo, 2)
+            contagem[pid]["custo"]       += round(custo_item(it, db), 2)
 
     for r in contagem.values():
         r["lucro"]  = round(r["receita"] - r["custo"], 2)
@@ -812,8 +813,7 @@ def comparar_periodos(
         prod_nome = {}
         for p in pedidos:
             for it in p.itens:
-                cu = (it.produto_rel.preco_custo or 0) if it.produto_rel else 0
-                custo += it.quantidade * cu
+                custo += custo_item(it, db)
                 prod_qtd[it.produto_id]    = prod_qtd.get(it.produto_id, 0) + it.quantidade
                 prod_receita[it.produto_id] = prod_receita.get(it.produto_id, 0) + it.quantidade * it.preco_unitario
                 if it.produto_id not in prod_nome:
