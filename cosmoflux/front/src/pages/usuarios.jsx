@@ -1,453 +1,512 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 
-const BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
-const tok = () => localStorage.getItem('token') || sessionStorage.getItem('token');
-const isAdmin = () => (localStorage.getItem('admin') || sessionStorage.getItem('admin')) === 'true';
-const h = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${tok()}` });
+/* ── API ──────────────────────────────────────────────────────────────── */
+// auth_router é registrado com prefix '/auth' (SEM '/api') no backend — mesmo padrão de Configurações
+const AUTH_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const tok  = () => localStorage.getItem('token') || sessionStorage.getItem('token');
+const h    = () => ({ 'Content-Type':'application/json', Authorization:`Bearer ${tok()}` });
+const api  = {
+  get:  url    => fetch(AUTH_BASE+url,{headers:h()}).then(async r=>{const d=await r.json().catch(()=>([]));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+  post: (u,b)  => fetch(AUTH_BASE+u,{method:'POST',headers:h(),body:JSON.stringify(b||{})}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+  put:  (u,b)  => fetch(AUTH_BASE+u,{method:'PUT',headers:h(),body:JSON.stringify(b||{})}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+  del:  url    => fetch(AUTH_BASE+url,{method:'DELETE',headers:h()}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+};
+const getDocTheme = () => { try{return document.documentElement.getAttribute('data-theme')||'dark';}catch{return 'dark';} };
 
-const api = {
-  get:  url     => fetch(BASE+url,{headers:h()}).then(r=>r.json()),
-  post: (url,b) => fetch(BASE+url,{method:'POST',  headers:h(),body:JSON.stringify(b)}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
-  put:  (url,b) => fetch(BASE+url,{method:'PUT',   headers:h(),body:JSON.stringify(b)}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
-  del:  url     => fetch(BASE+url,{method:'DELETE',headers:h()}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+/* ── helpers ──────────────────────────────────────────────────────────── */
+const inicial = (n) => (n || '?').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase();
+const avatarColor = (n) => { let hh = 0; for (let i = 0; i < (n || '').length; i++) hh = (hh * 31 + n.charCodeAt(i)) % 360; return `hsl(${hh}, 52%, 52%)`; };
+const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+const FORM_EMPTY = { nome:'', email:'', senha:'', tenant_mode:'existente', tenant_id:'', tenant_nome:'', admin:false };
+
+/* ── ícones ───────────────────────────────────────────────────────────── */
+const Ic = ({d,size=16,sw=1.8}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" style={{display:'block',flexShrink:0}}>{d}</svg>
+);
+const ICONS = {
+  users:  <><circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5.5a3 3 0 0 1 0 5.5"/><path d="M21 20a6 6 0 0 0-4-5.6"/></>,
+  shield: <><path d="M12 2 3 6v6c0 5 3.5 9.7 9 10 5.5-.3 9-5 9-10V6l-9-4Z"/><path d="m9 12 2 2 4-4"/></>,
+  plus:   <><path d="M12 5v14"/><path d="M5 12h14"/></>,
+  x:      <><path d="M18 6L6 18M6 6l12 12"/></>,
+  edit:   <><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/></>,
+  trash:  <><path d="M3 6h18"/><path d="M19 6 18 20a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></>,
+  eye:    <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12Z"/><circle cx="12" cy="12" r="3"/></>,
+  eyeOff: <><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a19 19 0 0 1 4.06-5.94"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a19 19 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></>,
+  search: <><circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/></>,
+  check:  <path d="M20 6 9 17l-5-5"/>,
+  power:  <><path d="M18.36 6.64a9 9 0 1 1-12.72 0"/><path d="M12 2v10"/></>,
+  mail:   <><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></>,
+  build:  <><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h1M9 13h1M9 17h1M14 9h1M14 13h1M14 17h1"/></>,
 };
 
+/* ── CSS ──────────────────────────────────────────────────────────────── */
 const S = `
-@import url('https://fonts.googleapis.com/css2?family=Plus Jakarta Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
-*,*::before,*::after{box-sizing:border-box;}
-.pg{padding:24px;display:flex;flex-direction:column;gap:20px;font-family:'Plus Jakarta Sans',sans-serif;color:#e8eaed;animation:pgIn .3s ease both;}
-@keyframes pgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.pg-hdr{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;}
-.pg-title{font-size:22px;font-weight:800;}
-.pg-sub{font-size:12px;color:rgba(232,234,237,.35);font-family:'JetBrains Mono',monospace;margin-top:4px;}
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+.cf-usr-root *,.cf-usr-root *::before,.cf-usr-root *::after{box-sizing:border-box;}
+.cf-usr-root{--font-ui:'Plus Jakarta Sans',system-ui,sans-serif;--font-mono:'JetBrains Mono',monospace;--brand:#9166d8;--radius:15px;--radius-sm:10px;--gap:16px;--kpi-pad:18px;--ok:#21a06d;--warn:#e08a2a;--crit:#e2514f;font-family:var(--font-ui);padding:24px;animation:cfuIn .3s ease both;}
+@keyframes cfuIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.cf-usr-root[data-theme="dark"],.cf-usr-root:not([data-theme]){--bg:#0a0b0f;--surface:#111319;--surface-2:#171a21;--elevated:#1a1e26;--border:rgba(255,255,255,.075);--border-strong:rgba(255,255,255,.15);--track:rgba(255,255,255,.08);--text:#edeef3;--text-dim:rgba(237,238,243,.6);--text-muted:rgba(237,238,243,.34);--shadow:0 8px 28px rgba(0,0,0,.32);}
+.cf-usr-root[data-theme="light"]{--bg:#f3f1f5;--surface:#fff;--surface-2:#f8f6fa;--elevated:#fff;--border:rgba(28,20,36,.1);--border-strong:rgba(28,20,36,.2);--track:rgba(28,20,36,.08);--text:#1b1722;--text-dim:rgba(27,23,34,.62);--text-muted:rgba(27,23,34,.42);--shadow:0 10px 30px rgba(28,20,36,.07);}
+.cf-usr-root{--brand-soft:color-mix(in oklab,var(--brand) 14%,transparent);--brand-line:color-mix(in oklab,var(--brand) 32%,transparent);color:var(--text);}
+.cf-usr-portal{--font-ui:'Plus Jakarta Sans',system-ui,sans-serif;--font-mono:'JetBrains Mono',monospace;--brand:#9166d8;--radius:15px;--radius-sm:10px;--ok:#21a06d;--warn:#e08a2a;--crit:#e2514f;font-family:var(--font-ui);}
+.cf-usr-portal[data-theme="dark"],.cf-usr-portal:not([data-theme]){--bg:#0a0b0f;--surface:#111319;--surface-2:#171a21;--elevated:#1a1e26;--border:rgba(255,255,255,.075);--border-strong:rgba(255,255,255,.15);--track:rgba(255,255,255,.08);--text:#edeef3;--text-dim:rgba(237,238,243,.6);--text-muted:rgba(237,238,243,.34);--shadow:0 8px 28px rgba(0,0,0,.32);}
+.cf-usr-portal[data-theme="light"]{--bg:#f3f1f5;--surface:#fff;--surface-2:#f8f6fa;--elevated:#fff;--border:rgba(28,20,36,.1);--border-strong:rgba(28,20,36,.2);--track:rgba(28,20,36,.08);--text:#1b1722;--text-dim:rgba(27,23,34,.62);--text-muted:rgba(27,23,34,.42);--shadow:0 10px 30px rgba(28,20,36,.07);}
+.cf-usr-portal{--brand-soft:color-mix(in oklab,var(--brand) 14%,transparent);--brand-line:color-mix(in oklab,var(--brand) 32%,transparent);color:var(--text);}
+.cf-usr-portal *,.cf-usr-portal *::before,.cf-usr-portal *::after{box-sizing:border-box;}
 
-.denied{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;text-align:center;gap:16px;}
-.denied-icon{font-size:48px;opacity:.3;}
-.denied-title{font-size:18px;font-weight:800;color:rgba(232,234,237,.5);}
-.denied-sub{font-size:13px;color:rgba(232,234,237,.25);font-family:'JetBrains Mono',monospace;}
+.cf-usr{display:flex;flex-direction:column;gap:var(--gap);max-width:1200px;margin:0 auto;}
 
-.stats{display:flex;gap:12px;flex-wrap:wrap;}
-.stat{background:#0e1013;border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 16px;display:flex;align-items:center;gap:10px;flex:1;min-width:130px;}
-.st-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
-.st-val{font-size:18px;font-weight:800;font-family:'JetBrains Mono',monospace;}
-.st-lbl{font-size:11px;color:rgba(232,234,237,.35);margin-top:1px;}
+.cf-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 15px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-family:var(--font-ui);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.cf-btn:hover:not(:disabled){border-color:var(--border-strong);}
+.cf-btn:disabled{opacity:.5;cursor:not-allowed;}
+.cf-btn-primary{background:var(--brand);border-color:var(--brand);color:#fff;}
+.cf-btn-primary:hover:not(:disabled){filter:brightness(1.08);}
+.cf-btn-ghost{background:transparent;}
+.cf-btn-danger{background:color-mix(in oklab,var(--crit) 10%,transparent);color:var(--crit);border-color:color-mix(in oklab,var(--crit) 28%,transparent);}
+.cf-btn.sm{padding:7px 12px;font-size:12px;}
+.cf-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700;font-family:var(--font-mono);white-space:nowrap;}
+.cf-pill.ok{background:color-mix(in oklab,var(--ok) 14%,transparent);color:var(--ok);}
+.cf-pill.crit{background:color-mix(in oklab,var(--crit) 14%,transparent);color:var(--crit);}
+.cf-pill.brand{background:var(--brand-soft);color:var(--brand);}
+.cf-pill.muted{background:var(--surface-2);color:var(--text-muted);}
+.cf-mclose{width:30px;height:30px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.cf-mclose:hover{color:var(--crit);border-color:color-mix(in oklab,var(--crit) 35%,transparent);}
 
-.filters{display:flex;gap:10px;flex-wrap:wrap;}
-.srch{display:flex;align-items:center;gap:8px;background:#0e1013;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px 14px;flex:1;min-width:200px;transition:border-color .2s;}
-.srch:focus-within{border-color:rgba(0,212,170,.4);}
-.srch input{background:none;border:none;outline:none;font-size:13px;color:#e8eaed;font-family:'Plus Jakarta Sans',sans-serif;width:100%;}
-.srch input::placeholder{color:rgba(232,234,237,.25);}
+.cf-usr-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--gap);}
+.cf-usr-kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:var(--kpi-pad);position:relative;overflow:hidden;display:flex;flex-direction:column;gap:10px;}
+.cf-usr-kpi::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tone,var(--brand));}
+.cf-usr-kpi.t-brand{--tone:var(--brand);}
+.cf-usr-kpi.t-ok{--tone:var(--ok);}
+.cf-usr-kpi.t-warn{--tone:var(--warn);}
+.cf-usr-kpi.t-info{--tone:#3b82f6;}
+.cf-usr-kpi-top{display:flex;align-items:center;justify-content:space-between;}
+.cf-usr-kpi-ic{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:color-mix(in oklab,var(--tone,var(--brand)) 14%,transparent);color:var(--tone,var(--brand));}
+.cf-usr-kpi-val{font-size:22px;font-weight:800;font-family:var(--font-mono);letter-spacing:-.02em;line-height:1;}
+.cf-usr-kpi-lbl{font-size:11.5px;font-weight:600;color:var(--text-dim);}
+.cf-usr-kpi-sub{font-size:10.5px;font-family:var(--font-mono);color:var(--text-muted);margin-top:2px;}
 
-.card{background:#0e1013;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;}
-.tbl-wrap{overflow:auto;}
-.tbl{width:100%;border-collapse:collapse;min-width:520px;}
-.tbl th{text-align:left;padding:11px 16px;font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:rgba(232,234,237,.28);font-family:'JetBrains Mono',monospace;border-bottom:1px solid rgba(255,255,255,.06);}
-.tbl td{padding:13px 16px;font-size:13px;color:rgba(232,234,237,.6);border-bottom:1px solid rgba(255,255,255,.03);}
-.tbl tr:last-child td{border-bottom:none;}
-.tbl tr:hover td{background:rgba(255,255,255,.02);}
-.tbl td:first-child{color:#e8eaed;font-weight:600;}
-.tbl td.mono{font-family:'JetBrains Mono',monospace;font-size:12px;}
+.cf-usr-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.cf-usr-srch{display:flex;align-items:center;gap:9px;flex:1;min-width:230px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 13px;color:var(--text-muted);transition:border-color .2s,box-shadow .2s;}
+.cf-usr-srch:focus-within{border-color:var(--brand-line);box-shadow:0 0 0 3px var(--brand-soft);}
+.cf-usr-srch input{flex:1;min-width:0;background:none;border:none;outline:none;font-family:var(--font-ui);font-size:13px;color:var(--text);}
+.cf-usr-srch input::placeholder{color:var(--text-muted);}
+.cf-usr-srch .x{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:17px;}
+.cf-usr-chips{display:flex;gap:6px;flex-wrap:wrap;}
+.cf-usr-chip{display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:9px;border:1px solid var(--border);background:var(--surface);color:var(--text-dim);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-ui);}
+.cf-usr-chip.on{background:var(--brand-soft);border-color:var(--brand-line);color:var(--brand);}
+.cf-usr-chip-n{font-family:var(--font-mono);font-size:10px;opacity:.7;}
 
-.badge{display:inline-flex;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:.05em;}
-.b-green{background:rgba(0,212,170,.12);color:#00d4aa;}
-.b-purple{background:rgba(168,85,247,.12);color:#a855f7;}
-.b-gray{background:rgba(255,255,255,.07);color:rgba(232,234,237,.4);}
-.b-red{background:rgba(255,71,87,.12);color:#ff4757;}
+.cf-usr-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;background:var(--av,var(--brand));flex-shrink:0;position:relative;}
+.cf-usr-avatar.inactive{opacity:.4;}
+.cf-usr-avatar-star{position:absolute;bottom:-2px;right:-2px;width:16px;height:16px;background:var(--brand);border:2px solid var(--surface);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;}
 
-.act-btns{display:flex;gap:6px;}
-.ib{width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;background:rgba(255,255,255,.05);color:rgba(232,234,237,.65);}
-.ib:hover{background:rgba(255,255,255,.1);color:#e8eaed;border-color:rgba(255,255,255,.15);}
-.ib.danger{color:#ff4757;background:rgba(255,71,87,.08);border-color:rgba(255,71,87,.2);}
-.ib.danger:hover{background:rgba(255,71,87,.2);border-color:rgba(255,71,87,.35);}
-.ib.warning{color:#ffd32a;background:rgba(255,211,42,.08);border-color:rgba(255,211,42,.2);}
-.ib.warning:hover{background:rgba(255,211,42,.2);border-color:rgba(255,211,42,.35);}
+.cf-usr-table{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
+.cf-usr-thead,.cf-usr-row{display:grid;grid-template-columns:2fr 1.4fr 1fr 100px 100px 130px;gap:12px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--border);}
+.cf-usr-thead{background:var(--surface-2);}
+.cf-usr-th{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
+.cf-usr-th.r{text-align:right;justify-self:end;}
+.cf-usr-row:last-child{border-bottom:none;}
+.cf-usr-row.inactive{opacity:.6;background:color-mix(in oklab,var(--text) 2%,transparent);}
+.cf-usr-r-user{display:flex;align-items:center;gap:11px;min-width:0;}
+.cf-usr-r-info{min-width:0;flex:1;}
+.cf-usr-r-nm{font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cf-usr-r-me{font-size:9px;font-family:var(--font-mono);color:var(--brand);background:var(--brand-soft);padding:2px 6px;border-radius:5px;letter-spacing:.06em;text-transform:uppercase;}
+.cf-usr-r-email{font-size:11px;font-family:var(--font-mono);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cf-usr-r-tenant{font-size:12px;color:var(--text-dim);font-family:var(--font-mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cf-usr-r-actions{display:flex;gap:5px;justify-content:flex-end;}
+.cf-usr-ic-btn{width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-dim);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.cf-usr-ic-btn:hover:not(:disabled){border-color:var(--border-strong);color:var(--text);}
+.cf-usr-ic-btn:disabled{opacity:.35;cursor:not-allowed;}
+.cf-usr-ic-btn.danger{color:var(--crit);border-color:color-mix(in oklab,var(--crit) 25%,transparent);}
+.cf-usr-ic-btn.warn{color:var(--warn);}
+.cf-usr-ic-btn.ok{color:var(--ok);}
+.cf-usr-empty{padding:60px 20px;text-align:center;color:var(--text-muted);display:flex;flex-direction:column;align-items:center;gap:10px;}
+.cf-usr-empty-ic{width:44px;height:44px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;color:var(--text-muted);}
+@media(max-width:900px){.cf-usr-thead,.cf-usr-row{grid-template-columns:2fr 130px;}.cf-usr-th:nth-child(2),.cf-usr-th:nth-child(3),.cf-usr-th:nth-child(4),.cf-usr-th:nth-child(5),.cf-usr-row>:nth-child(2),.cf-usr-row>:nth-child(3),.cf-usr-row>:nth-child(4),.cf-usr-row>:nth-child(5){display:none;}}
 
-.empty{padding:50px;text-align:center;color:rgba(232,234,237,.25);font-size:12px;font-family:'JetBrains Mono',monospace;}
-.skel{background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:6px;}
-@keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+/* modal */
+.cf-usr-mback{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);z-index:210;display:flex;align-items:center;justify-content:center;padding:20px;animation:cfuFade .2s ease both;}
+@keyframes cfuFade{from{opacity:0}to{opacity:1}}
+.cf-usr-modal{background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);width:100%;max-width:480px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.45);}
+.cf-usr-mhd{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.cf-usr-mtitle{font-size:15px;font-weight:800;}
+.cf-usr-msub{font-size:11px;font-family:var(--font-mono);color:var(--text-muted);margin-top:2px;}
+.cf-usr-mbody{padding:18px 22px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;}
+.cf-usr-mfoot{padding:13px 22px;border-top:1px solid var(--border);display:flex;gap:9px;flex-shrink:0;}
+.cf-usr-err{font-size:12px;color:var(--crit);background:color-mix(in oklab,var(--crit) 10%,transparent);border:1px solid color-mix(in oklab,var(--crit) 25%,transparent);border-radius:8px;padding:9px 13px;}
+.cf-usr-field{display:flex;flex-direction:column;gap:5px;}
+.cf-usr-label{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);font-family:var(--font-mono);}
+.cf-usr-input,.cf-usr-select{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 13px;font-size:13px;color:var(--text);font-family:var(--font-ui);outline:none;width:100%;transition:border-color .18s;}
+.cf-usr-input:focus,.cf-usr-select:focus{border-color:var(--brand-line);}
+.cf-usr-input.err{border-color:color-mix(in oklab,var(--crit) 45%,transparent);}
+.cf-usr-input-wrap{position:relative;}
+.cf-usr-input-wrap .cf-usr-toggle{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px;display:flex;}
+.cf-usr-hint{font-size:10.5px;color:var(--text-muted);font-family:var(--font-mono);}
+.cf-usr-tabs{display:flex;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:3px;gap:2px;}
+.cf-usr-tabs button{flex:1;padding:8px;border-radius:7px;border:none;background:none;cursor:pointer;font-family:var(--font-ui);font-size:12px;font-weight:600;color:var(--text-muted);}
+.cf-usr-tabs button.on{background:var(--brand-soft);color:var(--brand);}
+.cf-usr-check-row{display:flex;align-items:center;gap:11px;padding:11px 13px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;user-select:none;}
+.cf-usr-check-row:hover{border-color:var(--border-strong);}
+.cf-usr-check-row.on{background:var(--brand-soft);border-color:var(--brand-line);}
+.cf-usr-check-box{width:20px;height:20px;border-radius:6px;border:2px solid var(--border-strong);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;transition:all .15s;}
+.cf-usr-check-row.on .cf-usr-check-box{background:var(--brand);border-color:var(--brand);}
+.cf-usr-check-info{flex:1;min-width:0;}
+.cf-usr-check-t{font-size:13px;font-weight:700;}
+.cf-usr-check-s{font-size:11px;color:var(--text-muted);margin-top:2px;}
+.cf-usr-confirm{background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);width:100%;max-width:400px;padding:22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 32px 80px rgba(0,0,0,.45);}
+.cf-usr-confirm-t{font-size:15px;font-weight:800;}
+.cf-usr-confirm-x{font-size:13px;color:var(--text-dim);line-height:1.5;}
+.cf-usr-confirm-acts{display:flex;gap:9px;}
+.cf-usr-confirm-acts .cf-btn{flex:1;}
 
-.mbg{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;animation:pgIn .2s ease both;}
-.modal{background:#0e1013;border:1px solid rgba(255,255,255,.1);border-radius:16px;width:100%;max-width:460px;overflow:hidden;animation:mIn .3s cubic-bezier(.22,1,.36,1) both;}
-@keyframes mIn{from{opacity:0;transform:scale(.96) translateY(14px)}to{opacity:1;transform:none}}
-.mhd{padding:20px 24px 16px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:flex-start;justify-content:space-between;}
-.mtitle{font-size:16px;font-weight:800;color:#e8eaed;}
-.msub{font-size:11px;color:rgba(232,234,237,.3);font-family:'JetBrains Mono',monospace;margin-top:3px;}
-.mclose{width:32px;height:32px;border-radius:8px;border:none;background:rgba(255,255,255,.05);color:rgba(232,234,237,.5);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0;}
-.mclose:hover{background:rgba(255,71,87,.15);color:#ff4757;}
-.mbody{padding:20px 24px;display:flex;flex-direction:column;gap:14px;}
-.mfoot{padding:14px 24px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:10px;justify-content:flex-end;}
-.ff{display:flex;flex-direction:column;gap:5px;}
-.fr2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-.fl{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(232,234,237,.35);font-family:'JetBrains Mono',monospace;}
-.fi{background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;font-size:13px;color:#e8eaed;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:border-color .2s,box-shadow .2s;width:100%;}
-.fi::placeholder{color:rgba(232,234,237,.2);}
-.fi:focus{border-color:rgba(0,212,170,.4);box-shadow:0 0 0 3px rgba(0,212,170,.08);}
-.ferr{background:rgba(255,71,87,.1);border:1px solid rgba(255,71,87,.3);border-radius:8px;padding:10px 14px;font-size:12px;color:#ff4757;font-family:'JetBrains Mono',monospace;}
-.fsuc{background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.3);border-radius:8px;padding:10px 14px;font-size:12px;color:#00d4aa;font-family:'JetBrains Mono',monospace;}
-.ftoggle{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:8px;cursor:pointer;transition:border-color .2s;}
-.ftoggle:hover{border-color:rgba(255,255,255,.15);}
-.toggle-lbl{flex:1;font-size:13px;color:#e8eaed;}
-.toggle-sub{font-size:11px;color:rgba(232,234,237,.3);font-family:'JetBrains Mono',monospace;margin-top:2px;}
-.toggle-sw{width:36px;height:20px;border-radius:10px;background:rgba(255,255,255,.08);position:relative;transition:background .2s;flex-shrink:0;}
-.toggle-sw.on{background:#00d4aa;}
-.toggle-knob{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s;}
-.toggle-sw.on .toggle-knob{transform:translateX(16px);}
+.cf-toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--elevated);border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:12px 18px;display:flex;align-items:center;gap:10px;font-size:13px;z-index:300;box-shadow:var(--shadow);animation:cfuFade .3s ease both;white-space:nowrap;}
+.cf-toast-ic{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:color-mix(in oklab,var(--ok) 14%,transparent);color:var(--ok);flex-shrink:0;}
+.cf-toast-ic.err{background:color-mix(in oklab,var(--crit) 14%,transparent);color:var(--crit);}
 
-.confirm{background:#0e1013;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:24px;max-width:360px;width:100%;}
-.ct{font-size:16px;font-weight:700;color:#e8eaed;margin-bottom:8px;}
-.cx{font-size:13px;color:rgba(232,234,237,.5);line-height:1.6;margin-bottom:20px;}
-.ca{display:flex;gap:10px;justify-content:flex-end;}
+.cf-skel{background:linear-gradient(90deg,var(--track) 25%,var(--surface-2) 50%,var(--track) 75%);background-size:200% 100%;animation:cfuSh 1.5s infinite;border-radius:8px;}
+@keyframes cfuSh{from{background-position:200% 0}to{background-position:-200% 0}}
 
-.btn{display:flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;border:none;font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;}
-.btn-primary{background:#00d4aa;color:#000;}.btn-primary:hover{background:#00efc0;transform:translateY(-1px);}
-.btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none;}
-.btn-ghost{background:rgba(255,255,255,.05);color:rgba(232,234,237,.6);border:1px solid rgba(255,255,255,.08);}
-.btn-ghost:hover{background:rgba(255,255,255,.09);color:#e8eaed;}
-.btn-danger{background:rgba(255,71,87,.12);color:#ff4757;border:1px solid rgba(255,71,87,.2);}
-.btn-danger:hover{background:rgba(255,71,87,.2);}
+.cf-usr-403{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:60px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:14px;}
+.cf-usr-403-ic{width:56px;height:56px;border-radius:50%;background:color-mix(in oklab,var(--crit) 14%,transparent);color:var(--crit);display:flex;align-items:center;justify-content:center;}
+.cf-usr-403-t{font-size:16px;font-weight:800;}
+.cf-usr-403-s{font-size:13px;color:var(--text-dim);max-width:400px;line-height:1.5;}
 
-.toast{position:fixed;bottom:24px;right:24px;background:#0e1013;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:13px 18px;display:flex;align-items:center;gap:10px;font-size:13px;color:#e8eaed;z-index:300;animation:pgIn .3s ease both;box-shadow:0 8px 28px rgba(0,0,0,.4);}
-.avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0;}
-
-.tenant-sel{display:flex;flex-direction:column;gap:6px;}
-.tenant-opt{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#13161a;border:1px solid rgba(255,255,255,.08);border-radius:8px;cursor:pointer;transition:all .2s;font-size:13px;color:rgba(232,234,237,.6);}
-.tenant-opt.selected,.tenant-opt:hover{border-color:rgba(0,212,170,.4);color:#e8eaed;}
-.tenant-opt.selected{background:rgba(0,212,170,.06);}
-.to-dot{width:8px;height:8px;border-radius:50%;background:#00d4aa;opacity:0;flex-shrink:0;}
-.tenant-opt.selected .to-dot{opacity:1;}
-
-@media(max-width:768px){.pg{padding:14px;}.fr2{grid-template-columns:1fr;}}
+@media(max-width:1100px){.cf-usr-kpis{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:560px){.cf-usr-kpis{grid-template-columns:1fr;}}
 `;
 
-const FORM_EMPTY = { nome:'', email:'', senha:'', confirmar_senha:'', admin:false, tenant_id:null, novo_tenant:'' };
-const AVATARES   = ['#00d4aa','#0099ff','#a855f7','#ff6b35','#ffd32a','#ff4757'];
-const avatarCor  = (nome='') => AVATARES[(nome.charCodeAt(0)||0) % AVATARES.length];
-const iniciais   = (nome='') => nome.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
+/* ── Portal ───────────────────────────────────────────────────────────── */
+function Portal({children, theme}) {
+  useEffect(()=>{ const p=document.body.style.overflow; document.body.style.overflow='hidden'; return()=>{ document.body.style.overflow=p; }; },[]);
+  return createPortal(<div className="cf-usr-portal" data-theme={theme}>{children}</div>, document.body);
+}
 
+/* ══ COMPONENTE PRINCIPAL ════════════════════════════════════════════════ */
 export default function Usuarios() {
-  const admin = isAdmin();
+  const [theme, setTheme] = useState(getDocTheme);
+  const [usuarios, setUsuarios] = useState([]);
+  const [tenants, setTenants] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState('');
+  const [forbidden, setForbidden] = useState(false);
+  const [meuEmail, setMeuEmail] = useState('');
 
-  const [usuarios,  setUsuarios]  = useState([]);
-  const [tenants,   setTenants]   = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [search,    setSearch]    = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [form,      setForm]      = useState(FORM_EMPTY);
-  const [saving,    setSaving]    = useState(false);
-  const [formErr,   setFormErr]   = useState('');
-  const [confirm,   setConfirm]   = useState(null);
-  const [toast,     setToast]     = useState(null);
-  const [tenantMode, setTenantMode] = useState('existente'); // 'existente' | 'novo'
+  const [busca, setBusca] = useState('');
+  const [filtro, setFiltro] = useState('todos');
+  const [modal, setModal] = useState(null); // 'novo' | null
+  const [form, setForm] = useState(FORM_EMPTY);
+  const [showSenha, setShowSenha] = useState(false);
+  const [formErr, setFormErr] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const [toast, setToast] = useState(null);
 
-  const showToast = (msg, icon='✓') => { setToast({msg,icon}); setTimeout(()=>setToast(null),3000); };
+  useEffect(()=>{
+    const obs=new MutationObserver(()=>setTheme(getDocTheme()));
+    obs.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+    return ()=>obs.disconnect();
+  },[]);
+
+  // pega e-mail do usuário logado (do próprio token JWT ou do perfil)
+  useEffect(() => {
+    api.get('/auth/perfil').then(p => setMeuEmail(p.email || '')).catch(() => {});
+  }, []);
+
+  const showToast = (msg, tone = 'ok') => { setToast({ msg, tone }); setTimeout(() => setToast(null), 3000); };
 
   const load = useCallback(async () => {
-    if (!admin) return;
-    setLoading(true);
+    setLoading(true); setErro(''); setForbidden(false);
     try {
       const [u, t] = await Promise.all([
         api.get('/auth/usuarios'),
-        api.get('/auth/tenants'),
+        api.get('/auth/tenants').catch(() => []),
       ]);
       setUsuarios(Array.isArray(u) ? u : []);
       setTenants(Array.isArray(t) ? t : []);
-    } catch { setUsuarios([]); setTenants([]); }
-    finally { setLoading(false); }
-  }, [admin]);
-
+    } catch (e) {
+      if (String(e.message).toLowerCase().includes('admin')) setForbidden(true);
+      else setErro(e.message || 'Erro ao carregar usuários');
+    } finally { setLoading(false); }
+  }, []);
   useEffect(() => { load(); }, [load]);
 
-  const filtered = usuarios.filter(u =>
-    !search ||
-    u.nome.toLowerCase().includes(search.toLowerCase()) ||
-    u.email.toLowerCase().includes(search.toLowerCase())
-  );
+  const tenantsMap = useMemo(() => Object.fromEntries(tenants.map(t => [t.id, t.nome])), [tenants]);
 
-  const abrirModal = () => {
-    setForm(FORM_EMPTY);
-    setFormErr('');
-    setTenantMode('existente');
-    setShowModal(true);
+  const counts = useMemo(() => ({
+    todos: usuarios.length,
+    ativos: usuarios.filter(u => u.ativo).length,
+    inativos: usuarios.filter(u => !u.ativo).length,
+    admins: usuarios.filter(u => u.admin).length,
+  }), [usuarios]);
+
+  const lista = useMemo(() => {
+    let r = usuarios.filter(u => {
+      if (filtro === 'ativos' && !u.ativo) return false;
+      if (filtro === 'inativos' && u.ativo) return false;
+      if (filtro === 'admins' && !u.admin) return false;
+      if (busca) {
+        const q = busca.toLowerCase();
+        if (!(u.nome.toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q))) return false;
+      }
+      return true;
+    });
+    return r.sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [usuarios, filtro, busca]);
+
+  const openNovo = () => {
+    setForm({ ...FORM_EMPTY, tenant_mode: tenants.length ? 'existente' : 'novo', tenant_id: tenants[0]?.id || '' });
+    setFormErr(''); setShowSenha(false); setModal('novo');
   };
 
   const salvar = async () => {
-    if (!form.nome || !form.email || !form.senha) { setFormErr('Nome, e-mail e senha são obrigatórios.'); return; }
-    if (form.senha !== form.confirmar_senha)        { setFormErr('As senhas não coincidem.'); return; }
-    if (form.senha.length < 6)                      { setFormErr('Senha deve ter ao menos 6 caracteres.'); return; }
-    if (!form.admin && tenantMode === 'existente' && !form.tenant_id) { setFormErr('Selecione um tenant ou crie um novo.'); return; }
+    setFormErr('');
+    if (!form.nome.trim()) { setFormErr('O nome é obrigatório.'); return; }
+    if (!isEmail(form.email)) { setFormErr('E-mail inválido.'); return; }
+    if (form.senha.length < 6) { setFormErr('A senha deve ter no mínimo 6 caracteres.'); return; }
+    if (form.tenant_mode === 'novo' && !form.tenant_nome.trim()) { setFormErr('Informe o nome do novo tenant.'); return; }
+    if (form.tenant_mode === 'existente' && !form.tenant_id) { setFormErr('Selecione um tenant.'); return; }
 
-    setSaving(true); setFormErr('');
+    setSalvando(true);
     try {
-      const body = {
-        nome:       form.nome,
-        email:      form.email,
-        senha:      form.senha,
-        admin:      form.admin,
-        tenant_id:   tenantMode === 'existente' ? form.tenant_id : null,
-        tenant_nome: tenantMode === 'novo'       ? form.novo_tenant : null,
+      const payload = {
+        nome: form.nome.trim(), email: form.email.trim(), senha: form.senha,
+        admin: form.admin,
+        ...(form.tenant_mode === 'novo'
+          ? { tenant_nome: form.tenant_nome.trim() }
+          : { tenant_id: Number(form.tenant_id) }),
       };
-      await api.post('/auth/cadastro', body);
-      showToast(`Usuário ${form.nome} criado!`);
-      setShowModal(false);
-      load();
-    } catch(e) { setFormErr(e.message); }
-    finally { setSaving(false); }
+      await api.post('/auth/cadastro', payload);
+      showToast('Usuário cadastrado');
+      setModal(null);
+      await load();
+    } catch (e) {
+      setFormErr(e.message || 'Erro ao cadastrar usuário.');
+    } finally { setSalvando(false); }
   };
 
   const toggleAtivo = async (u) => {
     try {
       await api.put(`/auth/usuarios/${u.id}`, { ativo: !u.ativo });
-      showToast(u.ativo ? `${u.nome} desativado.` : `${u.nome} ativado.`, u.ativo ? '🔒' : '🔓');
-      load();
-    } catch(e) { showToast(e.message, '✕'); }
+      showToast(u.ativo ? 'Usuário desativado' : 'Usuário reativado');
+      await load();
+    } catch (e) {
+      showToast(e.message || 'Erro ao atualizar usuário', 'err');
+    }
   };
 
-  const deletar = async (u) => {
+  const remover = async (u) => {
     try {
       await api.del(`/auth/usuarios/${u.id}`);
-      showToast(`${u.nome} removido.`, '🗑');
-      setConfirm(null); load();
-    } catch(e) { showToast(e.message, '✕'); }
+      setConfirmDel(null);
+      showToast('Usuário removido', 'err');
+      await load();
+    } catch (e) {
+      showToast(e.message || 'Erro ao remover usuário', 'err');
+    }
   };
 
-  if (!admin) return (
-    <>
+  if (forbidden) return (
+    <div className="cf-usr-root" data-theme={theme}>
       <style>{S}</style>
-      <div className="pg">
-        <div className="denied">
-          <div className="denied-icon">🔒</div>
-          <div className="denied-title">Acesso restrito</div>
-          <div className="denied-sub">Apenas administradores podem gerenciar usuários.</div>
+      <div className="cf-usr">
+        <div className="cf-usr-403">
+          <div className="cf-usr-403-ic"><Ic d={ICONS.shield} size={26}/></div>
+          <div className="cf-usr-403-t">Acesso restrito</div>
+          <div className="cf-usr-403-s">Somente usuários administradores podem acessar a gestão de contas. Se você precisa desse acesso, peça a um admin para promover sua conta.</div>
         </div>
       </div>
-    </>
+    </div>
   );
 
-  const ativos   = usuarios.filter(u => u.ativo).length;
-  const admins   = usuarios.filter(u => u.admin).length;
-  const nTenants = tenants.length;
+  const CHIPS = [
+    { k: 'todos',    label: 'Todos' },
+    { k: 'ativos',   label: 'Ativos' },
+    { k: 'inativos', label: 'Inativos' },
+    { k: 'admins',   label: 'Admins' },
+  ];
+
+  const KPIS = [
+    { tone: 't-brand', ic: 'users',  val: counts.todos,    lbl: 'Total de contas',   sub: 'no sistema' },
+    { tone: 't-ok',    ic: 'check',  val: counts.ativos,   lbl: 'Contas ativas',     sub: 'podem acessar' },
+    { tone: 't-warn',  ic: 'power',  val: counts.inativos, lbl: 'Contas inativas',   sub: 'acesso suspenso' },
+    { tone: 't-info',  ic: 'shield', val: counts.admins,   lbl: 'Administradores',   sub: 'com privilégios' },
+  ];
 
   return (
-    <>
+    <div className="cf-usr-root" data-theme={theme}>
       <style>{S}</style>
-      <div className="pg">
-        {/* Header */}
-        <div className="pg-hdr">
+      <div className="cf-usr">
+
+        <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16,flexWrap:'wrap'}}>
           <div>
-            <div className="pg-title">Usuários</div>
-            <div className="pg-sub">{usuarios.length} usuário(s) · acesso admin</div>
+            <div style={{fontSize:22,fontWeight:800}}>Usuários</div>
+            <div style={{fontSize:12,color:'var(--text-muted)',fontFamily:'var(--font-mono)',marginTop:4}}>gestão de contas e permissões · área restrita a admins</div>
           </div>
-          <button className="btn btn-primary" onClick={abrirModal}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Novo Usuário
-          </button>
+          <button className="cf-btn cf-btn-primary" onClick={openNovo}><Ic d={ICONS.plus} size={15}/> Novo usuário</button>
         </div>
 
-        {/* Stats */}
-        <div className="stats">
-          {[
-            { label:'Total',    val:usuarios.length, color:'#00d4aa' },
-            { label:'Ativos',   val:ativos,          color:'#0099ff' },
-            { label:'Admins',   val:admins,          color:'#a855f7' },
-            { label:'Tenants',  val:nTenants,        color:'#ff6b35' },
-          ].map(s => (
-            <div key={s.label} className="stat">
-              <div className="st-dot" style={{background:s.color}}/>
-              <div><div className="st-val">{s.val}</div><div className="st-lbl">{s.label}</div></div>
+        {erro && <div className="cf-usr-err">⚠ {erro}</div>}
+
+        {loading ? (
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16}}>{[1,2,3,4].map(i=><div key={i} className="cf-skel" style={{height:100}}/>)}</div>
+        ) : (
+          <>
+            <div className="cf-usr-kpis">
+              {KPIS.map(k => (
+                <div key={k.lbl} className={`cf-usr-kpi ${k.tone}`}>
+                  <div className="cf-usr-kpi-top"><span className="cf-usr-kpi-ic"><Ic d={ICONS[k.ic]} size={16}/></span></div>
+                  <div className="cf-usr-kpi-val">{k.val}</div>
+                  <div><div className="cf-usr-kpi-lbl">{k.lbl}</div><div className="cf-usr-kpi-sub">{k.sub}</div></div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
 
-        {/* Filtro */}
-        <div className="filters">
-          <div className="srch">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{color:'rgba(232,234,237,.28)',flexShrink:0}}>
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input placeholder="Buscar por nome ou e-mail..." value={search} onChange={e=>setSearch(e.target.value)}/>
-            {search && <button onClick={()=>setSearch('')} style={{background:'none',border:'none',color:'rgba(232,234,237,.3)',cursor:'pointer',fontSize:16}}>×</button>}
-          </div>
-        </div>
-
-        {/* Tabela */}
-        <div className="card">
-          <div className="tbl-wrap">
-            {loading ? (
-              <div style={{padding:16,display:'flex',flexDirection:'column',gap:8}}>
-                {[1,2,3].map(i=><div key={i} className="skel" style={{height:52}}/>)}
+            <div className="cf-usr-toolbar">
+              <div className="cf-usr-srch">
+                <Ic d={ICONS.search} size={15} />
+                <input placeholder="Buscar por nome ou e-mail…" value={busca} onChange={e => setBusca(e.target.value)} />
+                {busca && <button className="x" onClick={() => setBusca('')}>×</button>}
               </div>
-            ) : filtered.length === 0 ? (
-              <div className="empty">Nenhum usuário encontrado</div>
+              <div className="cf-usr-chips">
+                {CHIPS.map(c => (
+                  <button key={c.k} className={`cf-usr-chip${filtro === c.k ? ' on' : ''}`} onClick={() => setFiltro(c.k)}>
+                    {c.label}<span className="cf-usr-chip-n">{counts[c.k]}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {lista.length === 0 ? (
+              <div className="cf-usr-table"><div className="cf-usr-empty"><div className="cf-usr-empty-ic"><Ic d={ICONS.users} size={20}/></div><div>Nenhum usuário neste filtro</div></div></div>
             ) : (
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Usuário</th>
-                    <th>Tenant</th>
-                    <th>Perfil</th>
-                    <th>Status</th>
-                    <th>Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map(u => {
-                    const tenant = tenants.find(t=>t.id===u.tenant_id);
-                    return (
-                      <tr key={u.id}>
-                        <td>
-                          <div style={{display:'flex',alignItems:'center',gap:10}}>
-                            <div className="avatar" style={{background:`${avatarCor(u.nome)}22`,color:avatarCor(u.nome)}}>
-                              {iniciais(u.nome)}
-                            </div>
-                            <div>
-                              <div style={{fontWeight:700,fontSize:13,color:'#e8eaed'}}>{u.nome}</div>
-                              <div style={{fontSize:11,color:'rgba(232,234,237,.3)',fontFamily:'JetBrains Mono,monospace'}}>{u.email}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="mono" style={{fontSize:12}}>
-                          {u.admin ? <span style={{color:'rgba(232,234,237,.25)'}}>— global —</span>
-                                   : tenant ? tenant.nome : <span style={{color:'#ff6b35'}}>sem tenant</span>}
-                        </td>
-                        <td>
-                          {u.admin
-                            ? <span className="badge b-purple">ADMIN</span>
-                            : <span className="badge b-gray">USUÁRIO</span>}
-                        </td>
-                        <td>
-                          {u.ativo
-                            ? <span className="badge b-green">ATIVO</span>
-                            : <span className="badge b-red">INATIVO</span>}
-                        </td>
-                        <td>
-                          <div className="act-btns">
-                            <button className="ib warning" title={u.ativo?'Desativar':'Ativar'} onClick={()=>toggleAtivo(u)}>
-                              {u.ativo
-                                ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                                : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>}
-                            </button>
-                            <button className="ib danger" title="Remover" onClick={()=>setConfirm(u)}>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div className="cf-usr-table">
+                <div className="cf-usr-thead">
+                  <div className="cf-usr-th">Usuário</div>
+                  <div className="cf-usr-th">E-mail</div>
+                  <div className="cf-usr-th">Tenant</div>
+                  <div className="cf-usr-th">Papel</div>
+                  <div className="cf-usr-th">Status</div>
+                  <div className="cf-usr-th r">Ações</div>
+                </div>
+                {lista.map(u => {
+                  const eusou = u.email === meuEmail;
+                  return (
+                    <div key={u.id} className={`cf-usr-row${!u.ativo ? ' inactive' : ''}`}>
+                      <div className="cf-usr-r-user">
+                        <div className={`cf-usr-avatar${!u.ativo ? ' inactive' : ''}`} style={{ '--av': avatarColor(u.nome) }}>
+                          {inicial(u.nome)}
+                          {u.admin && <span className="cf-usr-avatar-star" title="Admin"><Ic d={ICONS.shield} size={9} sw={2.4}/></span>}
+                        </div>
+                        <div className="cf-usr-r-info">
+                          <div className="cf-usr-r-nm">{u.nome}{eusou && <span className="cf-usr-r-me">você</span>}</div>
+                          <div className="cf-usr-r-email">ID #{u.id}</div>
+                        </div>
+                      </div>
+                      <div className="cf-usr-r-email" style={{fontSize:12.5}}>{u.email}</div>
+                      <div className="cf-usr-r-tenant">{tenantsMap[u.tenant_id] || (u.tenant_id ? `#${u.tenant_id}` : '—')}</div>
+                      <div>{u.admin ? <span className="cf-pill brand">Admin</span> : <span className="cf-pill muted">Usuário</span>}</div>
+                      <div>{u.ativo ? <span className="cf-pill ok">Ativo</span> : <span className="cf-pill crit">Inativo</span>}</div>
+                      <div className="cf-usr-r-actions">
+                        <button className={`cf-usr-ic-btn ${u.ativo ? 'warn' : 'ok'}`} onClick={() => toggleAtivo(u)} disabled={eusou}
+                          title={eusou ? 'Você não pode desativar sua própria conta' : (u.ativo ? 'Desativar' : 'Reativar')}>
+                          <Ic d={ICONS.power} size={14}/>
+                        </button>
+                        <button className="cf-usr-ic-btn danger" onClick={() => setConfirmDel(u)} disabled={eusou}
+                          title={eusou ? 'Você não pode remover sua própria conta' : 'Remover'}>
+                          <Ic d={ICONS.trash} size={14}/>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
-          </div>
-        </div>
+          </>
+        )}
       </div>
 
-      {/* Modal criar usuário */}
-      {showModal && (
-        <div className="mbg" onClick={e=>e.target===e.currentTarget&&setShowModal(false)}>
-          <div className="modal" style={{maxHeight:'90vh',overflowY:'auto'}}>
-            <div className="mhd">
-              <div>
-                <div className="mtitle">Novo Usuário</div>
-                <div className="msub">Preencha os dados de acesso</div>
+      {modal === 'novo' && (
+        <Portal theme={theme}>
+          <div className="cf-usr-mback" onClick={e => e.target === e.currentTarget && setModal(null)}>
+            <div className="cf-usr-modal">
+              <div className="cf-usr-mhd">
+                <div><div className="cf-usr-mtitle">Novo usuário</div><div className="cf-usr-msub">cadastre uma nova conta de acesso</div></div>
+                <button className="cf-mclose" onClick={() => setModal(null)}><Ic d={ICONS.x} size={14}/></button>
               </div>
-              <button className="mclose" onClick={()=>setShowModal(false)}>×</button>
-            </div>
-            <div className="mbody">
-              {formErr && <div className="ferr">⚠ {formErr}</div>}
+              <div className="cf-usr-mbody">
+                {formErr && <div className="cf-usr-err">⚠ {formErr}</div>}
 
-              <div className="fr2">
-                <div className="ff">
-                  <label className="fl">Nome *</label>
-                  <input className="fi" placeholder="Nome completo" value={form.nome} onChange={e=>setForm(f=>({...f,nome:e.target.value}))}/>
+                <div className="cf-usr-field"><label className="cf-usr-label">Nome completo *</label>
+                  <input className="cf-usr-input" placeholder="Ex: Maria Silva" value={form.nome} onChange={e => setForm(f => ({...f, nome: e.target.value}))}/>
                 </div>
-                <div className="ff">
-                  <label className="fl">E-mail *</label>
-                  <input className="fi" type="email" placeholder="email@exemplo.com" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))}/>
+                <div className="cf-usr-field"><label className="cf-usr-label">E-mail *</label>
+                  <input className={`cf-usr-input${form.email && !isEmail(form.email) ? ' err' : ''}`} type="email" placeholder="maria@exemplo.com" value={form.email} onChange={e => setForm(f => ({...f, email: e.target.value}))}/>
+                  <span className="cf-usr-hint">Será usado como login</span>
                 </div>
-              </div>
-
-              <div className="fr2">
-                <div className="ff">
-                  <label className="fl">Senha *</label>
-                  <input className="fi" type="password" placeholder="mín. 6 caracteres" value={form.senha} onChange={e=>setForm(f=>({...f,senha:e.target.value}))}/>
-                </div>
-                <div className="ff">
-                  <label className="fl">Confirmar senha *</label>
-                  <input className="fi" type="password" placeholder="repita a senha" value={form.confirmar_senha} onChange={e=>setForm(f=>({...f,confirmar_senha:e.target.value}))}/>
-                </div>
-              </div>
-
-              {/* Toggle admin */}
-              <div className="ftoggle" onClick={()=>setForm(f=>({...f,admin:!f.admin}))}>
-                <div>
-                  <div className="toggle-lbl">Administrador</div>
-                  <div className="toggle-sub">Pode ver todos os dados e gerenciar usuários</div>
-                </div>
-                <div className={`toggle-sw${form.admin?' on':''}`}><div className="toggle-knob"/></div>
-              </div>
-
-              {/* Tenant — só para não-admins */}
-              {!form.admin && (
-                <div className="ff">
-                  <label className="fl">Empresa (Tenant)</label>
-                  <div style={{display:'flex',gap:8,marginBottom:10}}>
-                    {['existente','novo'].map(m => (
-                      <button key={m} onClick={()=>setTenantMode(m)} className="btn" style={{
-                        flex:1, background:tenantMode===m?'rgba(0,212,170,.1)':'rgba(255,255,255,.04)',
-                        border:`1px solid ${tenantMode===m?'rgba(0,212,170,.4)':'rgba(255,255,255,.08)'}`,
-                        color:tenantMode===m?'#00d4aa':'rgba(232,234,237,.5)', fontSize:11, padding:'7px 10px',
-                      }}>
-                        {m === 'existente' ? 'Tenant existente' : 'Criar novo tenant'}
-                      </button>
-                    ))}
+                <div className="cf-usr-field"><label className="cf-usr-label">Senha inicial *</label>
+                  <div className="cf-usr-input-wrap">
+                    <input className="cf-usr-input" style={{paddingRight:38}} type={showSenha ? 'text' : 'password'} placeholder="mínimo 6 caracteres" value={form.senha} onChange={e => setForm(f => ({...f, senha: e.target.value}))}/>
+                    <button className="cf-usr-toggle" onClick={() => setShowSenha(v => !v)} type="button"><Ic d={showSenha ? ICONS.eyeOff : ICONS.eye} size={16}/></button>
                   </div>
-
-                  {tenantMode === 'existente' ? (
-                    <div className="tenant-sel">
-                      {tenants.length === 0
-                        ? <div style={{fontSize:12,color:'rgba(232,234,237,.3)',fontFamily:'JetBrains Mono,monospace'}}>Nenhum tenant cadastrado</div>
-                        : tenants.map(t => (
-                          <div key={t.id} className={`tenant-opt${form.tenant_id===t.id?' selected':''}`}
-                            onClick={()=>setForm(f=>({...f,tenant_id:t.id}))}>
-                            <div className="to-dot"/>
-                            <div style={{flex:1}}>{t.nome}</div>
-                            <div style={{fontSize:10,fontFamily:'JetBrains Mono,monospace',color:'rgba(232,234,237,.3)'}}>{t.usuarios} usuário(s)</div>
-                          </div>
-                        ))
-                      }
-                    </div>
-                  ) : (
-                    <input className="fi" placeholder="Nome da nova empresa" value={form.novo_tenant}
-                      onChange={e=>setForm(f=>({...f,novo_tenant:e.target.value}))}/>
-                  )}
+                  <span className="cf-usr-hint">O usuário pode alterá-la depois em Configurações</span>
                 </div>
-              )}
-            </div>
-            <div className="mfoot">
-              <button className="btn btn-ghost" onClick={()=>setShowModal(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={salvar} disabled={saving}>
-                {saving ? 'Criando...' : 'Criar Usuário'}
-              </button>
+
+                <div className="cf-usr-field">
+                  <label className="cf-usr-label">Tenant (organização)</label>
+                  <div className="cf-usr-tabs">
+                    <button className={form.tenant_mode==='existente'?'on':''} onClick={()=>setForm(f=>({...f,tenant_mode:'existente'}))} disabled={tenants.length===0}>Entrar em existente</button>
+                    <button className={form.tenant_mode==='novo'?'on':''} onClick={()=>setForm(f=>({...f,tenant_mode:'novo'}))}>Criar novo</button>
+                  </div>
+                </div>
+                {form.tenant_mode === 'existente' ? (
+                  <div className="cf-usr-field">
+                    <select className="cf-usr-select" value={form.tenant_id} onChange={e => setForm(f => ({...f, tenant_id: e.target.value}))}>
+                      <option value="">Selecione um tenant…</option>
+                      {tenants.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="cf-usr-field">
+                    <input className="cf-usr-input" placeholder="Nome do novo tenant" value={form.tenant_nome} onChange={e => setForm(f => ({...f, tenant_nome: e.target.value}))}/>
+                    <span className="cf-usr-hint">Um novo espaço de dados será criado. O usuário será o primeiro membro.</span>
+                  </div>
+                )}
+
+                <div className={`cf-usr-check-row${form.admin ? ' on' : ''}`} onClick={()=>setForm(f => ({...f, admin: !f.admin}))}>
+                  <div className="cf-usr-check-box">{form.admin && <Ic d={ICONS.check} size={12} sw={3}/>}</div>
+                  <div className="cf-usr-check-info">
+                    <div className="cf-usr-check-t">Marcar como administrador</div>
+                    <div className="cf-usr-check-s">Pode gerenciar outros usuários e acessar todos os tenants.</div>
+                  </div>
+                </div>
+              </div>
+              <div className="cf-usr-mfoot">
+                <button className="cf-btn cf-btn-ghost" onClick={() => setModal(null)}>Cancelar</button>
+                <button className="cf-btn cf-btn-primary" onClick={salvar} disabled={salvando} style={{flex:1}}>{salvando ? 'Cadastrando…' : 'Cadastrar usuário'}</button>
+              </div>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
 
-      {/* Confirm delete */}
-      {confirm && (
-        <div className="mbg" onClick={e=>e.target===e.currentTarget&&setConfirm(null)}>
-          <div className="confirm">
-            <div className="ct">Remover {confirm.nome}?</div>
-            <div className="cx">O usuário perderá o acesso permanentemente. Seus dados criados não serão apagados.</div>
-            <div className="ca">
-              <button className="btn btn-ghost" onClick={()=>setConfirm(null)}>Cancelar</button>
-              <button className="btn btn-danger" onClick={()=>deletar(confirm)}>Remover</button>
+      {confirmDel && (
+        <Portal theme={theme}>
+          <div className="cf-usr-mback" onClick={e => e.target === e.currentTarget && setConfirmDel(null)}>
+            <div className="cf-usr-confirm">
+              <div className="cf-usr-confirm-t">Remover usuário?</div>
+              <div className="cf-usr-confirm-x">Tem certeza que deseja remover <strong>{confirmDel.nome}</strong>? Esta ação não pode ser desfeita. Considere apenas desativar a conta se quiser preservar o histórico.</div>
+              <div className="cf-usr-confirm-acts">
+                <button className="cf-btn cf-btn-ghost" onClick={() => setConfirmDel(null)}>Cancelar</button>
+                <button className="cf-btn cf-btn-danger" onClick={() => remover(confirmDel)}>Remover</button>
+              </div>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
 
-      {toast && <div className="toast"><span style={{fontSize:16}}>{toast.icon}</span>{toast.msg}</div>}
-    </>
+      {toast && <div className="cf-toast"><span className={`cf-toast-ic ${toast.tone}`}>{toast.tone === 'ok' ? '✓' : '×'}</span>{toast.msg}</div>}
+    </div>
   );
 }
