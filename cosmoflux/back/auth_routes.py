@@ -182,7 +182,7 @@ def admin_reset_senha(uid: int, dados: ResetSenhaSchema, ctx: dict = Depends(get
         raise HTTPException(400, "Senha nova deve ter no mínimo 6 caracteres")
     u = db.query(Usuario).filter(Usuario.id == uid).first()
     if not u: raise HTTPException(404, "Usuário não encontrado")
-    u.senha_hash = ph.hash(dados.senha_nova)
+    u.senha = ph.hash(dados.senha_nova)
     db.commit()
     return {"mensagem": f"Senha de {u.nome} redefinida"}
 
