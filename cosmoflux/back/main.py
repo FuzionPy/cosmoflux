@@ -24,7 +24,19 @@ from fastapi.responses import JSONResponse
 
 @app.middleware("http")
 async def cors_error_middleware(request: Request, call_next):
-    response = await call_next(request)
+    """Garante CORS mesmo quando o handler lança exceção não-tratada.
+    Sem o try/except, um crash no endpoint faz o Railway devolver HTML de erro
+    sem headers CORS, e o browser reporta 'no Access-Control-Allow-Origin'
+    mascarando o erro real."""
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()  # log no Railway pra rastrear a causa
+        response = JSONResponse(
+            status_code=500,
+            content={"detail": f"Erro interno: {type(e).__name__}: {str(e)[:200]}"},
+        )
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Headers"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "*"

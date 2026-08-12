@@ -1,6 +1,7 @@
 import os
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timedelta
@@ -175,9 +176,19 @@ def deletar_usuario(uid: int, ctx: dict = Depends(get_ctx), db: Session = Depend
     if not u: raise HTTPException(404, "Usuário não encontrado")
     if u.id == ctx["usuario_id"]:
         raise HTTPException(400, "Você não pode remover a si mesmo")
-    db.delete(u)
-    db.commit()
-    return {"mensagem": "Usuário removido"}
+
+    # Tenta hard-delete. Se falhar por FK (usuário tem histórico), faz soft-delete
+    # e retorna mensagem clara — em vez de deixar o Postgres crashar com IntegrityError
+    # (que vira 500 sem CORS no browser).
+    try:
+        db.delete(u)
+        db.commit()
+        return {"mensagem": "Usuário removido"}
+    except IntegrityError:
+        db.rollback()
+        u.ativo = False
+        db.commit()
+        return {"mensagem": "Usuário tem histórico vinculado (vendas, clientes, movimentações). Foi desativado em vez de removido.", "soft_delete": True}
 
 # ── PERFIL (usuário logado) ────────────────────────────────────────
 class PerfilUpdateSchema(BM):

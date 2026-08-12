@@ -164,6 +164,7 @@ const S = `
 .cf-toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--elevated);border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:12px 18px;display:flex;align-items:center;gap:10px;font-size:13px;z-index:300;box-shadow:var(--shadow);animation:cfuFade .3s ease both;white-space:nowrap;}
 .cf-toast-ic{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:color-mix(in oklab,var(--ok) 14%,transparent);color:var(--ok);flex-shrink:0;}
 .cf-toast-ic.err{background:color-mix(in oklab,var(--crit) 14%,transparent);color:var(--crit);}
+.cf-toast-ic.warn{background:color-mix(in oklab,var(--warn) 14%,transparent);color:var(--warn);}
 
 .cf-skel{background:linear-gradient(90deg,var(--track) 25%,var(--surface-2) 50%,var(--track) 75%);background-size:200% 100%;animation:cfuSh 1.5s infinite;border-radius:8px;}
 @keyframes cfuSh{from{background-position:200% 0}to{background-position:-200% 0}}
@@ -298,9 +299,13 @@ export default function Usuarios() {
 
   const remover = async (u) => {
     try {
-      await api.del(`/auth/usuarios/${u.id}`);
+      const resp = await api.del(`/auth/usuarios/${u.id}`);
       setConfirmDel(null);
-      showToast('Usuário removido', 'err');
+      if (resp?.soft_delete) {
+        showToast('Usuário desativado (tinha histórico vinculado)', 'warn');
+      } else {
+        showToast('Usuário removido', 'err');
+      }
       await load();
     } catch (e) {
       showToast(e.message || 'Erro ao remover usuário', 'err');
@@ -506,7 +511,7 @@ export default function Usuarios() {
         </Portal>
       )}
 
-      {toast && <div className="cf-toast"><span className={`cf-toast-ic ${toast.tone}`}>{toast.tone === 'ok' ? '✓' : '×'}</span>{toast.msg}</div>}
+      {toast && <div className="cf-toast"><span className={`cf-toast-ic ${toast.tone}`}>{toast.tone === 'ok' ? '✓' : toast.tone === 'warn' ? '⚠' : '×'}</span>{toast.msg}</div>}
     </div>
   );
 }
