@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 /* ── API ──────────────────────────────────────────────────────────────── */
-const BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000') + '/api';
+// Perfil/senha usam o auth_router (registrado no backend com prefix '/auth', SEM '/api').
+// É o mesmo padrão do authService.js — não misturar com o BASE das outras telas.
+const AUTH_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 const tok  = () => localStorage.getItem('token') || sessionStorage.getItem('token');
 const h    = () => ({ 'Content-Type':'application/json', Authorization:`Bearer ${tok()}` });
 const api  = {
-  get: url    => fetch(BASE+url,{headers:h()}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
-  put: (u,b)  => fetch(BASE+u,{method:'PUT',headers:h(),body:JSON.stringify(b||{})}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+  get: url    => fetch(AUTH_BASE+url,{headers:h()}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
+  put: (u,b)  => fetch(AUTH_BASE+u,{method:'PUT',headers:h(),body:JSON.stringify(b||{})}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'Erro');return d;}),
 };
 const getDocTheme = () => { try{return document.documentElement.getAttribute('data-theme')||'dark';}catch{return 'dark';} };
 const THEME_KEY = 'cf-theme';
