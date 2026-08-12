@@ -168,6 +168,24 @@ def atualizar_usuario(uid: int, dados: UsuarioUpdateSchema, ctx: dict = Depends(
     db.commit()
     return {"mensagem": "Usuário atualizado"}
 
+
+class ResetSenhaSchema(BM):
+    senha_nova: str
+
+@auth_router.put("/usuarios/{uid}/senha")
+def admin_reset_senha(uid: int, dados: ResetSenhaSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
+    """Admin redefine a senha de outro usuário. Não exige senha atual —
+    usado quando o usuário esqueceu a própria."""
+    if not ctx["admin"]:
+        raise HTTPException(403, "Apenas admins")
+    if len(dados.senha_nova) < 6:
+        raise HTTPException(400, "Senha nova deve ter no mínimo 6 caracteres")
+    u = db.query(Usuario).filter(Usuario.id == uid).first()
+    if not u: raise HTTPException(404, "Usuário não encontrado")
+    u.senha_hash = ph.hash(dados.senha_nova)
+    db.commit()
+    return {"mensagem": f"Senha de {u.nome} redefinida"}
+
 @auth_router.delete("/usuarios/{uid}")
 def deletar_usuario(uid: int, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
     if not ctx["admin"]:

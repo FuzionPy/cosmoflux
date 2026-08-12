@@ -39,6 +39,7 @@ const ICONS = {
   power:  <><path d="M18.36 6.64a9 9 0 1 1-12.72 0"/><path d="M12 2v10"/></>,
   mail:   <><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></>,
   build:  <><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h1M9 13h1M9 17h1M14 9h1M14 13h1M14 17h1"/></>,
+  key:    <><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></>,
 };
 
 /* ── CSS ──────────────────────────────────────────────────────────────── */
@@ -202,6 +203,11 @@ export default function Usuarios() {
   const [formErr, setFormErr] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
+  const [resetPwd, setResetPwd] = useState(null); // usuário para reset de senha
+  const [novaSenha, setNovaSenha] = useState('');
+  const [showNovaSenha, setShowNovaSenha] = useState(false);
+  const [resetErr, setResetErr] = useState('');
+  const [resetSalvando, setResetSalvando] = useState(false);
   const [toast, setToast] = useState(null);
 
   useEffect(()=>{
@@ -312,6 +318,22 @@ export default function Usuarios() {
     }
   };
 
+  const openReset = (u) => {
+    setResetPwd(u); setNovaSenha(''); setShowNovaSenha(false); setResetErr('');
+  };
+  const salvarReset = async () => {
+    setResetErr('');
+    if (novaSenha.length < 6) { setResetErr('Senha deve ter no mínimo 6 caracteres'); return; }
+    setResetSalvando(true);
+    try {
+      await api.put(`/auth/usuarios/${resetPwd.id}/senha`, { senha_nova: novaSenha });
+      showToast(`Senha de ${resetPwd.nome.split(' ')[0]} redefinida`);
+      setResetPwd(null); setNovaSenha('');
+    } catch (e) {
+      setResetErr(e.message || 'Erro ao redefinir senha');
+    } finally { setResetSalvando(false); }
+  };
+
   if (forbidden) return (
     <div className="cf-usr-root" data-theme={theme}>
       <style>{S}</style>
@@ -418,6 +440,10 @@ export default function Usuarios() {
                           title={eusou ? 'Você não pode desativar sua própria conta' : (u.ativo ? 'Desativar' : 'Reativar')}>
                           <Ic d={ICONS.power} size={14}/>
                         </button>
+                        <button className="cf-usr-ic-btn" onClick={() => openReset(u)} disabled={eusou}
+                          title={eusou ? 'Use a aba Senha em Configurações para trocar a sua' : 'Redefinir senha'}>
+                          <Ic d={ICONS.key} size={14}/>
+                        </button>
                         <button className="cf-usr-ic-btn danger" onClick={() => setConfirmDel(u)} disabled={eusou}
                           title={eusou ? 'Você não pode remover sua própria conta' : 'Remover'}>
                           <Ic d={ICONS.trash} size={14}/>
@@ -490,6 +516,46 @@ export default function Usuarios() {
               <div className="cf-usr-mfoot">
                 <button className="cf-btn cf-btn-ghost" onClick={() => setModal(null)}>Cancelar</button>
                 <button className="cf-btn cf-btn-primary" onClick={salvar} disabled={salvando} style={{flex:1}}>{salvando ? 'Cadastrando…' : 'Cadastrar usuário'}</button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+
+      {resetPwd && (
+        <Portal theme={theme}>
+          <div className="cf-usr-mback" onClick={e => e.target === e.currentTarget && setResetPwd(null)}>
+            <div className="cf-usr-modal" style={{maxWidth:420}}>
+              <div className="cf-usr-mhd">
+                <div>
+                  <div className="cf-usr-mtitle">Redefinir senha</div>
+                  <div className="cf-usr-msub">de {resetPwd.nome}</div>
+                </div>
+                <button className="cf-mclose" onClick={() => setResetPwd(null)}><Ic d={ICONS.x} size={14}/></button>
+              </div>
+              <div className="cf-usr-mbody">
+                {resetErr && <div className="cf-usr-err">⚠ {resetErr}</div>}
+                <div style={{fontSize:12.5,color:'var(--text-dim)',lineHeight:1.5}}>
+                  Você está definindo uma nova senha para <strong>{resetPwd.email}</strong>. Anote e passe para {resetPwd.nome.split(' ')[0]} — recomende que a pessoa troque em Configurações no próximo login.
+                </div>
+                <div className="cf-usr-field">
+                  <label className="cf-usr-label">Nova senha *</label>
+                  <div className="cf-usr-input-wrap">
+                    <input className="cf-usr-input" style={{paddingRight:38}} type={showNovaSenha ? 'text' : 'password'}
+                      placeholder="mínimo 6 caracteres" value={novaSenha}
+                      onChange={e => setNovaSenha(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && salvarReset()} autoFocus/>
+                    <button className="cf-usr-toggle" onClick={() => setShowNovaSenha(v => !v)} type="button">
+                      <Ic d={showNovaSenha ? ICONS.eyeOff : ICONS.eye} size={16}/>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="cf-usr-mfoot">
+                <button className="cf-btn cf-btn-ghost" onClick={() => setResetPwd(null)}>Cancelar</button>
+                <button className="cf-btn cf-btn-primary" onClick={salvarReset} disabled={resetSalvando} style={{flex:1}}>
+                  {resetSalvando ? 'Redefinindo…' : 'Redefinir senha'}
+                </button>
               </div>
             </div>
           </div>
