@@ -1030,3 +1030,148 @@ def impacto_retroativos(ctx: dict = Depends(get_ctx), db: Session = Depends(get_
         resultado.append({"mes": mes, "retroativos": b_retro, "normais": b_norm, "total": b_tot})
 
     return resultado
+
+
+@order_router.get("/relatorios/auditar-margem-mes")
+def auditar_margem_mes(
+    mes: int = Query(..., ge=1, le=12),
+    ano: int = Query(...),
+    ctx: dict = Depends(get_ctx), db: Session = Depends(get_db),
+):
+    """Retorna a decomposição COMPLETA do lucro do mês, item a item.
+    Para cada item vendido: qual custo foi aplicado, e de ONDE ele veio
+    (entradas com custo real, entradas sem custo, cadastro padrão, ou zero).
+    Use para investigar margens inflacionadas."""
+
+    pedidos = tf(db.query(Pedido), Pedido, ctx).filter(
+        Pedido.status != "cancelado",
+        func.extract('year', Pedido.criado_em) == ano,
+        func.extract('month', Pedido.criado_em) == mes,
+    ).order_by(Pedido.criado_em).all()
+
+    def origem_do_custo(produto_id):
+        """Classifica de onde vem o custo aplicado a este produto."""
+        entradas = db.query(Movimentacao).filter(
+            Movimentacao.produto_id == produto_id,
+            Movimentacao.tipo == "entrada",
+        ).all()
+        if not entradas:
+            return "sem_entrada_usa_cadastro"
+        com_custo = [e for e in entradas if e.preco_custo_real and e.preco_custo_real > 0]
+        if not com_custo:
+            return "entradas_sem_custo_usa_cadastro"
+        # tem entrada com custo real
+        return "media_ponderada_entradas"
+
+    itens_detalhados = []
+    resumo_por_produto = {}
+    origem_stats = {"media_ponderada_entradas": 0, "sem_entrada_usa_cadastro": 0,
+                    "entradas_sem_custo_usa_cadastro": 0, "produto_sem_custo_cadastrado": 0,
+                    "pedido_retroativo_sem_itens": 0}
+
+    for p in pedidos:
+        eh_retroativo = bool(p.observacao and p.observacao.startswith("[Retroativo]"))
+
+        # pedidos retroativos sem itens: contabilizar separadamente
+        if not p.itens:
+            origem_stats["pedido_retroativo_sem_itens"] += 1
+            itens_detalhados.append({
+                "pedido_id": p.id, "data": p.criado_em.strftime("%d/%m/%Y"),
+                "cliente": p.cliente_rel.nome if p.cliente_rel else "—",
+                "eh_retroativo": eh_retroativo,
+                "produto": "(pedido sem itens)",
+                "sku": "—",
+                "quantidade": 0,
+                "preco_venda": p.total,
+                "receita": round(p.total, 2),
+                "custo_unit_aplicado": 0.0,
+                "custo_cadastro": 0.0,
+                "custo_total": 0.0,
+                "lucro": round(p.total, 2),
+                "margem": 100.0,
+                "origem_custo": "pedido_retroativo_sem_itens",
+            })
+            continue
+
+        for it in p.itens:
+            prod = it.produto_rel
+            preco_cadastro = (prod.preco_custo or 0) if prod else 0
+            custo_aplicado_unit = custo_medio_produto(it.produto_id, db)
+            custo_total = round(custo_aplicado_unit * it.quantidade, 2)
+            receita_item = round(it.quantidade * it.preco_unitario, 2)
+            lucro_item = round(receita_item - custo_total, 2)
+            margem_item = round((lucro_item / receita_item) * 100, 1) if receita_item else 0
+
+            origem = origem_do_custo(it.produto_id)
+            if custo_aplicado_unit == 0 and preco_cadastro == 0:
+                origem = "produto_sem_custo_cadastrado"
+            origem_stats[origem] = origem_stats.get(origem, 0) + 1
+
+            item_row = {
+                "pedido_id": p.id, "data": p.criado_em.strftime("%d/%m/%Y"),
+                "cliente": p.cliente_rel.nome if p.cliente_rel else "—",
+                "eh_retroativo": eh_retroativo,
+                "produto": prod.nome if prod else f"Produto #{it.produto_id}",
+                "produto_id": it.produto_id,
+                "sku": prod.sku if prod else "—",
+                "quantidade": it.quantidade,
+                "preco_venda": round(it.preco_unitario, 2),
+                "receita": receita_item,
+                "custo_unit_aplicado": round(custo_aplicado_unit, 2),
+                "custo_cadastro": round(preco_cadastro, 2),
+                "custo_total": custo_total,
+                "lucro": lucro_item,
+                "margem": margem_item,
+                "origem_custo": origem,
+            }
+            itens_detalhados.append(item_row)
+
+            # agrupamento por produto
+            pid = it.produto_id
+            if pid not in resumo_por_produto:
+                resumo_por_produto[pid] = {
+                    "produto_id": pid,
+                    "nome": prod.nome if prod else f"Produto #{pid}",
+                    "sku": prod.sku if prod else "—",
+                    "custo_cadastro": round(preco_cadastro, 2),
+                    "custo_aplicado": round(custo_aplicado_unit, 2),
+                    "origem_custo": origem,
+                    "qtd_vendida": 0, "receita": 0.0, "custo_total": 0.0, "lucro": 0.0,
+                }
+            resumo_por_produto[pid]["qtd_vendida"] += it.quantidade
+            resumo_por_produto[pid]["receita"] += receita_item
+            resumo_por_produto[pid]["custo_total"] += custo_total
+            resumo_por_produto[pid]["lucro"] += lucro_item
+
+    # ordena o resumo por produto por lucro absoluto (quem mais infla o total)
+    produtos_lista = list(resumo_por_produto.values())
+    for r in produtos_lista:
+        r["receita"] = round(r["receita"], 2)
+        r["custo_total"] = round(r["custo_total"], 2)
+        r["lucro"] = round(r["lucro"], 2)
+        r["margem"] = round((r["lucro"] / r["receita"]) * 100, 1) if r["receita"] else 0
+    produtos_lista.sort(key=lambda x: -x["lucro"])
+
+    # totalizadores
+    receita_total = sum(i["receita"] for i in itens_detalhados)
+    custo_total = sum(i["custo_total"] for i in itens_detalhados)
+    lucro_total = receita_total - custo_total
+
+    # produtos suspeitos: margem >= 60% e receita >= 100
+    suspeitos = [r for r in produtos_lista if r["margem"] >= 60 and r["receita"] >= 100]
+
+    return {
+        "mes": mes, "ano": ano,
+        "totais": {
+            "n_pedidos": len(pedidos),
+            "n_itens": len(itens_detalhados),
+            "receita": round(receita_total, 2),
+            "custo": round(custo_total, 2),
+            "lucro": round(lucro_total, 2),
+            "margem": round(lucro_total/receita_total*100, 1) if receita_total else 0,
+        },
+        "origem_custo_stats": origem_stats,
+        "produtos_suspeitos": suspeitos,
+        "produtos_resumo": produtos_lista,
+        "itens_detalhados": itens_detalhados,
+    }
