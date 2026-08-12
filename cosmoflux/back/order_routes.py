@@ -407,8 +407,24 @@ def deletar_categoria(categoria_id: int, ctx: dict = Depends(get_ctx), db: Sessi
 
 @order_router.get("/fornecedores")
 def listar_fornecedores(ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
-    return [{"id": f.id, "nome": f.nome, "telefone": f.telefone, "email": f.email}
-            for f in tf(db.query(Fornecedor), Fornecedor, ctx).filter(Fornecedor.ativo == True).all()]
+    fornecedores = tf(db.query(Fornecedor), Fornecedor, ctx).filter(Fornecedor.ativo == True).all()
+    resultado = []
+    for f in fornecedores:
+        prods = [p for p in f.produtos if p.ativo]
+        n_produtos = len(prods)
+        n_criticos = sum(1 for p in prods if p.estoque_atual <= p.estoque_minimo and p.estoque_atual > 0)
+        n_esgotados = sum(1 for p in prods if p.estoque_atual == 0)
+        valor_estoque = round(sum((p.preco_custo or 0) * p.estoque_atual for p in prods), 2)
+        resultado.append({
+            "id": f.id, "nome": f.nome, "contato": f.contato,
+            "telefone": f.telefone, "email": f.email,
+            "n_produtos": n_produtos,
+            "n_criticos": n_criticos,
+            "n_esgotados": n_esgotados,
+            "valor_estoque": valor_estoque,
+            "precisa_reposicao": n_criticos + n_esgotados,
+        })
+    return sorted(resultado, key=lambda x: x["nome"])
 
 @order_router.post("/fornecedores")
 def criar_fornecedor(dados: FornecedorSchema, ctx: dict = Depends(get_ctx), db: Session = Depends(get_db)):
