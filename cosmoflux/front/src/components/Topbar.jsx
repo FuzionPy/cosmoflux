@@ -172,18 +172,30 @@ export default function Topbar({ title, onMenuToggle, actionLabel, onAction, the
     setLoading(true);
     try {
       const [prod, cli, ped] = await Promise.allSettled([
-        apig('/produtos'), apig('/clientes'), apig('/pedidos?limite=200'),
+        apig('/produtos'), apig('/clientes'), apig('/pedidos?limite=1000'),
       ]);
-      const ql = q.toLowerCase();
+      const ql = q.toLowerCase().trim();
+      const digitos = ql.replace(/\D/g, '');
+      // detecta o tipo de input pra dar prioridade certa
+      const ehTelefone = digitos.length >= 8 && digitos.length === ql.replace(/[\s()\-+]/g,'').length;
+      const ehPedido = /^#?\d+$/.test(ql);
+      const numPedido = ehPedido ? ql.replace('#','') : null;
+
       setResults({
         produtos: prod.status==='fulfilled'
           ? prod.value.filter(p => p.nome?.toLowerCase().includes(ql) || (p.sku||'').toLowerCase().includes(ql)).slice(0,4)
           : [],
         clientes: cli.status==='fulfilled'
-          ? cli.value.filter(c => c.nome?.toLowerCase().includes(ql) || (c.telefone||'').includes(ql)).slice(0,3)
+          ? cli.value.filter(c => {
+              if (ehTelefone) return (c.telefone||'').replace(/\D/g,'').includes(digitos);
+              return c.nome?.toLowerCase().includes(ql) || (c.telefone||'').includes(ql);
+            }).slice(0,3)
           : [],
         vendas: ped.status==='fulfilled'
-          ? ped.value.filter(p => (p.cliente||'').toLowerCase().includes(ql) || String(p.id).includes(ql)).slice(0,3)
+          ? ped.value.filter(p => {
+              if (ehPedido) return String(p.pedido_id || p.id) === numPedido;
+              return (p.cliente||'').toLowerCase().includes(ql) || String(p.id).includes(ql);
+            }).slice(0,3)
           : [],
       });
     } finally { setLoading(false); }
@@ -233,7 +245,7 @@ export default function Topbar({ title, onMenuToggle, actionLabel, onAction, the
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
             <input
-              placeholder="Buscar produto, cliente, venda..."
+              placeholder="Buscar por nome, telefone, #pedido, SKU…"
               value={query}
               onChange={e => { setQuery(e.target.value); setOpen(true); }}
               onFocus={() => setOpen(true)}
@@ -271,18 +283,34 @@ export default function Topbar({ title, onMenuToggle, actionLabel, onAction, the
                   {results.clientes.length > 0 && (
                     <div className="gs-section">
                       <div className="gs-section-title">Clientes</div>
-                      {results.clientes.map(c => (
-                        <div key={c.id} className="gs-item" onClick={()=>ir('/clientes')}>
-                          <div className="gs-item-icon" style={{background:'rgba(0,153,255,.08)',color:'#0099ff',fontSize:13,fontWeight:700,fontFamily:'Plus Jakarta Sans,sans-serif'}}>
-                            {c.nome?.[0]?.toUpperCase()}
+                      {results.clientes.map(c => {
+                        const tel = (c.telefone||'').replace(/\D/g,'');
+                        const primeiro = (c.nome||'').split(' ')[0];
+                        const temSaldo = c.total_em_aberto > 0;
+                        const msg = temSaldo
+                          ? `Oi, ${primeiro}! Tudo bem? Passando pra lembrar do seu saldo de ${fmtBRL(c.total_em_aberto)} aqui na loja 💜 Quando puder, me avisa pra gente acertar!`
+                          : `Oi, ${primeiro}! Tudo bem?`;
+                        const wa = `https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`;
+                        return (
+                          <div key={c.id} className="gs-item" onClick={()=>ir(`/clientes?abrir=${c.id}`)}>
+                            <div className="gs-item-icon" style={{background:'rgba(0,153,255,.08)',color:'#0099ff',fontSize:13,fontWeight:700,fontFamily:'Plus Jakarta Sans,sans-serif'}}>
+                              {c.nome?.[0]?.toUpperCase()}
+                            </div>
+                            <div className="gs-item-body">
+                              <div className="gs-item-name">{c.nome}</div>
+                              <div className="gs-item-sub">{c.telefone||'sem telefone'}{c.cidade?` · ${c.cidade}`:''}</div>
+                            </div>
+                            {temSaldo && <div className="gs-item-right" style={{color:'#ffd32a',marginRight:tel?8:0}}>{fmtBRL(c.total_em_aberto)}</div>}
+                            {tel && (
+                              <a href={wa} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
+                                title={temSaldo ? 'Cobrar no WhatsApp' : 'Chamar no WhatsApp'}
+                                style={{width:26,height:26,borderRadius:7,background:'rgba(37,211,102,.12)',color:'#1ebe5a',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,textDecoration:'none'}}>
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2Zm5.3 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7a11.6 11.6 0 0 1-4.8-4.3c-.4-.6-.9-1.5-.9-2.4 0-.9.5-1.3.7-1.5.2-.2.4-.3.6-.3h.5c.2 0 .4 0 .6.5l.7 1.7c.1.2.1.4 0 .5l-.3.5-.3.3c-.1.1-.3.3-.1.5.2.4.8 1.2 1.6 1.9 1 .9 1.8 1.1 2 1.2.2.1.4.1.5-.1l.7-.8c.2-.2.3-.2.5-.1l1.6.8c.2.1.4.2.4.3.1.1.1.6-.1 1.1Z"/></svg>
+                              </a>
+                            )}
                           </div>
-                          <div className="gs-item-body">
-                            <div className="gs-item-name">{c.nome}</div>
-                            <div className="gs-item-sub">{c.telefone||'sem telefone'}{c.cidade?` · ${c.cidade}`:''}</div>
-                          </div>
-                          {c.total_em_aberto > 0 && <div className="gs-item-right" style={{color:'#ffd32a'}}>{fmtBRL(c.total_em_aberto)}</div>}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 
@@ -291,18 +319,21 @@ export default function Topbar({ title, onMenuToggle, actionLabel, onAction, the
                   {results.vendas.length > 0 && (
                     <div className="gs-section">
                       <div className="gs-section-title">Vendas</div>
-                      {results.vendas.map(p => (
-                        <div key={p.id} className="gs-item" onClick={()=>ir('/vendas')}>
-                          <div className="gs-item-icon" style={{background:'rgba(168,85,247,.08)',color:'#a855f7',fontSize:11,fontWeight:700,fontFamily:'JetBrains Mono,monospace'}}>
-                            #{p.id}
+                      {results.vendas.map(p => {
+                        const pid = p.pedido_id || p.id;
+                        return (
+                          <div key={p.id} className="gs-item" onClick={()=>ir(`/vendas?abrir=${pid}`)}>
+                            <div className="gs-item-icon" style={{background:'rgba(168,85,247,.08)',color:'#a855f7',fontSize:11,fontWeight:700,fontFamily:'JetBrains Mono,monospace'}}>
+                              #{pid}
+                            </div>
+                            <div className="gs-item-body">
+                              <div className="gs-item-name">{p.cliente||'Balcão'}</div>
+                              <div className="gs-item-sub">{p.data} · {p.num_itens} item(s)</div>
+                            </div>
+                            <div className="gs-item-right">{fmtBRL(p.total)}</div>
                           </div>
-                          <div className="gs-item-body">
-                            <div className="gs-item-name">{p.cliente||'Balcão'}</div>
-                            <div className="gs-item-sub">{p.data} · {p.num_itens} item(s)</div>
-                          </div>
-                          <div className="gs-item-right">{fmtBRL(p.total)}</div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </>

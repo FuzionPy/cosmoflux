@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 /* ── API ──────────────────────────────────────────────────────────────── */
 const BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000') + '/api';
@@ -400,6 +400,7 @@ function ClientePanel({ cli, detalhe, loadingDetalhe, onClose, onEdit, onDelete,
 /* ══ COMPONENTE PRINCIPAL ════════════════════════════════════════════════ */
 export default function Clientes() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [theme, setTheme] = useState(getDocTheme);
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -437,6 +438,21 @@ export default function Clientes() {
     } finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  // ao chegar via link (?abrir=ID) — vindo da busca global do Topbar,
+  // seleciona o cliente automaticamente assim que a lista carregar
+  useEffect(() => {
+    const id = Number(searchParams.get('abrir'));
+    if (id && clientes.length > 0 && (!sel || sel.id !== id)) {
+      const alvo = clientes.find(c => c.id === id);
+      if (alvo) {
+        setSel(alvo);
+        // limpa o param pra não reabrir se o usuário fechar o modal
+        setSearchParams({}, { replace: true });
+      }
+    }
+    // eslint-disable-next-line
+  }, [searchParams, clientes]);
 
   const loadDetalhe = useCallback(async (id) => {
     setLoadingDet(true);
