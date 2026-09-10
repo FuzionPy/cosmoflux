@@ -141,21 +141,11 @@ const styles = `
   .gs-loading { padding: 24px 16px; text-align:center; color:var(--text-muted); font-size:12px; font-family:'JetBrains Mono',monospace; }
   .gs-divider { height:1px; background:var(--track); margin:0 16px; }
 
-  .tb-btn {
-    display: flex; align-items: center; gap: 5px;
-    padding: 7px 14px; border-radius: 7px; border: none;
-    font-family: 'Plus Jakarta Sans', sans-serif; font-size: 12px; font-weight: 600;
-    cursor: pointer; transition: all 0.15s; white-space: nowrap;
-    background: #00d4aa; color: #000;
-  }
-  .tb-btn:hover { background: #00efc0; transform: translateY(-1px); }
-
   @media (max-width: 900px) { .tb-search-wrap { display: none; } }
   @media (max-width: 768px) { .tb-toggle { display: flex !important; } .topbar { padding: 0 16px; } }
-  @media (max-width: 480px) { .tb-btn-label { display: none; } }
 `;
 
-export default function Topbar({ title, onMenuToggle, actionLabel, onAction, themePref = "system", resolvedTheme = "dark", onSetTheme }) {
+export default function Topbar({ title, onMenuToggle, themePref = "system", resolvedTheme = "dark", onSetTheme }) {
   const [themeMenu, setThemeMenu] = useState(false);
   const navigate = useNavigate();
   const [query,    setQuery]    = useState('');
@@ -376,14 +366,7 @@ export default function Topbar({ title, onMenuToggle, actionLabel, onAction, the
           )}
         </div>
 
-        {actionLabel && onAction && (
-          <button className="tb-btn" onClick={onAction}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            <span className="tb-btn-label">{actionLabel}</span>
-          </button>
-        )}
+        {/* botão de ação removido: cada tela já tem seu próprio "Novo X" com contexto certo */}
       </header>
     </>
   );
